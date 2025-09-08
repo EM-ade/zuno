@@ -56,7 +56,7 @@ export default function NavBar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center space-x-6 lg:space-x-8">
-          <Link href="#" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
+          <Link href="/explore" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
             Explore Mints
           </Link>
           <Link href="#" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
@@ -67,52 +67,65 @@ export default function NavBar() {
           </Link>
         </div>
 
-        {/* Connect Wallet Button - Desktop */}
-        <div className="hidden md:block relative">
-          {publicKey ? (
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="zuno-button zuno-button-secondary flex items-center text-sm lg:text-base py-2 px-4 lg:py-2 lg:px-5"
-              >
-                {truncateAddress(publicKey.toString())}
-                <svg 
-                  className="ml-2 w-4 h-4" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d={dropdownOpen ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} 
-                  />
-                </svg>
-              </button>
-              
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10">
-                  <div className="py-1">
-                    <button
-                      onClick={handleDisconnect}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      Disconnect
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={handleConnectWallet}
-              disabled={connecting}
-              className="zuno-button zuno-button-secondary text-sm lg:text-base py-2 px-4 lg:py-2 lg:px-5 disabled:opacity-50"
+        {/* Right-side buttons */}
+        <div className="hidden md:flex items-center space-x-4">
+          {/* Dashboard Link - Only show when wallet is connected */}
+          {publicKey && (
+            <Link
+              href="/dashboard"
+              className="zuno-button zuno-button-primary text-sm lg:text-base py-2 px-4 lg:py-2 lg:px-5"
             >
-              {connecting ? 'Connecting...' : 'Connect Wallet'}
-            </button>
+              Dashboard
+            </Link>
           )}
+
+          {/* Connect Wallet Button - Desktop */}
+          <div className="relative">
+            {publicKey ? (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="zuno-button zuno-button-secondary flex items-center text-sm lg:text-base py-2 px-4 lg:py-2 lg:px-5"
+                >
+                  {truncateAddress(publicKey.toString())}
+                  <svg
+                    className="ml-2 w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d={dropdownOpen ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'}
+                    />
+                  </svg>
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={handleDisconnect}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={handleConnectWallet}
+                disabled={connecting}
+                className="zuno-button zuno-button-secondary text-sm lg:text-base py-2 px-4 lg:py-2 lg:px-5 disabled:opacity-50"
+              >
+                {connecting ? 'Connecting...' : 'Connect Wallet'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Mobile Menu Button (hidden on desktop) */}
@@ -180,18 +193,6 @@ export default function NavBar() {
 
         </div>
       </div>
-
-      {/* Dashboard Link - Only show when wallet is connected */}
-      {publicKey && (
-        <div className="hidden md:flex items-center ml-4">
-          <Link
-            href="/dashboard"
-            className="zuno-button zuno-button-primary text-sm lg:text-base py-2 px-4 lg:py-2 lg:px-5"
-          >
-            Dashboard
-          </Link>
-        </div>
-      )}
 
       {/* Mobile Navigation */}
       <div className={`md:hidden mt-3 sm:mt-4 ${mobileMenuOpen ? 'block' : 'hidden'} fixed left-0 right-0 px-3 sm:px-4 z-50`}>
