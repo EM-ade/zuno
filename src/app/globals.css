@@ -3,11 +3,27 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --zuno-blue: #e2f2ff;
+  --zuno-dark-blue: #0077E6;
+  --zuno-light: #f8fafc;
+  --zuno-green: #7ED957;
+  --zuno-purple: #9333EA;
+  --zuno-yellow: #FFD700;
+  --zuno-card-bg: #FFFFFF;
+  --zuno-border-radius: 1.25rem;
+  --zuno-card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-zuno-blue: var(--zuno-blue);
+  --color-zuno-dark-blue: var(--zuno-dark-blue);
+  --color-zuno-light: var(--zuno-light);
+  --color-zuno-green: var(--zuno-green);
+  --color-zuno-purple: var(--zuno-purple);
+  --color-zuno-yellow: var(--zuno-yellow);
+  --color-zuno-card-bg: var(--zuno-card-bg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -20,7 +36,149 @@
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--zuno-blue);
+  color: white;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Card styles */
+.zuno-card {
+  background: var(--zuno-card-bg);
+  border-radius: var(--zuno-border-radius);
+  box-shadow: var(--zuno-card-shadow);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.zuno-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Button styles */
+.zuno-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  padding: 0.75rem 1.5rem;
+}
+
+.zuno-button-primary {
+  background-color: var(--zuno-blue);
+  color: #0077E6;
+}
+
+.zuno-button-primary:hover {
+  background-color: var(--zuno-dark-blue);
+}
+
+.zuno-button-secondary {
+  background-color: #0077E6;
+  color: var(--zuno-blue);
+}
+
+.zuno-button-secondary:hover {
+  background-color: var(--zuno-light);
+}
+
+/* Mobile-first responsive design */
+.container {
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+@media (min-width: 640px) {
+  .container {
+    max-width: 640px;
+    padding: 0 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 768px;
+    padding: 0 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1024px;
+    padding: 0 2.5rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1280px;
+    padding: 0 3rem;
+  }
+}
+
+/* Mobile optimizations */
+@media (max-width: 767px) {
+  .mobile-container {
+    padding: 0 0.75rem;
+  }
+  
+  .mobile-card {
+    border-radius: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .mobile-hidden {
+    display: none;
+  }
+  
+  .mobile-only {
+    display: block;
+  }
+  
+  .mobile-stack {
+    flex-direction: column;
+  }
+  
+  .mobile-center {
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .mobile-full-width {
+    width: 100%;
+  }
+}
+
+/* Decorative elements */
+.sparkle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background-image: radial-gradient(var(--zuno-yellow) 20%, transparent 70%);
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+.sparkle::before, .sparkle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background-image: radial-gradient(var(--zuno-yellow) 20%, transparent 70%);
+  transform: translate(-50%, -50%);
+}
+
+.sparkle::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.sparkle::after {
+  transform: translate(-50%, -50%) rotate(90deg);
 }
