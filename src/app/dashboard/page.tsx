@@ -74,7 +74,8 @@ export default function Dashboard() {
   const addMintPhase = () => setMintPhases([...mintPhases, { name: '', price: 0, startTime: '' }]);
   const updateMintPhase = (index: number, field: string, value: string | number) => {
     const updated = [...mintPhases];
-    updated[index] = { ...updated[index], [field]: value } as any;
+    const updatedPhase = { ...updated[index], [field]: value };
+    updated[index] = updatedPhase;
     setMintPhases(updated);
   };
 

@@ -122,10 +122,11 @@ export default function ExplorePage() {
           setItems(res.collections || []);
           setTotalPages(res.pagination?.totalPages || 1);
         }
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') {
+      } catch (e: unknown) {
+        const error = e as { name?: string; message?: string };
+        if (error?.name !== 'AbortError') {
           console.error(e);
-          setError(e?.message || 'Failed to load explore data');
+          setError(error?.message || 'Failed to load explore data');
         }
       } finally {
         setLoading(false);
