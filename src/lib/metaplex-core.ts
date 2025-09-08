@@ -8,6 +8,7 @@ import bs58 from 'bs58';
 import { MerkleTree } from 'merkletreejs';
 import keccak256 from 'keccak256';
 import { Connection, Keypair, SystemProgram, Transaction, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { SupabaseService } from "./supabase-service";
 
 export interface MintPhase {
   name: string;
@@ -100,7 +101,7 @@ export class MetaplexCoreService {
 
   async createCollection(config: CollectionConfig): Promise<CreatedCollection> {
     try {
-      const { name, symbol, description, totalSupply, royaltyPercentage, phases, creatorWallet } = config;
+      const { name, symbol, description, totalSupply, phases, creatorWallet } = config;
 
       // Validate phases
       if (!phases || phases.length === 0) {

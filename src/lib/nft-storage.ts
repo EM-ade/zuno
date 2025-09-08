@@ -49,7 +49,9 @@ export class NFTStorageService {
     try {
       // For direct HTTP API, we need to use form data
       const formData = new FormData();
-      const blob = new Blob([fileBuffer], { type: contentType });
+      // Convert Buffer to Uint8Array for Blob compatibility
+      const uint8Array = new Uint8Array(fileBuffer);
+      const blob = new Blob([uint8Array], { type: contentType });
       formData.append('file', blob, fileName);
 
       const response = await fetch('https://api.nft.storage/upload', {

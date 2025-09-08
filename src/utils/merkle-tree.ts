@@ -18,7 +18,7 @@ export function generateMerkleTree(addresses: string[]): {
       // Try to parse as Solana public key
       const pubkey = new PublicKey(addr);
       return pubkey.toBuffer();
-    } catch (error) {
+    } catch {
       // If not a valid Solana address, hash the string
       return keccak256(addr);
     }

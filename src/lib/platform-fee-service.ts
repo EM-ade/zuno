@@ -235,7 +235,7 @@ export class PlatformFeeService {
     topCollections: Array<{ name: string; revenue: number; fees: number }>;
   }> {
     try {
-      // This would generate a comprehensive fee report
+      // This would generate a comprehensive fee report using startDate and endDate
       // For now, return mock data
       return {
         totalRevenue: 1250.75,

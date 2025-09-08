@@ -74,8 +74,6 @@ export class MintingService {
         collectionMintAddress,
         userWallet,
         amount,
-        phaseType: activePhase.phase_type,
-        merkleRoot: activePhase.merkle_root,
         price: activePhase.price
       });
 

@@ -48,7 +48,6 @@ export default function MintPage() {
   const [collection, setCollection] = useState<Collection | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [minting, setMinting] = useState(false)
   const [mintAmount, setMintAmount] = useState(1)
 
   const fetchCollectionDetails = useCallback(async () => {
@@ -104,10 +103,6 @@ export default function MintPage() {
     return `${days}d ${hours}h ${minutes}m`
   }
 
-  const handleConnectWallet = () => {
-    setVisible(true)
-  }
-
   const handleMint = async () => {
     if (!connected || !publicKey) {
       setVisible(true)
@@ -117,8 +112,6 @@ export default function MintPage() {
     if (!collection?.activePhase) {
       return
     }
-
-    setMinting(true)
 
     try {
       // Build transaction data
@@ -142,19 +135,16 @@ export default function MintPage() {
 
       // Simulate successful mint for now
       await new Promise(resolve => setTimeout(resolve, 2000))
-      
+       
       console.log('Successfully minted', mintAmount, 'NFT(s)')
-      
+       
       // Refresh collection data to update mint count
       fetchCollectionDetails()
 
-    } catch (error) {
-      console.error('Minting failed:', error)
-    } finally {
-      setMinting(false)
-    }
+} catch (error) {
+  console.error('Minting failed:', error)
+}
   }
-
 
   if (loading) {
     return (
@@ -338,11 +328,6 @@ export default function MintPage() {
                   {collection.activePhase ? 'Connect Wallet to Mint' : 'Minting Not Available'}
                 </button>
 
-                {userMintCount > 0 && (
-                  <p className="text-sm text-gray-600 text-center">
-                    You&apos;ve minted {userMintCount} NFT{userMintCount > 1 ? 's' : ''} from this collection
-                  </p>
-                )}
               </div>
             </div>
           </div>
@@ -352,7 +337,7 @@ export default function MintPage() {
         <div className="mt-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Mint Phases</h2>
           <div className="space-y-4">
-            {collection.phases.map((phase, index) => (
+            {collection.phases.map((phase) => (
               <div
                 key={phase.id}
                 className={`border-l-4 pl-4 py-4 ${

@@ -3,10 +3,11 @@ import { SupabaseService } from '@/lib/supabase-service';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { address: string } }
+  { params }: { params: Promise<{ address: string }> }
 ) {
+  const resolvedParams = await params;
+  const { address: collectionMintAddress } = resolvedParams;
   try {
-    const { address: collectionMintAddress } = params;
 
     if (!collectionMintAddress) {
       return new Response(
