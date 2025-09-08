@@ -1,327 +1,385 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
-import Image from 'next/image'
-import NavBar from '@/components/NavBar'
+import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 
-interface Phase {
-  id: string
-  name: string
-  price: number
-  start_time: string
-  end_time: string | null
-  mint_limit: number | null
-  phase_type: 'public' | 'whitelist'
-  merkle_root: string | null
-  allow_list: string[] | null
-}
+type StatusTab = 'live' | 'upcoming' | 'ended';
+type DbStatus = 'active' | 'draft' | 'completed';
 
-interface Collection {
-  id: string
-  collection_mint_address: string
-  candy_machine_id: string
-  name: string
-  symbol: string
-  description: string | null
-  total_supply: number
-  royalty_percentage: number | null
-  image_uri: string | null
-  creator_wallet: string
-  status: string
-  created_at: string
-  phases: Phase[]
-  mintCount: number
-  progress: number
+type Phase = {
+  name: string;
+  price: number;
+  start_time: string;
+  end_time: string | null;
+};
+type UiCollection = {
+  id: string;
+  name: string;
+  symbol: string;
+  description: string | null;
+  total_supply: number;
+  image_uri: string | null;
+  collection_mint_address: string;
+  candy_machine_id: string;
+  creator_wallet: string;
+  status: DbStatus;
+  phases?: Phase[];
+  mintCount?: number;
+  progress?: number;
+  created_at?: string;
+};
+
+const TABS: { key: StatusTab; label: string }[] = [
+  { key: 'live', label: 'Live' },
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'ended', label: 'Ended' },
+];
+
+const tabToDb: Record<StatusTab, DbStatus> = {
+  live: 'active',
+  upcoming: 'draft',
+  ended: 'completed',
+};
+
+const pageSize = 24;
+
+const PINATA_GATEWAY = (process.env.NEXT_PUBLIC_PINATA_GATEWAY as string) || 'turquoise-cheerful-angelfish-408.mypinata.cloud';
+
+function resolveImageUrl(u?: string) {
+  if (!u) return '';
+  if (u.startsWith('http')) return u;
+  if (u.startsWith('ipfs://')) {
+    const cid = u.replace('ipfs://', '').replace(/^ipfs\//, '');
+    return `https://${PINATA_GATEWAY}/ipfs/${cid}`;
+  }
+  if (/^\w{46,}$/.test(u)) {
+    return `https://${PINATA_GATEWAY}/ipfs/${u}`;
+  }
+  return u;
 }
 
 export default function ExplorePage() {
-  const [activeTab, setActiveTab] = useState('live')
-  const [collections, setCollections] = useState<Collection[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
+  const [tab, setTab] = useState<StatusTab>('live');
+  const [combined, setCombined] = useState<boolean>(true); // Active & Upcoming
+  const [page, setPage] = useState<number>(1);
+  const [queryInput, setQueryInput] = useState<string>('');
+  const [debouncedQuery, setDebouncedQuery] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
 
-  const fetchCollections = useCallback(async () => {
-    try {
-      setLoading(true)
-      const params = new URLSearchParams({
-        status: activeTab,
-        page: currentPage.toString(),
-        limit: '12',
-        ...(searchTerm && { search: searchTerm })
-      })
+  const [items, setItems] = useState<UiCollection[]>([]);
+  const [totalPages, setTotalPages] = useState<number>(1);
 
-      const response = await fetch(`/api/collections?${params}`)
-      const data = await response.json()
+  // Reset page on filter change
+  useEffect(() => {
+    setPage(1);
+  }, [tab, combined, debouncedQuery]);
 
-      if (data.success) {
-        setCollections(data.collections)
-        setTotalPages(data.pagination.totalPages)
-      } else {
-        setError(data.error || 'Failed to fetch collections')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setLoading(false)
-    }
-  }, [activeTab, currentPage, searchTerm])
+  // Debounce search input to avoid firing a request on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(queryInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [queryInput]);
 
   useEffect(() => {
-    fetchCollections()
-  }, [fetchCollections])
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError('');
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    setCurrentPage(1)
-    fetchCollections()
-  }
+        // helper to fetch one status page
+        const fetchStatus = async (s: DbStatus) => {
+          const url = `/api/collections?status=${encodeURIComponent(s)}&page=${page}&limit=${pageSize}${
+            debouncedQuery ? `&search=${encodeURIComponent(debouncedQuery)}` : ''
+          }`;
+          const res = await fetch(url, { signal: controller.signal });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.error || 'Failed to fetch collections');
+          return json as {
+            success: boolean;
+            collections: UiCollection[];
+            pagination: { totalPages: number; currentPage: number; totalItems: number };
+          };
+        };
 
-  const formatPrice = (price: number) => {
-    return price.toFixed(2) + ' SOL'
-  }
+        if (combined && (tab === 'live' || tab === 'upcoming')) {
+          // Combined = Active & Upcoming (client merge). We fetch both and merge by created_at desc.
+          const [activeRes, draftRes] = await Promise.all([fetchStatus('active'), fetchStatus('draft')]);
+          const merged = [...(activeRes.collections || []), ...(draftRes.collections || [])]
+            .sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
 
-  const formatProgress = (progress: number) => {
-    return Math.round(progress) + '%'
-  }
+          // Client-side pagination for the merged result
+          const start = (page - 1) * pageSize;
+          const end = start + pageSize;
+          const pageSlice = merged.slice(start, end);
+          setItems(pageSlice);
+          setTotalPages(Math.max(1, Math.ceil(merged.length / pageSize)));
+        } else {
+          // Single status from API (server pagination)
+          const res = await fetchStatus(tabToDb[tab]);
+          setItems(res.collections || []);
+          setTotalPages(res.pagination?.totalPages || 1);
+        }
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') {
+          console.error(e);
+          setError(e?.message || 'Failed to load explore data');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+    return () => controller.abort();
+  }, [tab, combined, page, debouncedQuery]);
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      active: { label: 'Live', color: 'bg-green-100 text-green-800' },
-      draft: { label: 'Upcoming', color: 'bg-blue-100 text-blue-800' },
-      completed: { label: 'Ended', color: 'bg-gray-100 text-gray-800' },
-      archived: { label: 'Archived', color: 'bg-red-100 text-red-800' }
-    }
-
-    const config = statusConfig[status as keyof typeof statusConfig] || 
-                  { label: status, color: 'bg-gray-100 text-gray-800' }
-    
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
-        {config.label}
-      </span>
-    )
-  }
+  const featured = useMemo(() => items.slice(0, 3), [items]);
+  const rest = useMemo(() => items.slice(3), [items]);
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Background with blue color for header */}
-      <div className="bg-zuno-blue">
-        <NavBar />
-        
-        {/* Header Section */}
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold text-white mb-4">
-              Explore Collections
-            </h1>
-            <p className="text-white/80 text-lg mb-8">
-              Discover amazing NFT collections and join the minting experience
+    <div className="min-h-screen bg-[var(--zuno-blue)]">
+      {/* Header */}
+      <header className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-[var(--zuno-dark-blue)]">Explore</h1>
+            <p className="text-black/70 mt-1">
+              Browse all collections. Filter by status and discover new drops.
             </p>
-            
-            {/* Search Bar */}
-            <form onSubmit={handleSearch} className="max-w-2xl mx-auto">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search collections..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-6 py-4 rounded-full text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-zuno-yellow"
-                />
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {/* Search */}
+            <div className="relative w-full sm:w-72">
+              <input
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                placeholder="Search collections, symbols, descriptions"
+                className="w-full bg-white/90 border border-black/10 rounded-full px-4 py-2 pr-10 text-black placeholder-black/50"
+              />
+              {queryInput && !loading && (
                 <button
-                  type="submit"
-                  className="absolute right-2 top-2 bg-zuno-yellow text-zuno-blue px-6 py-2 rounded-full font-semibold hover:bg-yellow-400 transition-colors"
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-black/50 hover:text-black"
+                  onClick={() => setQueryInput('')}
                 >
-                  Search
+                  ×
                 </button>
-              </div>
-            </form>
+              )}
+              {loading && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <div className="h-4 w-4 border-2 border-black/20 border-t-[var(--zuno-dark-blue)] rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+
+            {/* Combined toggle */}
+            <button
+              onClick={() => setCombined((s) => !s)}
+              className={`px-4 py-2 rounded-full text-sm font-semibold border ${
+                combined
+                  ? 'bg-[var(--zuno-dark-blue)] text-white border-transparent'
+                  : 'bg-white text-black/80 border-black/10'
+              }`}
+              title="Active & Upcoming combined view"
+            >
+              Active &amp; Upcoming
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
         {/* Tabs */}
-        <div className="flex mb-8 border-b border-gray-200 overflow-x-auto pb-1">
-          {['live', 'upcoming', 'ended'].map((tab) => (
+        <div className="mt-4 flex gap-2 bg-white/70 rounded-full p-1 w-fit">
+          {TABS.map((t) => (
             <button
-              key={tab}
-              className={`pb-4 px-6 font-medium text-lg whitespace-nowrap ${
-                activeTab === tab
-                  ? 'text-zuno-blue border-b-2 border-zuno-blue'
-                  : 'text-gray-500 hover:text-gray-700'
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                tab === t.key ? 'bg-[var(--zuno-dark-blue)] text-white' : 'text-black/70 hover:text-black'
               }`}
-              onClick={() => {
-                setActiveTab(tab)
-                setCurrentPage(1)
-              }}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {t.label}
             </button>
           ))}
         </div>
+      </header>
 
-        {/* Collections Grid */}
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <div key={index} className="bg-gray-100 rounded-xl p-4 animate-pulse">
-                <div className="w-full h-48 bg-gray-300 rounded-lg mb-4"></div>
-                <div className="h-4 bg-gray-300 rounded mb-2"></div>
-                <div className="h-3 bg-gray-300 rounded w-2/3"></div>
-              </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+        {/* Error */}
+        {error && <div className="mb-4 bg-red-100 text-red-700 px-4 py-2 rounded-lg">{error}</div>}
+
+        {/* Loading skeleton */}
+        {loading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white/70 rounded-2xl p-4 border border-black/10 animate-pulse h-64" />
             ))}
           </div>
-        ) : error ? (
-          <div className="text-center py-12">
-            <div className="text-red-500 text-lg mb-4">Error: {error}</div>
-            <button
-              onClick={fetchCollections}
-              className="bg-zuno-blue text-white px-6 py-2 rounded-full hover:bg-blue-700 transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : collections.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-gray-500 text-lg mb-4">
-              {searchTerm 
-                ? `No collections found for "${searchTerm}"`
-                : `No ${activeTab} collections available`
-              }
-            </div>
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="bg-zuno-blue text-white px-6 py-2 rounded-full hover:bg-blue-700 transition-colors"
-              >
-                Clear Search
-              </button>
-            )}
-          </div>
-        ) : (
+        )}
+
+        {/* Launchpads (featured) */}
+        {!loading && featured.length > 0 && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {collections.map((collection) => (
-                <Link
-                  key={collection.id}
-                  href={`/mint/${collection.collection_mint_address}`}
-                  className="block bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-shadow border border-gray-100"
-                >
-                  {/* Collection Image */}
-                  <div className="w-full h-48 bg-gradient-to-br from-purple-400 to-blue-500 rounded-lg mb-4 flex items-center justify-center">
-                    {collection.image_uri ? (
-                      <Image
-                        src={collection.image_uri}
-                        alt={collection.name}
-                        width={192}
-                        height={192}
-                        className="w-full h-full object-cover rounded-lg"
-                      />
-                    ) : (
-                      <span className="text-6xl text-white">🖼️</span>
-                    )}
-                  </div>
-
-                  {/* Collection Info */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-gray-900 text-lg truncate">
-                        {collection.name}
-                      </h3>
-                      {getStatusBadge(collection.status)}
-                    </div>
-
-                    <p className="text-gray-600 text-sm line-clamp-2">
-                      {collection.description || 'No description available'}
-                    </p>
-
-                    {/* Progress Bar */}
-                    <div className="pt-2">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs text-gray-500">
-                          {collection.mintCount} / {collection.total_supply}
-                        </span>
-                        <span className="text-xs font-semibold text-zuno-blue">
-                          {formatProgress(collection.progress)}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-zuno-blue h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${collection.progress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-
-                    {/* Price Info */}
-                    {collection.phases && collection.phases.length > 0 && (
-                      <div className="flex items-center justify-between pt-2">
-                        <span className="text-sm text-gray-600">
-                          Price: {formatPrice(collection.phases[0].price)}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {collection.phases[0].phase_type}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </Link>
+            <h2 className="text-xl font-bold text-black/80 mb-3">Launchpads</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+              {featured.map((c) => (
+                <CollectionCard key={c.id} item={c} />
               ))}
             </div>
+          </>
+        )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex justify-center mt-8 space-x-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="px-4 py-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const page = currentPage <= 3 
-                    ? i + 1 
-                    : currentPage >= totalPages - 2 
-                    ? totalPages - 4 + i 
-                    : currentPage - 2 + i
-                  
-                  if (page < 1 || page > totalPages) return null
-                  
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-4 py-2 rounded-lg ${
-                        currentPage === page
-                          ? 'bg-zuno-blue text-white'
-                          : 'border border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  )
-                })}
-
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-4 py-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
+        {/* Drops (rest) */}
+        {!loading && (
+          <>
+            <h2 className="text-xl font-bold text-black/80 mb-3">Drops</h2>
+            {rest.length === 0 ? (
+              <div className="bg-white/70 rounded-2xl p-6 border border-black/10 text-black/60">
+                No collections found for this filter.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {rest.map((c) => (
+                  <CollectionCard key={c.id} item={c} compact />
+                ))}
               </div>
             )}
           </>
         )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              className="px-3 py-2 rounded-lg bg-white/80 border border-black/10 text-black/70 disabled:opacity-50"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Prev
+            </button>
+            <span className="text-black/70">
+              Page {page} / {totalPages}
+            </span>
+            <button
+              className="px-3 py-2 rounded-lg bg-white/80 border border-black/10 text-black/70 disabled:opacity-50"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function statusBadgeText(dbStatus: DbStatus): string {
+  switch (dbStatus) {
+    case 'active':
+      return 'Live';
+    case 'draft':
+      return 'Upcoming';
+    case 'completed':
+      return 'Ended';
+    default:
+      return '—';
+  }
+}
+
+function firstPhasePrice(phases?: Phase[]): string {
+  if (!phases?.length) return '—';
+  const p = phases[0]?.price ?? 0;
+  return p > 0 ? `${p} SOL` : '—';
+}
+
+function firstPhaseStart(phases?: Phase[]): string {
+  if (!phases?.length) return '—';
+  const s = phases[0]?.start_time;
+  if (!s) return '—';
+  try {
+    const d = new Date(s);
+    return d.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+  } catch {
+    return '—';
+  }
+}
+
+function CollectionCard({ item, compact = false }: { item: UiCollection; compact?: boolean }) {
+  const progress = Math.max(0, Math.min(100, Math.round(item.progress || 0)));
+
+  return (
+    <div className="bg-white rounded-2xl border border-black/10 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+      <div className="relative">
+        <div className="aspect-square w-full bg-white flex items-center justify-center overflow-hidden">
+          {item.image_uri ? (
+            <Image
+              src={resolveImageUrl(item.image_uri)}
+              alt={item.name}
+              width={600}
+              height={600}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-white/70 text-3xl">🎴</div>
+          )}
+        </div>
+
+        {/* Top-left pills like the reference (chain + status) */}
+        <div className="absolute top-2 left-2 flex gap-2">
+          <span className="px-2 py-1 rounded-md text-[10px] bg-white/80 text-black/70 border border-black/10">◎ Solana</span>
+          <span className="px-2 py-1 rounded-md text-[10px] bg-white/80 text-black/70 border border-black/10">
+            {statusBadgeText(item.status)}
+          </span>
+        </div>
+      </div>
+
+      <div className="p-4">
+        <div className="text-xs text-black/60 mb-1">Type: <span className="font-medium">Collection</span></div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-bold text-black/90 truncate">{item.name}</div>
+          <div className="text-xs font-semibold text-black/60 truncate">{item.symbol}</div>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="mt-3">
+          <div className="w-full h-2 bg-black/10 rounded-full overflow-hidden">
+            <div className="h-2 bg-[var(--zuno-dark-blue)]" style={{ width: `${progress}%` }} />
+          </div>
+          {!compact && (
+            <div className="mt-1 text-[11px] text-black/60">
+              {item.mintCount || 0} / {item.total_supply}
+            </div>
+          )}
+        </div>
+
+        {/* Stats row */}
+        <div className="mt-3 grid grid-cols-3 gap-2 text-[11px] text-black/70">
+          <div>
+            <div className="uppercase text-[10px]">Price</div>
+            <div className="font-semibold">{firstPhasePrice(item.phases)}</div>
+          </div>
+          <div>
+            <div className="uppercase text-[10px]">Supply</div>
+            <div className="font-semibold">{item.total_supply}</div>
+          </div>
+          <div>
+            <div className="uppercase text-[10px]">Start</div>
+            <div className="font-semibold">{firstPhaseStart(item.phases)}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-end">
+          <Link
+            className="zuno-button zuno-button-primary text-xs"
+            href={`/mint/${item.collection_mint_address}`}
+          >
+            View
+          </Link>
+        </div>
       </div>
     </div>
-  )
+  );
 }

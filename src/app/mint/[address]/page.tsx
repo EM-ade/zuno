@@ -45,6 +45,20 @@ export default function MintPage() {
   const { publicKey, connected } = useWallet()
   const { setVisible } = useWalletModal()
 
+  const PINATA_GATEWAY = (process.env.NEXT_PUBLIC_PINATA_GATEWAY as string) || 'turquoise-cheerful-angelfish-408.mypinata.cloud'
+  const resolveImageUrl = (u?: string) => {
+    if (!u) return ''
+    if (u.startsWith('http')) return u
+    if (u.startsWith('ipfs://')) {
+      const cid = u.replace('ipfs://', '').replace(/^ipfs\//, '')
+      return `https://${PINATA_GATEWAY}/ipfs/${cid}`
+    }
+    if (/^\w{46,}$/.test(u)) {
+      return `https://${PINATA_GATEWAY}/ipfs/${u}`
+    }
+    return u
+  }
+
   const [collection, setCollection] = useState<Collection | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -198,23 +212,32 @@ export default function MintPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Collection Image */}
           <div className="lg:col-span-1">
-            <div className="bg-gradient-to-br from-purple-400 to-blue-500 rounded-2xl p-8 h-96 flex items-center justify-center">
-              {collection.image_uri ? (
-                <Image
-                  src={collection.image_uri}
-                  alt={collection.name}
-                  width={400}
-                  height={400}
-                  className="w-full h-full object-cover rounded-xl"
-                />
-              ) : (
-                <span className="text-8xl text-white">🖼️</span>
-              )}
+            <div className="relative rounded-2xl overflow-hidden bg-white">
+              <div className="aspect-square w-full bg-white flex items-center justify-center">
+                {collection.image_uri ? (
+                  <Image
+                    src={resolveImageUrl(collection.image_uri)}
+                    alt={collection.name}
+                    width={800}
+                    height={800}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-white/70 text-6xl">🖼️</div>
+                )}
+              </div>
+              {/* Overlay pills */}
+              <div className="absolute top-3 left-3 flex gap-2">
+                <span className="px-2 py-1 rounded-md text-[10px] bg-white/90 text-black/70 border border-black/10">Solana</span>
+                <span className="px-2 py-1 rounded-md text-[10px] bg-white/90 text-black/70 border border-black/10">
+                  {collection.status === 'active' ? 'Live' : collection.status === 'draft' ? 'Upcoming' : collection.status === 'completed' ? 'Ended' : collection.status}
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Collection Details */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-8">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 {collection.name}
@@ -222,6 +245,26 @@ export default function MintPage() {
               <p className="text-gray-600 text-lg">
                 {collection.symbol} • {collection.total_supply} items
               </p>
+              {/* Info chips */}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 border border-gray-200">Solana</span>
+                <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 border border-gray-200">Type: Collection</span>
+                <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 border border-gray-200">Supply: {collection.total_supply}</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(collection.collection_mint_address)}
+                  className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
+                  title="Copy collection mint address"
+                >
+                  Mint: {collection.collection_mint_address.slice(0,4)}...{collection.collection_mint_address.slice(-4)}
+                </button>
+                <button
+                  onClick={() => navigator.clipboard.writeText(collection.candy_machine_id)}
+                  className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200"
+                  title="Copy candy machine ID"
+                >
+                  CM: {collection.candy_machine_id.slice(0,4)}...{collection.candy_machine_id.slice(-4)}
+                </button>
+              </div>
             </div>
 
             <p className="text-gray-700">
@@ -280,6 +323,25 @@ export default function MintPage() {
               </div>
             )}
 
+            {/* Phase chips row */}
+            <div className="flex flex-wrap gap-2">
+              {collection.phases.map((phase) => {
+                const isActive = phase === collection.activePhase;
+                const isUpcoming = new Date(phase.start_time) > new Date();
+                const cls = isActive
+                  ? 'bg-green-100 text-green-800'
+                  : isUpcoming
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-gray-100 text-gray-800';
+                const label = isActive ? 'Active' : isUpcoming ? 'Upcoming' : 'Completed';
+                return (
+                  <span key={phase.id} className={`px-3 py-1 rounded-full text-xs font-medium ${cls}`}>
+                    {phase.name} • {label}
+                  </span>
+                );
+              })}
+            </div>
+
             {/* Mint Controls */}
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Mint NFTs</h3>
@@ -316,6 +378,12 @@ export default function MintPage() {
                       <span className="text-gray-500">Platform Fee:</span>
                       <span className="text-gray-600">0.01 SOL</span>
                     </div>
+                    {/* Countdown */}
+                    {collection.activePhase.end_time && (
+                      <div className="mt-2 text-xs text-gray-600">
+                        Ends in: <span className="font-semibold">{getTimeRemaining(collection.activePhase.end_time)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -325,7 +393,7 @@ export default function MintPage() {
                   disabled={!collection.activePhase}
                   className="w-full bg-zuno-blue text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                 >
-                  {collection.activePhase ? 'Connect Wallet to Mint' : 'Minting Not Available'}
+                  {collection.activePhase ? (connected ? 'Mint Now' : 'Connect Wallet to Mint') : 'Minting Not Available'}
                 </button>
 
               </div>

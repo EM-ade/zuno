@@ -197,7 +197,7 @@ export default function NavBar() {
       <div className={`md:hidden mt-3 sm:mt-4 ${mobileMenuOpen ? 'block' : 'hidden'} fixed left-0 right-0 px-3 sm:px-4 z-50`}>
         <div className="flex flex-col space-y-2 sm:space-y-3 bg-white/10 rounded-xl p-3 sm:p-4 backdrop-blur-sm shadow-lg">
           <Link
-            href="#"
+            href="/explore"
             className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"
             onClick={() => setMobileMenuOpen(false)}
           >

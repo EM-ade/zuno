@@ -37,6 +37,10 @@ export class PinataService {
     this.gateway = pinataGateway;
   }
 
+  private async toGatewayUrl(cid: string): Promise<string> {
+    return `https://${this.gateway}/ipfs/${cid}`;
+  }
+
   async uploadFile(fileBuffer: Buffer, fileName: string, contentType: string): Promise<string> {
     try {
       // Convert Buffer to Uint8Array for File compatibility
@@ -48,7 +52,7 @@ export class PinataService {
         throw new Error('Upload response missing CID');
       }
 
-      return `https://${this.gateway}/ipfs/${upload.cid}`;
+      return await this.toGatewayUrl(upload.cid);
     } catch (error) {
       console.error('Failed to upload file to Pinata:', error);
       throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`);
