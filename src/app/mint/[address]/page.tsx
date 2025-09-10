@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import Image from 'next/image'
 import NavBar from '@/components/NavBar'
-import { useWallet } from '@solana/wallet-adapter-react'
+import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
+import ImageWithFallback from '@/components/ImageWithFallback'
 
 interface Phase {
   id: string
@@ -42,27 +42,18 @@ interface Collection {
 export default function MintPage() {
   const params = useParams()
   const collectionAddress = params.address as string
-  const { publicKey, connected } = useWallet()
+  const { publicKey, connected, sendTransaction } = useWallet()
   const { setVisible } = useWalletModal()
+  const { connection } = useConnection()
 
-  const PINATA_GATEWAY = (process.env.NEXT_PUBLIC_PINATA_GATEWAY as string) || 'turquoise-cheerful-angelfish-408.mypinata.cloud'
-  const resolveImageUrl = (u?: string) => {
-    if (!u) return ''
-    if (u.startsWith('http')) return u
-    if (u.startsWith('ipfs://')) {
-      const cid = u.replace('ipfs://', '').replace(/^ipfs\//, '')
-      return `https://${PINATA_GATEWAY}/ipfs/${cid}`
-    }
-    if (/^\w{46,}$/.test(u)) {
-      return `https://${PINATA_GATEWAY}/ipfs/${u}`
-    }
-    return u
-  }
+  // ImageWithFallback will handle resolving ipfs://, raw CIDs, and gateway fallbacks
 
   const [collection, setCollection] = useState<Collection | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mintAmount, setMintAmount] = useState(1)
+  const [minting, setMinting] = useState(false)
+  const [platformFeeSol, setPlatformFeeSol] = useState<number | null>(null)
 
   const fetchCollectionDetails = useCallback(async () => {
     try {
@@ -128,36 +119,68 @@ export default function MintPage() {
     }
 
     try {
-      // Build transaction data
-      const transactionData = {
-        type: 'mint',
-        collectionAddress: collectionAddress,
-        amount: mintAmount,
-        price: collection.activePhase.price * mintAmount,
-        platformFee: 0.01,
-        userWallet: publicKey.toString(),
-        phaseId: collection.activePhase.id
+      setMinting(true)
+      setError(null)
+
+      // 1) Request unsigned transaction from server
+      const res = await fetch('/api/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          collectionMintAddress: collectionAddress,
+          amount: mintAmount,
+          userWallet: publicKey.toString(),
+          phaseId: collection.activePhase.id,
+        }),
+      })
+
+      const json = await res.json()
+      if (!json.success) {
+        throw new Error(json.error || 'Failed to build mint transaction')
       }
 
-      console.log('Minting transaction data:', transactionData)
+      // Save platform fee (for UI display and record)
+      if (typeof json.platformFeeSol === 'number') {
+        setPlatformFeeSol(json.platformFeeSol)
+      }
 
-      // In a real implementation, this would:
-      // 1. Call the minting API endpoint
-      // 2. Get the transaction to sign
-      // 3. Sign the transaction
-      // 4. Send it to the network
+      // 2) Decode base64 transaction and send with wallet (client-safe decode)
+      const b64 = json.transactionBase64 as string
+      const binary = atob(b64)
+      const txBytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) txBytes[i] = binary.charCodeAt(i)
+      // web3.js Transaction can be reconstructed from Uint8Array
+      // Dynamic import to avoid SSR issues
+      const { Transaction } = await import('@solana/web3.js')
+      const tx = Transaction.from(txBytes)
 
-      // Simulate successful mint for now
-      await new Promise(resolve => setTimeout(resolve, 2000))
-       
-      console.log('Successfully minted', mintAmount, 'NFT(s)')
-       
+      const signature = await sendTransaction(tx, connection)
+      await connection.confirmTransaction(signature, 'finalized')
+
+      // 3) Record successful mint
+      const amountPaidSol = (collection.activePhase.price || 0) * mintAmount
+      const platformFee = typeof json.platformFeeSol === 'number' ? json.platformFeeSol : 0
+      await fetch('/api/mint/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          collectionId: json.collectionId,
+          userWallet: publicKey.toString(),
+          phaseId: json.phaseId || collection.activePhase.id,
+          signature,
+          amountPaid: amountPaidSol,
+          platformFee,
+        }),
+      })
+
       // Refresh collection data to update mint count
       fetchCollectionDetails()
-
-} catch (error) {
-  console.error('Minting failed:', error)
-}
+    } catch (error) {
+      console.error('Minting failed:', error)
+      setError(error instanceof Error ? error.message : 'Minting failed')
+    } finally {
+      setMinting(false)
+    }
   }
 
   if (loading) {
@@ -215,8 +238,8 @@ export default function MintPage() {
             <div className="relative rounded-2xl overflow-hidden bg-white">
               <div className="aspect-square w-full bg-white flex items-center justify-center">
                 {collection.image_uri ? (
-                  <Image
-                    src={resolveImageUrl(collection.image_uri)}
+                  <ImageWithFallback
+                    src={collection.image_uri}
                     alt={collection.name}
                     width={800}
                     height={800}
@@ -375,8 +398,8 @@ export default function MintPage() {
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-sm mt-1">
-                      <span className="text-gray-500">Platform Fee:</span>
-                      <span className="text-gray-600">0.01 SOL</span>
+                      <span className="text-gray-500">Platform Fee (1.25 USDT):</span>
+                      <span className="text-gray-600">{platformFeeSol !== null ? `${platformFeeSol.toFixed(4)} SOL` : '—'}</span>
                     </div>
                     {/* Countdown */}
                     {collection.activePhase.end_time && (

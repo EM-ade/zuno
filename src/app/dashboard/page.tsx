@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import ImageWithFallback from '@/components/ImageWithFallback';
 
 type Section = 'create' | 'exhibition' | 'projects' | 'analytics';
 
@@ -47,6 +48,7 @@ export default function Dashboard() {
   const [myCollections, setMyCollections] = useState<UiCollection[]>([]);
   const [draftCollections, setDraftCollections] = useState<UiCollection[]>([]);
   const [completedCollections, setCompletedCollections] = useState<UiCollection[]>([]);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
   // Exhibition planner state (UI-only)
   const [exhibitionTitle, setExhibitionTitle] = useState('');
@@ -68,6 +70,34 @@ export default function Dashboard() {
       const reader = new FileReader();
       reader.onload = (e) => setImageData(e.target?.result as string);
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Items viewer modal state
+  const [showItemsForId, setShowItemsForId] = useState<string | null>(null);
+  const [itemsPage, setItemsPage] = useState<number>(1);
+  const [itemsLimit] = useState<number>(24);
+  const [itemsTotal, setItemsTotal] = useState<number>(0);
+  const [itemsLoading, setItemsLoading] = useState<boolean>(false);
+  const [itemsError, setItemsError] = useState<string>('');
+  const [itemsList, setItemsList] = useState<Array<{ id: string; name: string; image_uri: string | null }>>([]);
+
+  const loadItems = async (collectionId: string, page = 1) => {
+    try {
+      setItemsLoading(true);
+      setItemsError('');
+      const res = await fetch(`/api/collections/by-id/${collectionId}/items?page=${page}&limit=${itemsLimit}`);
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.error || 'Failed to load items');
+      const items = (json.items || []).map((i: any) => ({ id: i.id, name: i.name, image_uri: i.image_uri || null }));
+      setItemsList(items);
+      setItemsTotal(json.pagination?.total || items.length || 0);
+      setItemsPage(page);
+    } catch (e) {
+      console.error(e);
+      setItemsError(e instanceof Error ? e.message : 'Failed to load items');
+    } finally {
+      setItemsLoading(false);
     }
   };
 
@@ -155,21 +185,131 @@ export default function Dashboard() {
     loadCollections();
   }, [publicKey]);
 
-  const analytics = useMemo(() => {
-    const all = [...myCollections, ...completedCollections];
-    const totalMints = all.reduce((acc, c) => acc + (c.mintCount || 0), 0);
-    const totalSupply = all.reduce((acc, c) => acc + (c.total_supply || 0), 0);
-    const progressPct = totalSupply > 0 ? Math.min(100, Math.round((totalMints / totalSupply) * 100)) : 0;
-    // Simple revenue estimate: use first phase price if present
-    const estRevenue = all.reduce((acc, c) => {
-      const price = c.phases?.[0]?.price || 0;
-      return acc + (c.mintCount || 0) * price;
-    }, 0);
-    return { totalMints, totalSupply, progressPct, estRevenue };
+  // Live analytics fetched from API per collection id
+  const [analytics, setAnalytics] = useState({ totalMints: 0, totalSupply: 0, progressPct: 0, estRevenue: 0 });
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const all = [...myCollections, ...completedCollections];
+        if (all.length === 0) {
+          setAnalytics({ totalMints: 0, totalSupply: 0, progressPct: 0, estRevenue: 0 });
+          return;
+        }
+        // Fetch analytics for each collection and aggregate
+        const results = await Promise.allSettled(
+          all.map((c) => fetch(`/api/analytics/collections/${c.id}`).then((r) => r.json()))
+        );
+        let totalMints = 0;
+        let estRevenue = 0;
+        const totalSupply = all.reduce((acc, c) => acc + (c.total_supply || 0), 0);
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value?.success) {
+            totalMints += r.value.analytics?.totalMints || 0;
+            estRevenue += r.value.analytics?.totalPaid || 0; // totalPaid is creator-side revenue in SOL
+          }
+        }
+        const progressPct = totalSupply > 0 ? Math.min(100, Math.round((totalMints / totalSupply) * 100)) : 0;
+        setAnalytics({ totalMints, totalSupply, progressPct, estRevenue });
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    load();
   }, [myCollections, completedCollections]);
+
+  // Status updates for Manage Projects
+  const updateStatus = async (id: string, status: UiCollection['status']) => {
+    try {
+      setUpdatingStatusId(id);
+      const res = await fetch(`/api/collections/status-by-id/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const raw = await res.text();
+      let json: any = null;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        throw new Error(`Failed to update status (non-JSON response): ${raw?.slice(0,200)}`);
+      }
+      if (!res.ok || !json?.success) throw new Error(json?.error || 'Failed to update status');
+      // Refresh lists
+      const statuses: Array<'active' | 'draft' | 'completed'> = ['active', 'draft', 'completed'];
+      const [activeRes, draftRes, completedRes] = await Promise.all(
+        statuses.map((s) => fetch(`/api/collections?creator=${publicKey?.toString()}&status=${s}`))
+      );
+      const [activeJson, draftJson, completedJson] = await Promise.all([
+        activeRes.json(),
+        draftRes.json(),
+        completedRes.json(),
+      ]);
+      if (activeJson.success) setMyCollections(activeJson.collections || []);
+      if (draftJson.success) setDraftCollections(draftJson.collections || []);
+      if (completedJson.success) setCompletedCollections(completedJson.collections || []);
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Failed to update status');
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
 
   const brandBg = 'bg-[var(--zuno-blue)]';
   const brandPrimary = 'text-[var(--zuno-dark-blue)]';
+
+  // Items uploader modal state
+  const [showUploadForId, setShowUploadForId] = useState<string | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [baseNameInput, setBaseNameInput] = useState<string>('Item');
+  const [withMetadata, setWithMetadata] = useState<boolean>(true);
+  const [uploadingItems, setUploadingItems] = useState<boolean>(false);
+  const [uploadError, setUploadError] = useState<string>('');
+  const [uploadSummary, setUploadSummary] = useState<{ count: number; items: Array<{ id?: string; name: string; image_uri?: string | null }> } | null>(null);
+
+  const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setUploadFiles(files);
+  };
+
+  const onDropFiles = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files || []);
+    setUploadFiles(files);
+  };
+
+  const doUploadItems = async () => {
+    if (!showUploadForId) return;
+    if (uploadFiles.length === 0) {
+      setUploadError('Please select one or more files to upload.');
+      return;
+    }
+    setUploadingItems(true);
+    setUploadError('');
+    setUploadSummary(null);
+    try {
+      const fd = new FormData();
+      uploadFiles.forEach((f) => fd.append('files', f));
+      fd.append('baseName', baseNameInput || 'Item');
+      fd.append('withMetadata', String(withMetadata));
+      const res = await fetch(`/api/collections/by-id/${showUploadForId}/items/upload`, {
+        method: 'POST',
+        body: fd,
+      });
+      const text = await res.text();
+      let json: any = null;
+      try { json = JSON.parse(text); } catch { throw new Error(`Non-JSON response: ${text.slice(0,200)}`); }
+      if (!res.ok || !json?.success) throw new Error(json?.error || 'Upload failed');
+      setUploadSummary({ count: json.count, items: (json.items || []).map((i: any) => ({ id: i.id, name: i.name, image_uri: i.image_uri })) });
+      // Optionally refresh lists after upload (no-op for now)
+    } catch (e) {
+      console.error(e);
+      setUploadError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploadingItems(false);
+    }
+  };
 
   return (
     <div className={`min-h-screen ${brandBg}`}>
@@ -344,7 +484,7 @@ export default function Dashboard() {
                             <div className="flex items-center gap-3">
                               <div className="w-12 h-12 bg-white rounded-lg overflow-hidden flex items-center justify-center">
                                 {c.image_uri ? (
-                                  <Image src={c.image_uri} alt={c.name} width={48} height={48} className="w-12 h-12 object-cover" />
+                                  <ImageWithFallback src={c.image_uri} alt={c.name} width={48} height={48} className="w-12 h-12 object-cover" />
                                 ) : (
                                   <span className="text-xl">🎴</span>
                                 )}
@@ -360,6 +500,17 @@ export default function Dashboard() {
                             <div className="mt-3 flex items-center justify-end gap-2">
                               <Link href={`/mint/${c.candy_machine_id}`} className="zuno-button zuno-button-primary text-xs">View Mint</Link>
                               <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>alert('Phase editor coming soon')}>Edit Phases</button>
+                              <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>{ setShowUploadForId(c.id); setUploadFiles([]); setUploadSummary(null); setUploadError(''); }}>Upload Items</button>
+                              <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>{ setShowItemsForId(c.id); loadItems(c.id, 1); }}>View Items</button>
+                              {c.status === 'draft' && (
+                                <button disabled={updatingStatusId===c.id} className="zuno-button zuno-button-secondary text-xs disabled:opacity-50" onClick={()=>updateStatus(c.id, 'active')}>{updatingStatusId===c.id? 'Updating…' : 'Activate'}</button>
+                              )}
+                              {c.status === 'active' && (
+                                <button disabled={updatingStatusId===c.id} className="zuno-button zuno-button-secondary text-xs disabled:opacity-50" onClick={()=>updateStatus(c.id, 'completed')}>{updatingStatusId===c.id? 'Updating…' : 'Complete'}</button>
+                              )}
+                              {c.status === 'completed' && (
+                                <button disabled={updatingStatusId===c.id} className="zuno-button zuno-button-secondary text-xs disabled:opacity-50" onClick={()=>updateStatus(c.id, 'archived')}>{updatingStatusId===c.id? 'Updating…' : 'Archive'}</button>
+                              )}
                             </div>
                           </li>
                         ))}

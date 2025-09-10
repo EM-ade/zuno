@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import ImageWithFallback from '@/components/ImageWithFallback';
 
 type StatusTab = 'live' | 'upcoming' | 'ended';
 type DbStatus = 'active' | 'draft' | 'completed';
@@ -316,8 +316,8 @@ function CollectionCard({ item, compact = false }: { item: UiCollection; compact
       <div className="relative">
         <div className="aspect-square w-full bg-white flex items-center justify-center overflow-hidden">
           {item.image_uri ? (
-            <Image
-              src={resolveImageUrl(item.image_uri)}
+            <ImageWithFallback
+              src={item.image_uri}
               alt={item.name}
               width={600}
               height={600}
