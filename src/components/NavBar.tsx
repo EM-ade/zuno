@@ -47,7 +47,7 @@ export default function NavBar() {
   };
 
   return (
-    <nav className="w-full py-3 sm:py-4 px-3 sm:px-4 md:px-6 lg:px-8">
+    <nav className="w-full py-3 sm:py-4 px-3 sm:px-4 md:px-6 lg:px-8 bg-[#e3f3ff]">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
         {/* Logo */}
         <Link href="/" className="text-2xl sm:text-3xl font-bold text-[#0077E6]">
@@ -56,28 +56,19 @@ export default function NavBar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center space-x-6 lg:space-x-8">
+          <Link href="/marketplace" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
+            Marketplace
+          </Link>
           <Link href="/explore" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
-            Explore Mints
+            Explore
           </Link>
-          <Link href="#" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
-            Exhibition
-          </Link>
-          <Link href="#" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
-            Community
+          <Link href="/creator" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
+            Create
           </Link>
         </div>
 
         {/* Right-side buttons */}
         <div className="hidden md:flex items-center space-x-4">
-          {/* Dashboard Link - Only show when wallet is connected */}
-          {publicKey && (
-            <Link
-              href="/dashboard"
-              className="zuno-button zuno-button-primary text-sm lg:text-base py-2 px-4 lg:py-2 lg:px-5"
-            >
-              Dashboard
-            </Link>
-          )}
 
           {/* Connect Wallet Button - Desktop */}
           <div className="relative">
@@ -212,15 +203,13 @@ export default function NavBar() {
             Exhibition
           </Link>
 
-          {publicKey && (
-            <Link
-              href="/dashboard"
-              className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Dashboard
-            </Link>
-          )}
+          <Link
+            href="/creator"
+            className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Create
+          </Link>
           <Link
             href="#"
             className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"

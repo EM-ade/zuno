@@ -4,16 +4,20 @@ import { envConfig } from '../config/env';
 // Database types
 export interface CollectionRecord {
   id?: string;
-  collection_mint_address: string;
-  candy_machine_id: string;
   name: string;
   symbol: string;
-  description: string | null;
-  total_supply: number;
-  royalty_percentage: number | null;
-  image_uri: string | null;
   creator_wallet: string;
-  status: 'draft' | 'active' | 'completed' | 'archived';
+  collection_mint_address: string;
+  candy_machine_id?: string | null;
+  total_supply: number;
+  royalty_percentage?: number | null;
+  image_uri?: string | null;
+  description?: string | null;
+  twitter_url?: string | null;
+  discord_url?: string | null;
+  website_url?: string | null;
+  instagram_url?: string | null;
+  status: 'draft' | 'pending' | 'approved' | 'rejected';
   created_at?: string;
   updated_at?: string;
 }
@@ -27,7 +31,10 @@ export interface ItemRecord {
   metadata_uri?: string | null;
   attributes?: any;
   item_index?: number | null;
+  owner_wallet?: string | null;
+  mint_signature?: string | null;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface MintPhaseRecord {
@@ -130,6 +137,21 @@ export class SupabaseService {
     return data;
   }
 
+  static async getCollectionByCandyMachineId(candyMachineId: string) {
+    const { data, error } = await supabase
+      .from('collections')
+      .select('*')
+      .eq('candy_machine_id', candyMachineId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 is "not found"
+      console.error('Error fetching collection:', error);
+      throw new Error(`Failed to fetch collection: ${error.message}`);
+    }
+
+    return data;
+  }
+
   static async getCollectionsByStatus(status: CollectionRecord['status']) {
     const { data, error } = await supabase
       .from('collections')
@@ -142,7 +164,213 @@ export class SupabaseService {
       throw new Error(`Failed to fetch collections: ${error.message}`);
     }
 
+    return data || [];
+  }
+
+  static async getCollectionsByCreator(creatorWallet: string) {
+    const { data, error } = await supabase
+      .from('collections')
+      .select('*')
+      .eq('creator_wallet', creatorWallet)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching creator collections:', error);
+      throw new Error(`Failed to fetch creator collections: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  static async getCollectionMintStats(collectionId: string) {
+    // Get actual count of minted items
+    const { count: mintedCount, error: mintedError } = await supabase
+      .from('items')
+      .select('*', { count: 'exact', head: true })
+      .eq('collection_id', collectionId)
+      .not('owner_wallet', 'is', null);
+
+    if (mintedError) {
+      console.error('Error counting minted items:', mintedError);
+    }
+
+    // Get total items count
+    const { count: totalCount, error: totalError } = await supabase
+      .from('items')
+      .select('*', { count: 'exact', head: true })
+      .eq('collection_id', collectionId);
+
+    if (totalError) {
+      console.error('Error counting total items:', totalError);
+    }
+
+    return {
+      minted: mintedCount || 0,
+      total: totalCount || 0,
+      floor_price: 0,
+      volume: 0,
+      total_sales: mintedCount || 0
+    };
+  }
+
+  static async getCollectionById(id: string) {
+    const { data, error } = await supabase
+      .from('collections')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 is "not found"
+      console.error('Error fetching collection by ID:', error);
+      throw new Error(`Failed to fetch collection: ${error.message}`);
+    }
+
     return data;
+  }
+
+  static async updateItemMintStatus(itemId: string, minted: boolean, ownerWallet?: string, mintSignature?: string) {
+    const updateData: any = { 
+      updated_at: new Date().toISOString()
+    };
+    
+    // Update owner_wallet and mint_signature to track minted status
+    if (minted) {
+      updateData.owner_wallet = ownerWallet || null;
+      updateData.mint_signature = mintSignature || null;
+    } else {
+      updateData.owner_wallet = null;
+      updateData.mint_signature = null;
+    }
+
+    const { data, error } = await supabaseServer
+      .from('items')
+      .update(updateData)
+      .eq('id', itemId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating item mint status:', error);
+      throw new Error(`Failed to update item mint status: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  static async getItemsByCollection(
+    collectionId: string, 
+    page: number = 1, 
+    limit: number = 50,
+    filters?: { minted?: boolean }
+  ) {
+    let query = supabase
+      .from('items')
+      .select('*', { count: 'exact' })
+      .eq('collection_id', collectionId);
+
+    // Filter by minted status using owner_wallet
+    if (filters?.minted !== undefined) {
+      if (filters.minted) {
+        // Get minted items (have owner_wallet)
+        query = query.not('owner_wallet', 'is', null);
+      } else {
+        // Get unminted items (no owner_wallet)
+        query = query.is('owner_wallet', null);
+      }
+    }
+
+    const offset = (page - 1) * limit;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Error fetching items:', error);
+      throw new Error(`Failed to fetch items: ${error.message}`);
+    }
+
+    return {
+      items: data || [],
+      total: count || 0
+    };
+  }
+
+  static async createCollectionItem(itemData: {
+    collection_id: string;
+    name: string;
+    description: string;
+    image_uri: string | null;
+    metadata_uri: string | null;
+    attributes: Array<{ trait_type: string; value: string | number }>;
+    external_url?: string | null;
+    animation_url?: string | null;
+    creator_wallet: string;
+    minted?: boolean;
+    rarity_rank?: number | null;
+  }) {
+    // Remove fields that don't exist in your schema
+    const { animation_url, minted, rarity_rank, creator_wallet, ...safeItemData } = itemData;
+    
+    console.log(`Creating item for creator: ${creator_wallet}`);
+    
+    const { data, error } = await supabaseServer
+      .from('items')
+      .insert({
+        ...safeItemData,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating collection item:', error);
+      throw new Error(`Failed to create collection item: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  static async createMintTransaction(transactionData: {
+    collection_id: string;
+    user_wallet: string;
+    phase_id: string | null;
+    signature: string;
+    amount_paid: number;
+    platform_fee: number;
+    quantity: number;
+    minted_items: string[];
+  }) {
+    try {
+      // Try to create the mint transaction record
+      const { data, error } = await supabaseServer
+        .from('mint_transactions')
+        .insert({
+          collection_id: transactionData.collection_id,
+          user_wallet: transactionData.user_wallet,
+          phase_id: transactionData.phase_id,
+          signature: transactionData.signature,
+          amount_paid: transactionData.amount_paid,
+          platform_fee: transactionData.platform_fee,
+          quantity: transactionData.quantity,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating mint transaction (table may not exist):', error);
+        // Don't throw error - just log it and continue
+        console.log('Mint transaction not recorded, but mint can continue');
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Mint transaction recording failed:', error);
+      // Don't throw - allow mint to continue without transaction recording
+      return null;
+    }
   }
 
   static async updateCollectionStatus(collectionId: string, status: CollectionRecord['status']) {
@@ -176,7 +404,7 @@ export class SupabaseService {
 
   // Mint phase operations
   static async createMintPhases(phases: Omit<MintPhaseRecord, 'id'>[]) {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('mint_phases')
       .insert(phases)
       .select();
@@ -184,6 +412,21 @@ export class SupabaseService {
     if (error) {
       console.error('Error creating mint phases:', error);
       throw new Error(`Failed to create mint phases: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  static async createCollectionItem(item: Omit<ItemRecord, 'id'>) {
+    const { data, error } = await supabaseServer
+      .from('items')
+      .insert(item)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating collection item:', error);
+      throw new Error(`Failed to create collection item: ${error.message}`);
     }
 
     return data;

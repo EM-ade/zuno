@@ -11,19 +11,20 @@ export async function GET(request: NextRequest) {
     const creator = searchParams.get('creator');
 
     // Validate status parameter
-    const validStatuses = ['live', 'upcoming', 'ended', 'active', 'draft', 'completed', 'archived'];
+    const validStatuses = ['live', 'upcoming', 'ended', 'active', 'draft', 'completed', 'archived', 'approved', 'pending', 'rejected'];
     let statusFilter = status;
     
     if (status && validStatuses.includes(status)) {
       // Map frontend status to database status
       const statusMap: Record<string, string> = {
-        'live': 'active',
+        'live': 'approved',
+        'active': 'approved',
         'upcoming': 'draft',
         'ended': 'completed'
       };
       statusFilter = statusMap[status] || status;
     } else {
-      statusFilter = 'active'; // Default to active collections
+      statusFilter = 'approved'; // Default to approved collections
     }
 
     let collections: CollectionRecord[];

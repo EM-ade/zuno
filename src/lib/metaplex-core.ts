@@ -1,9 +1,9 @@
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import { keypairIdentity, generateSigner, transactionBuilder, some, sol, publicKey, dateTime } from '@metaplex-foundation/umi';
-import { createCollectionV1, mplCore } from '@metaplex-foundation/mpl-core';
+import { createCollectionV1, createV1, mplCore } from '@metaplex-foundation/mpl-core';
 import { create as createCandyMachine, mplCandyMachine, GuardSet } from '@metaplex-foundation/mpl-core-candy-machine';
 import { pinataService } from './pinata-service';
-import { envConfig } from '../config/env';
+import { envConfig, convertUsdToSol } from '../config/env';
 import bs58 from 'bs58';
 import { MerkleTree } from 'merkletreejs';
 import keccak256 from 'keccak256';
@@ -27,6 +27,7 @@ export interface CollectionConfig {
   royaltyPercentage: number;
   phases: MintPhase[];
   creatorWallet: string;
+  imageUri?: string;
 }
 
 export interface CreatedCollection {
@@ -101,25 +102,47 @@ export class MetaplexCoreService {
 
   async createCollection(config: CollectionConfig): Promise<CreatedCollection> {
     try {
-      const { name, symbol, description, totalSupply, phases, creatorWallet } = config;
+      const { name, symbol, description, totalSupply, phases, creatorWallet, imageUri } = config;
 
-      // Validate phases
-      if (!phases || phases.length === 0) {
-        throw new Error('At least one mint phase is required');
+      // Validate phases (now optional)
+      if (phases && phases.length === 0) {
+        throw new Error('If phases are provided, at least one mint phase is required');
       }
 
       // Create collection NFT
       const collectionMint = generateSigner(this.umi);
+      const collectionImageUri = imageUri || 'https://placeholder.com/collection-image.png';
       const collectionMetadataUri = await pinataService.uploadJSON({
         name,
         description,
         symbol,
-        image: 'https://placeholder.com/collection-image.png', // Placeholder
-        attributes: [],
+        image: collectionImageUri,
+        attributes: [
+          { trait_type: 'Collection Type', value: 'Zuno NFT Collection' },
+          { trait_type: 'Total Supply', value: totalSupply.toString() },
+          { trait_type: 'Creator', value: creatorWallet }
+        ],
         properties: {
-          files: [],
+          files: [
+            {
+              uri: collectionImageUri,
+              type: 'image/png'
+            }
+          ],
           category: 'image',
+          creators: [
+            {
+              address: creatorWallet,
+              share: 100
+            }
+          ]
         },
+        seller_fee_basis_points: config.royaltyPercentage * 100,
+        external_url: 'https://zuno.app',
+        collection: {
+          name,
+          family: symbol
+        }
       });
 
       // Create candy machine
@@ -212,15 +235,106 @@ export class MetaplexCoreService {
     return true; // Placeholder implementation
   }
 
+  async createMintTransaction(params: {
+    collectionAddress: string;
+    candyMachineId: string;
+    buyerWallet: string;
+    items: Array<{
+      id: string;
+      name: string;
+      image_uri: string | null;
+      attributes: Array<{ trait_type: string; value: string | number }>;
+    }>;
+    price: number;
+    quantity: number;
+    platformFee?: number;
+  }): Promise<{ transactionBase64: string }> {
+    try {
+      const { collectionAddress, buyerWallet, items, price, quantity } = params;
+
+      // Create connection
+      const connection = new Connection(envConfig.solanaRpcUrl);
+      
+      // Create transaction with payment transfers
+      const transaction = new Transaction();
+
+      // Use provided platform fee or calculate from $1.25 USD
+      const platformFeeSol = params.platformFee || await convertUsdToSol(1.25); // Use provided fee or $1.25 USD
+      const platformFeeLamports = Math.round(platformFeeSol * LAMPORTS_PER_SOL);
+      
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: new PublicKey(buyerWallet),
+          toPubkey: new PublicKey(envConfig.platformWallet),
+          lamports: platformFeeLamports,
+        })
+      );
+
+      // Get collection to find creator wallet
+      const collection = await SupabaseService.getCollectionByMintAddress(collectionAddress);
+      if (!collection) {
+        throw new Error('Collection not found');
+      }
+
+      // Calculate creator payment with platform commission
+      const totalMintPrice = price * quantity;
+      const platformCommission = totalMintPrice * 0.05; // 5% platform commission
+      const creatorPayment = totalMintPrice - platformCommission;
+      
+      // Add creator payment transfer (after platform commission)
+      const creatorPaymentLamports = Math.round(creatorPayment * LAMPORTS_PER_SOL);
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: new PublicKey(buyerWallet),
+          toPubkey: new PublicKey(collection.creator_wallet),
+          lamports: creatorPaymentLamports,
+        })
+      );
+      
+      // Add platform commission transfer (separate from the $1.25 fee)
+      const platformCommissionLamports = Math.round(platformCommission * LAMPORTS_PER_SOL);
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: new PublicKey(buyerWallet),
+          toPubkey: new PublicKey(envConfig.platformWallet),
+          lamports: platformCommissionLamports,
+        })
+      );
+
+      // Add recent blockhash and set fee payer
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = new PublicKey(buyerWallet);
+
+      // Serialize transaction to base64
+      const transactionBase64 = transaction.serialize({ 
+        requireAllSignatures: false,
+        verifySignatures: false 
+      }).toString('base64');
+
+      return { transactionBase64 };
+
+    } catch (error) {
+      console.error('Error creating mint transaction:', error);
+      throw new Error(`Failed to create mint transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async mintNFTs(params: {
     candyMachineId: string;
     collectionMintAddress: string;
     userWallet: string;
     amount: number;
     price: number;
+    selectedItems?: Array<{
+      id: string;
+      name: string;
+      image_uri: string | null;
+      attributes: Array<{ trait_type: string; value: string | number }>;
+    }>;
   }): Promise<{ success: boolean; signature?: string; error?: string; mintIds?: string[] }> {
     try {
-      const { candyMachineId, collectionMintAddress, userWallet, amount, price } = params;
+      const { candyMachineId, collectionMintAddress, userWallet, amount, price, selectedItems } = params;
 
       console.log('Building mint transaction with platform fee collection:', {
         candyMachineId,
@@ -265,12 +379,66 @@ export class MetaplexCoreService {
         })
       );
 
-      // TODO: Add actual candy machine mint instruction here
-      // For now, we'll just send the fee collection transaction
+      // Create actual NFTs using Metaplex Core (separate UMI transaction)
+      const mintIds: string[] = [];
+      
+      // Build UMI transaction for NFT creation
+      let umiTransaction = transactionBuilder();
+      
+      for (let i = 0; i < amount; i++) {
+        const assetSigner = generateSigner(this.umi);
+        const selectedItem = selectedItems?.[i];
+        
+        // Create metadata for this NFT using selected item data
+        const nftMetadata = {
+          name: selectedItem?.name || `${collection.name} #${Date.now()}-${i}`,
+          description: collection.description || `NFT from ${collection.name} collection`,
+          symbol: collection.symbol || 'ZUNO',
+          image: selectedItem?.image_uri || collection.image_uri || 'https://placeholder.com/nft-image.png',
+          attributes: selectedItem?.attributes || [
+            { trait_type: 'Collection', value: collection.name },
+            { trait_type: 'Mint Number', value: `${Date.now()}-${i}` },
+            { trait_type: 'Creator', value: collection.creator_wallet }
+          ],
+          properties: {
+            files: [
+              {
+                uri: collection.image_uri || 'https://placeholder.com/nft-image.png',
+                type: 'image/png'
+              }
+            ],
+            category: 'image',
+            creators: [
+              {
+                address: collection.creator_wallet,
+                share: 100
+              }
+            ]
+          },
+          collection: {
+            name: collection.name,
+            family: collection.symbol || 'ZUNO'
+          },
+          seller_fee_basis_points: collection.royalty_percentage ? collection.royalty_percentage * 100 : 0,
+          external_url: `https://zuno.app/nft/${assetSigner.publicKey}`,
+        };
+        
+        // Upload NFT metadata to IPFS
+        const metadataUri = await pinataService.uploadJSON(nftMetadata);
+        
+        // Create the NFT using Metaplex Core
+        const createNftInstruction = createV1(this.umi, {
+          asset: assetSigner,
+          collection: publicKey(collectionMintAddress),
+          name: nftMetadata.name,
+          uri: metadataUri,
+        });
+        
+        umiTransaction = umiTransaction.add(createNftInstruction);
+        mintIds.push(assetSigner.publicKey.toString());
+      }
 
-      // Sign and send the transaction
-      // Note: In a real implementation, the user would sign this transaction
-      // For now, we'll use the server wallet for testing
+      // First, send the fee collection transaction
       const serverKeypair = Keypair.fromSecretKey(
         bs58.decode(envConfig.serverWalletPrivateKey)
       );
@@ -283,21 +451,23 @@ export class MetaplexCoreService {
       // Sign the transaction
       transaction.sign(serverKeypair);
 
-      // Send the transaction
+      // Send the fee collection transaction
       console.log('Sending fee collection transaction...');
-      const signature = await connection.sendRawTransaction(transaction.serialize());
+      const feeSignature = await connection.sendRawTransaction(transaction.serialize());
+      await connection.confirmTransaction(feeSignature, 'finalized');
 
-      // Confirm the transaction
-      await connection.confirmTransaction(signature, 'finalized');
+      // Then, send the NFT creation transaction using UMI
+      console.log('Creating NFTs...');
+      const nftResult = await umiTransaction.sendAndConfirm(this.umi, {
+        confirm: { commitment: 'finalized' }
+      });
+      
+      const completeSignature = nftResult.signature.toString();
 
-      // Generate mock mint IDs for now
-      const mintIds = Array(amount).fill(0).map((_, i) =>
-        `mint_${Date.now()}_${i}_${signature.slice(0, 8)}`
-      );
-
-      console.log('Fee collection transaction completed successfully:', {
-        signature,
+      console.log('NFT minting completed successfully:', {
+        signature: completeSignature,
         mintCount: amount,
+        mintIds,
         totalPaid: price * amount + envConfig.platformFeeSol,
         platformFee: envConfig.platformFeeSol,
         creatorPayment: price * amount
@@ -305,7 +475,7 @@ export class MetaplexCoreService {
 
       return {
         success: true,
-        signature,
+        signature: completeSignature,
         mintIds
       };
 
@@ -313,6 +483,135 @@ export class MetaplexCoreService {
       console.error('Error minting NFTs with fee collection:', error);
       
       let errorMessage = 'Unknown error occurred during minting';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+  }
+
+  async createNFTsFromItems(params: {
+    collectionMintAddress: string;
+    userWallet: string;
+    selectedItems: Array<{
+      id: string;
+      name: string;
+      image_uri: string | null;
+      attributes: Array<{ trait_type: string; value: string | number }>;
+    }>;
+    transactionSignature: string;
+  }): Promise<{ success: boolean; error?: string; mintIds?: string[] }> {
+    try {
+      const { collectionMintAddress, userWallet, selectedItems, transactionSignature } = params;
+
+      console.log('Creating NFTs from selected items:', {
+        collectionMintAddress,
+        userWallet,
+        itemCount: selectedItems.length,
+        transactionSignature
+      });
+
+      // Get collection details
+      const collection = await SupabaseService.getCollectionByMintAddress(collectionMintAddress);
+      if (!collection) {
+        throw new Error('Collection not found');
+      }
+
+      const mintIds: string[] = [];
+      
+      // Build UMI transaction for NFT creation
+      let umiTransaction = transactionBuilder();
+      
+      for (let i = 0; i < selectedItems.length; i++) {
+        const item = selectedItems[i];
+        const assetSigner = generateSigner(this.umi);
+        
+        // Create metadata for this specific NFT using the selected item's data
+        const nftMetadata = {
+          name: item.name,
+          description: collection.description || `${item.name} from ${collection.name} collection`,
+          symbol: collection.symbol || 'ZUNO',
+          image: item.image_uri || collection.image_uri || 'https://placeholder.com/nft-image.png',
+          attributes: item.attributes,
+          properties: {
+            files: [
+              {
+                uri: item.image_uri || collection.image_uri || 'https://placeholder.com/nft-image.png',
+                type: item.image_uri?.includes('.gif') ? 'image/gif' : 
+                      item.image_uri?.includes('.mp4') ? 'video/mp4' : 'image/png'
+              }
+            ],
+            category: 'image',
+            creators: [
+              {
+                address: collection.creator_wallet,
+                verified: true,
+                share: 100
+              }
+            ]
+          },
+          collection: {
+            name: collection.name,
+            family: collection.symbol || 'ZUNO',
+            verified: false // Will be true once collection is verified
+          },
+          seller_fee_basis_points: collection.royalty_percentage ? collection.royalty_percentage * 100 : 0,
+          external_url: `https://zuno.app/collection/${collection.id}`,
+          // Add standard NFT metadata fields
+          compiler: 'Zuno NFT Platform',
+          date: new Date().toISOString(),
+          // Add collection verification info
+          uses: {
+            useMethod: 'single',
+            remaining: 1,
+            total: 1
+          }
+        };
+        
+        // Upload NFT metadata to IPFS
+        const metadataUri = await pinataService.uploadJSON(nftMetadata);
+        
+        // Create the NFT using Metaplex Core
+        const createNftInstruction = createV1(this.umi, {
+          asset: assetSigner,
+          collection: publicKey(collectionMintAddress),
+          name: nftMetadata.name,
+          uri: metadataUri,
+          owner: publicKey(userWallet), // Set the user as the owner
+        });
+        
+        umiTransaction = umiTransaction.add(createNftInstruction);
+        mintIds.push(assetSigner.publicKey.toString());
+      }
+
+      // Send the NFT creation transaction using UMI
+      console.log('Creating NFTs on blockchain...');
+      const nftResult = await umiTransaction.sendAndConfirm(this.umi, {
+        confirm: { commitment: 'finalized' }
+      });
+      
+      const completeSignature = nftResult.signature.toString();
+
+      console.log('NFT creation completed successfully:', {
+        signature: completeSignature,
+        mintCount: selectedItems.length,
+        mintIds,
+        originalTransactionSignature: transactionSignature
+      });
+
+      return {
+        success: true,
+        mintIds
+      };
+
+    } catch (error) {
+      console.error('Error creating NFTs from items:', error);
+      
+      let errorMessage = 'Unknown error occurred during NFT creation';
       if (error instanceof Error) {
         errorMessage = error.message;
       }

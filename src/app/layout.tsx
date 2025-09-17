@@ -29,7 +29,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          {children}
+          {/* Site wrapper card to match mock: white panel with rounded corners */}
+          <div className="m-4 md:m-6 lg:m-8 lg:mx-14">
+            <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
+              {children}
+            </div>
+          </div>
         </Providers>
       </body>
     </html>

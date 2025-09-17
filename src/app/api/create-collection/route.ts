@@ -19,7 +19,7 @@ interface CreateCollectionRequest {
   description: string;
   totalSupply: number;
   royaltyPercentage: number;
-  phases: Phase[];
+  phases?: Phase[]; // Now optional
   creatorWallet: string;
   imageData?: string; // Base64 encoded image data
 }
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!collectionName || !symbol || !totalSupply || !phases?.length || !creatorWallet) {
+    if (!collectionName || !symbol || !totalSupply || !creatorWallet) {
       return new Response(
         JSON.stringify({ success: false, error: "Missing required fields" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
@@ -93,15 +93,16 @@ export async function POST(request: NextRequest) {
       description,
       totalSupply,
       royaltyPercentage,
-      phases: phases.map(phase => ({
+      phases: phases?.map(phase => ({
         name: phase.name,
         price: phase.price,
         startTime: phase.startTime,
         endTime: phase.endTime,
         allowList: phase.allowList,
         mintLimit: phase.mintLimit,
-      })),
+      })) || [],
       creatorWallet,
+      imageUri,
     });
 
     // Store collection data in Supabase
@@ -119,20 +120,22 @@ export async function POST(request: NextRequest) {
         status: 'draft'
       });
 
-      // Store mint phases in database
-     const mintPhases = phases.map((phase) => ({
-       collection_id: collectionRecord.id!,
-       name: phase.name,
-       price: phase.price,
-       start_time: phase.startTime,
-       end_time: phase.endTime || null,
-       mint_limit: phase.mintLimit || null,
-       phase_type: (phase.allowList && phase.allowList.length > 0 ? 'whitelist' : 'public') as 'whitelist' | 'public',
-       merkle_root: null, // Will be set during mint phase activation
-       allow_list: phase.allowList || null
-     }));
+      // Store mint phases in database (if any)
+      if (phases && phases.length > 0) {
+        const mintPhases = phases.map((phase) => ({
+          collection_id: collectionRecord.id!,
+          name: phase.name,
+          price: phase.price,
+          start_time: phase.startTime,
+          end_time: phase.endTime || null,
+          mint_limit: phase.mintLimit || null,
+          phase_type: (phase.allowList && phase.allowList.length > 0 ? 'whitelist' : 'public') as 'whitelist' | 'public',
+          merkle_root: null, // Will be set during mint phase activation
+          allow_list: phase.allowList || null
+        }));
 
-      await SupabaseService.createMintPhases(mintPhases);
+        await SupabaseService.createMintPhases(mintPhases);
+      }
 
       console.log('Collection data stored in Supabase:', collectionRecord);
 

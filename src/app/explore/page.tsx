@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import ImageWithFallback from '@/components/ImageWithFallback';
+import OptimizedImage from '@/components/OptimizedImage';
 
 type StatusTab = 'live' | 'upcoming' | 'ended';
 type DbStatus = 'active' | 'draft' | 'completed';
@@ -316,21 +317,24 @@ function CollectionCard({ item, compact = false }: { item: UiCollection; compact
       <div className="relative">
         <div className="aspect-square w-full bg-white flex items-center justify-center overflow-hidden">
           {item.image_uri ? (
-            <ImageWithFallback
+            <OptimizedImage
               src={item.image_uri}
               alt={item.name}
               width={600}
               height={600}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover rounded-t-2xl"
+              priority={false}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-white/70 text-3xl">🎴</div>
+            <div className="text-6xl text-black/20">🎴</div>
           )}
         </div>
 
         {/* Top-left pills like the reference (chain + status) */}
         <div className="absolute top-2 left-2 flex gap-2">
-          <span className="px-2 py-1 rounded-md text-[10px] bg-white/80 text-black/70 border border-black/10">◎ Solana</span>
+          <span className="px-2 py-1 rounded-md text-[10px] bg-purple-500/80 text-white font-medium">
+            Solana
+          </span>
           <span className="px-2 py-1 rounded-md text-[10px] bg-white/80 text-black/70 border border-black/10">
             {statusBadgeText(item.status)}
           </span>

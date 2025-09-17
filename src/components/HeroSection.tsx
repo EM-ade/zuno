@@ -1,8 +1,9 @@
 import Image from 'next/image'
+import Link from 'next/link'
 
 export default function HeroSection() {
   return (
-    <section className="w-full py-12 md:py-20 lg:py-24 relative overflow-hidden">
+    <section className="w-full py-12 md:py-20 lg:py-24 relative overflow-hidden bg-[#e3f3ff]">
       {/* Decorative stars */}
       <div className="absolute top-20 left-1/4 sparkle"></div>
       <div className="absolute top-40 right-1/3 sparkle"></div>
@@ -22,9 +23,11 @@ export default function HeroSection() {
             <p className="text-lg md:text-xl lg:text-2xl text-[#0077E6] mb-6 md:mb-8">
               Create, mint, and launch your NFT collection without any code
             </p>
-            <button className="zuno-button zuno-button-secondary font-bold py-3 md:py-4 px-6 md:px-8 text-[#0077E6] md:text-lg lg:text-xl">
-              Start Launching
-            </button>
+            <Link href="/creator">
+              <button className="zuno-button zuno-button-secondary font-bold py-3 md:py-4 px-6 md:px-8 md:text-lg lg:text-xl">
+                Start Launching
+              </button>
+            </Link>
           </div>
 
           {/* Mascot Character Image */}

@@ -23,36 +23,65 @@ function getEnvVar(key: string, defaultValue?: string): string {
 }
 
 export const envConfig: EnvConfig = {
-  solanaRpcUrl: getEnvVar('SOLANA_RPC_URL', 'https://api.devnet.solana.com'),
-  solanaNetwork: (getEnvVar('SOLANA_NETWORK', 'devnet') as 'devnet' | 'testnet' | 'mainnet-beta'),
-  platformWallet: getEnvVar('PLATFORM_WALLET'),
-  serverWalletPrivateKey: getEnvVar('SERVER_WALLET_PRIVATE_KEY'),
-  nftStorageApiKey: getEnvVar('NFT_STORAGE_API_KEY'),
-  pinataJwt: getEnvVar('PINATA_JWT'),
-  pinataGateway: getEnvVar('PINATA_GATEWAY'),
-  platformFeeSol: parseFloat(getEnvVar('PLATFORM_FEE_SOL', '0.01')),
-  priceOracleUrl: getEnvVar('PRICE_ORACLE_URL', 'https://price.jup.ag/v4/price?ids=SOL,USDT'),
-  supabaseUrl: getEnvVar('SUPABASE_URL'),
-  supabaseAnonKey: getEnvVar('SUPABASE_ANON_KEY'),
+  solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+  solanaNetwork: (process.env.SOLANA_NETWORK || 'devnet') as 'devnet' | 'testnet' | 'mainnet-beta',
+  serverWalletPrivateKey: process.env.SERVER_WALLET_PRIVATE_KEY || '',
+  platformWallet: process.env.PLATFORM_WALLET || '',
+  platformFeeSol: parseFloat(process.env.PLATFORM_FEE_SOL || '0.01'),
+  
+  // Platform fees
+  platformFeeUsd: 1.25, // $1.25 USD platform fee
+  creatorRevenueShare: parseFloat(process.env.CREATOR_REVENUE_SHARE || '0.05'), // 5% platform commission
+  
+  // Pinata configuration
+  pinataApiKey: process.env.PINATA_API_KEY || '',
+  pinataSecretApiKey: process.env.PINATA_SECRET_API_KEY || '',
+  pinataJwt: process.env.PINATA_JWT || '',
+  pinataGateway: process.env.PINATA_GATEWAY || process.env.NEXT_PUBLIC_PINATA_GATEWAY || '',
+  
+  // NFT Storage (optional - using Pinata instead)
+  nftStorageApiKey: process.env.NFT_STORAGE_API_KEY || '',
+  
+  // Price Oracle
+  priceOracleUrl: process.env.PRICE_ORACLE_URL || 'https://price.jup.ag/v4/price?ids=SOL,USDT',
+  
+  // Supabase configuration
+  supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 };
+
+// Function to get current SOL price in USD
+export async function getSolPriceUSD(): Promise<number> {
+  try {
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const data = await response.json();
+    return data.solana?.usd || 150; // Fallback to $150 if API fails
+  } catch (error) {
+    console.error('Failed to fetch SOL price:', error);
+    return 150; // Fallback price
+  }
+}
+
+// Convert USD amount to SOL
+export async function convertUsdToSol(usdAmount: number): Promise<number> {
+  const solPrice = await getSolPriceUSD();
+  return usdAmount / solPrice;
+}
 
 // Validate critical environment variables
 if (!envConfig.platformWallet) {
-  throw new Error('PLATFORM_WALLET environment variable is required');
+  console.warn('PLATFORM_WALLET environment variable is missing');
 }
 
 if (!envConfig.serverWalletPrivateKey) {
-  throw new Error('SERVER_WALLET_PRIVATE_KEY environment variable is required');
-}
-
-if (!envConfig.nftStorageApiKey) {
-  throw new Error('NFT_STORAGE_API_KEY environment variable is required');
+  console.warn('SERVER_WALLET_PRIVATE_KEY environment variable is missing');
 }
 
 if (!envConfig.pinataJwt) {
-  throw new Error('PINATA_JWT environment variable is required');
+  console.warn('PINATA_JWT environment variable is missing');
 }
 
 if (!envConfig.pinataGateway) {
-  throw new Error('PINATA_GATEWAY environment variable is required');
+  console.warn('PINATA_GATEWAY environment variable is missing - using fallback');
 }

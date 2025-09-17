@@ -3,37 +3,53 @@ import { SupabaseService } from '@/lib/supabase-service';
 
 interface RecordMintRequest {
   collectionId: string;
-  userWallet: string;
+  wallet: string;
   phaseId: string | null;
   signature: string;
-  amountPaid: number; // in SOL
-  platformFee: number; // in SOL
+  quantity: number;
+  selectedItems: Array<{
+    id: string;
+    name: string;
+    image_uri: string | null;
+    attributes: Array<{ trait_type: string; value: string }>;
+  }>;
+  totalCost: number; // in SOL
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: RecordMintRequest = await request.json();
-    const { collectionId, userWallet, phaseId, signature, amountPaid, platformFee } = body;
+    const { collectionId, wallet, phaseId, signature, quantity, selectedItems, totalCost } = body;
 
-    if (!collectionId || !userWallet || !signature) {
+    if (!collectionId || !wallet || !signature || !selectedItems?.length) {
       return new Response(
         JSON.stringify({ success: false, error: 'Missing required fields' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Persist transaction in Supabase (store in SOL numbers as provided)
+    // Mark the selected items as minted
+    for (const item of selectedItems) {
+      await SupabaseService.updateItemMintStatus(item.id, true, wallet, signature);
+    }
+
+    // Record the mint transaction
     await SupabaseService.createMintTransaction({
       collection_id: collectionId,
-      user_wallet: userWallet,
+      user_wallet: wallet,
       phase_id: phaseId,
       signature,
-      amount_paid: amountPaid,
-      platform_fee: platformFee,
+      amount_paid: totalCost,
+      platform_fee: 0, // Can be calculated based on totalCost if needed
+      quantity,
+      minted_items: selectedItems.map(item => item.id)
     });
 
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ 
+        success: true,
+        message: `Successfully recorded mint of ${quantity} NFT${quantity > 1 ? 's' : ''}`
+      }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error) {

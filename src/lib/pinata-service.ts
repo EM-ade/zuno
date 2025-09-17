@@ -1,5 +1,3 @@
-import { PinataSDK } from "pinata";
-
 export interface IPFSUploadResult {
   imageUri: string;
   metadataUri: string;
@@ -16,7 +14,6 @@ export interface AssetMetadata {
 }
 
 export class PinataService {
-  private client: PinataSDK;
   private gateway: string;
   private jwt: string;
 
@@ -31,10 +28,6 @@ export class PinataService {
       throw new Error('PINATA_GATEWAY environment variable is required');
     }
 
-    this.client = new PinataSDK({
-      pinataJwt,
-      pinataGateway,
-    });
     this.gateway = pinataGateway;
     this.jwt = pinataJwt;
   }
@@ -45,16 +38,28 @@ export class PinataService {
 
   async uploadFile(fileBuffer: Buffer, fileName: string, contentType: string): Promise<string> {
     try {
-      // Convert Buffer to Uint8Array for File compatibility
-      const uint8Array = new Uint8Array(fileBuffer);
-      const file = new File([uint8Array], fileName, { type: contentType });
-      const upload = await this.client.upload.file(file);
-      
-      if (!upload.cid) {
-        throw new Error('Upload response missing CID');
+      const formData = new FormData();
+      const blob = new Blob([fileBuffer], { type: contentType });
+      formData.append('file', blob, fileName);
+
+      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.jwt}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return await this.toGatewayUrl(upload.cid);
+      const result = await response.json();
+      if (!result.IpfsHash) {
+        throw new Error('Upload response missing IpfsHash');
+      }
+
+      return await this.toGatewayUrl(result.IpfsHash);
     } catch (error) {
       console.error('Failed to upload file to Pinata:', error);
       throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -63,15 +68,30 @@ export class PinataService {
 
   async uploadJSON(data: Record<string, unknown>): Promise<string> {
     try {
-      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-      const file = new File([blob], 'metadata.json');
-      const upload = await this.client.upload.file(file);
-      
-      if (!upload.cid) {
-        throw new Error('JSON upload response missing CID');
+      const response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.jwt}`,
+        },
+        body: JSON.stringify({
+          pinataContent: data,
+          pinataMetadata: {
+            name: 'metadata.json'
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return `https://${this.gateway}/ipfs/${upload.cid}`;
+      const result = await response.json();
+      if (!result.IpfsHash) {
+        throw new Error('JSON upload response missing IpfsHash');
+      }
+
+      return `https://${this.gateway}/ipfs/${result.IpfsHash}`;
     } catch (error) {
       console.error('Failed to upload JSON to Pinata:', error);
       throw new Error(`Failed to upload JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -130,49 +150,7 @@ export class PinataService {
     }
   }
 
-  // Create a private access link (signed URL) using Pinata SDK gateways.private API
-  async createPrivateAccessLink(params: { cid: string; expiresSeconds?: number }): Promise<string> {
-    const { cid, expiresSeconds = 60 } = params;
-    try {
-      const gw = (this.client as any).gateways;
-      const priv = gw?.private;
-      if (!priv?.createAccessLink) {
-        throw new Error('Pinata SDK private gateway not available in this SDK version');
-      }
-      const url = await priv.createAccessLink({ cid, expires: expiresSeconds });
-      if (!url) throw new Error('Pinata returned empty access link');
-      return url;
-    } catch (e) {
-      throw new Error(e instanceof Error ? e.message : 'Failed to create access link');
-    }
-  }
-
-  // Retrieve private content bytes via SDK (useful if you want to proxy or transform)
-  async getPrivateFile(cid: string): Promise<{ data: ArrayBuffer; contentType: string | null }> {
-    try {
-      const gw = (this.client as any).gateways;
-      const priv = gw?.private;
-      if (!priv?.get) {
-        throw new Error('Pinata SDK private gateway not available in this SDK version');
-      }
-      const { data, contentType } = await priv.get(cid);
-      return { data, contentType: contentType ?? null };
-    } catch (e) {
-      throw new Error(e instanceof Error ? e.message : 'Failed to get private file');
-    }
-  }
 }
-
-// Helper to detect private gateway feature availability (for diagnostics)
-export const hasPinataPrivateGateway = (() => {
-  try {
-    const sdk = new PinataSDK({ pinataJwt: process.env.PINATA_JWT!, pinataGateway: process.env.PINATA_GATEWAY! });
-    const gw = (sdk as any).gateways;
-    return Boolean(gw?.private);
-  } catch {
-    return false;
-  }
-})();
 
 // Singleton instance
 export const pinataService = new PinataService();

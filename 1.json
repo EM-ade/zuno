@@ -1,0 +1,49 @@
+{
+    "name": "Aetherius, the Sky Serpent",
+    "description": "A legendary creature that soars through the cosmic winds, its scales shimmering with the light of distant nebulae. Aetherius is a guardian of celestial balance.",
+    "image": "ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi/1.png",
+    "external_url": "https://zunoagent.xyz",
+    "seller_fee_basis_points": 500,
+    "properties": {
+      "files": [
+        {
+          "uri": "ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi/1.png",
+          "type": "image/png"
+        }
+      ],
+      "category": "image",
+      "creators": [
+        {
+          "address": "YOUR_WALLET_ADDRESS_HERE",
+          "verified": true,
+          "share": 100
+        }
+      ]
+    },
+    "collection": {
+      "name": "Mythical Creatures Collection",
+      "family": "MYTHIC"
+    },
+    "attributes": [
+      {
+        "trait_type": "Element",
+        "value": "Cosmic"
+      },
+      {
+        "trait_type": "Type",
+        "value": "Celestial Dragon"
+      },
+      {
+        "trait_type": "Primary Color",
+        "value": "Nebula Purple"
+      },
+      {
+        "trait_type": "Accessory",
+        "value": "Stardust Halo"
+      },
+      {
+        "trait_type": "Rarity",
+        "value": "Mythic"
+      }
+    ]
+  }

@@ -1,171 +1,290 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import OptimizedImage from './OptimizedImage'
+
+interface Collection {
+  id: string
+  name: string
+  symbol: string
+  description: string
+  image_uri: string | null
+  total_supply: number
+  minted_count: number
+  floor_price: number
+  volume: number
+  status: string
+  candy_machine_id: string
+  creator_wallet: string
+}
+
+interface NFTItem {
+  id: string
+  name: string
+  image_uri: string
+  collection_id: string
+  collection_name: string
+  candy_machine_id: string
+  attributes?: any
+}
 
 export default function FeaturedMint() {
   const [activeTab, setActiveTab] = useState('live')
+  const [featuredCollections, setFeaturedCollections] = useState<Collection[]>([])
+  const [exploreNFTs, setExploreNFTs] = useState<NFTItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadFeaturedContent()
+  }, [])
+
+  const loadFeaturedContent = async () => {
+    try {
+      // Load trending collections for featured section
+      const collectionsResponse = await fetch('/api/collections?status=active&limit=10')
+      if (collectionsResponse.ok) {
+        const data = await collectionsResponse.json()
+        const collections = data.collections || data
+        // Sort by mint count and volume for trending
+        const trending = collections
+          .filter((c: any) => c.status === 'active' || c.status === 'approved')
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            symbol: c.symbol,
+            description: c.description,
+            image_uri: c.image_uri,
+            total_supply: c.total_supply,
+            minted_count: c.mintCount || c.minted_count || 0,
+            floor_price: c.floor_price || 0,
+            volume: c.volume || 0,
+            status: c.status,
+            candy_machine_id: c.candy_machine_id,
+            creator_wallet: c.creator_wallet
+          }))
+          .sort((a: Collection, b: Collection) => {
+            const aScore = (a.minted_count || 0) + (a.volume || 0) * 0.1
+            const bScore = (b.minted_count || 0) + (b.volume || 0) * 0.1
+            return bScore - aScore
+          })
+          .slice(0, 3)
+        setFeaturedCollections(trending)
+      }
+
+      // Load random NFTs for explore section
+      const nftsResponse = await fetch('/api/nfts/random?limit=4')
+      if (nftsResponse.ok) {
+        const data = await nftsResponse.json()
+        const nfts = data.nfts || data
+        setExploreNFTs(nfts)
+      }
+    } catch (error) {
+      console.error('Error loading featured content:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getStatusBadge = (collection: Collection) => {
+    const progress = (collection.minted_count / collection.total_supply) * 100
+    if (progress >= 100) return 'sold out'
+    if (collection.status === 'active' || collection.status === 'approved') return 'live'
+    return 'upcoming'
+  }
+
+  const filteredCollections = featuredCollections.filter(collection => {
+    const status = getStatusBadge(collection)
+    return activeTab === 'live' ? status === 'live' : 
+           activeTab === 'upcoming' ? status === 'upcoming' :
+           activeTab === 'ended' ? status === 'sold out' : true
+  })
 
   return (
-    <section className="w-full py-8 sm:py-10 md:py-12 bg-white rounded-t-3xl">
+    <section className="w-full py-8 sm:py-10 md:py-12">
       <div className="container mx-auto px-4 md:px-6">
-        {/* Section Header with Star Icon */}
-        <div className="flex items-center gap-2 mb-4">
-          <div className="text-zuno-yellow text-xl">✨</div>
-          <h2 className="text-xl font-bold text-gray-900">Featured Mint</h2>
-        </div>
+        {/* Card wrapper to resemble white panel over blue background */}
+        <div className="bg-white rounded-2xl shadow-md p-5 md:p-6">
+          {/* Section Header with Star Icon and Tabs on the right */}
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="text-zuno-yellow text-xl">✨</div>
+              <h2 className="text-xl font-bold text-gray-900">Featured Mint</h2>
+            </div>
 
-        {/* Tabs */}
-        <div className="flex mb-4 border-b border-gray-200 overflow-x-auto pb-1 mobile-full-width">
-          <button
-            className={`pb-2 px-3 font-medium text-sm whitespace-nowrap ${
-              activeTab === 'live'
-                ? 'text-zuno-blue border-b-2 border-zuno-blue'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('live')}
-          >
-            Live
-          </button>
-          <button
-            className={`pb-2 px-3 font-medium text-sm whitespace-nowrap ${
-              activeTab === 'upcoming'
-                ? 'text-zuno-blue border-b-2 border-zuno-blue'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('upcoming')}
-          >
-            Upcoming
-          </button>
-          <button
-            className={`pb-2 px-3 font-medium text-sm whitespace-nowrap ${
-              activeTab === 'ended'
-                ? 'text-zuno-blue border-b-2 border-zuno-blue'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab('ended')}
-          >
-            Ended
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Main Featured Card */}
-          <div className="md:col-span-1 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl p-4 shadow-md">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-bold text-white">THE REALMKIN</h2>
-            </div>
-            
-            {/* NFT Image - Green rabbit character */}
-            <div className="w-full h-32 flex items-center justify-center relative overflow-hidden">
-              <div className="text-white text-5xl">🐰</div>
-            </div>
-            
-            {/* Progress Bar */}
-            <div className="mb-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-white text-xs font-semibold"></span>
-                <span className="text-white text-xs font-bold">2,155 / 5,555</span>
-              </div>
-              <div className="w-full bg-white/30 rounded-full h-2">
-                <div 
-                  className="bg-white h-2 rounded-full transition-all duration-300"
-                  style={{ width: '38.8%' }}
-                ></div>
-              </div>
-            </div>
-            
-            {/* Mint Button */}
-            <button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-full text-sm transition-colors">
-              Mint Now
-            </button>
-          </div>
-
-          {/* No Code Setup Card */}
-          <div className="bg-teal-100 rounded-xl p-4 shadow-md">
-            <div className="w-full h-24 flex items-center justify-center">
-              <span className="text-3xl">🌱</span>
-            </div>
-            <h3 className="text-base font-bold text-gray-900 mt-2">No Code Setup</h3>
-            <p className="text-gray-500 text-xs">
-              0,0 SOL / MIN
-            </p>
-            <div className="mt-2">
-              <div className="bg-teal-200 rounded-full w-12 h-4"></div>
-              <div className="text-gray-900 font-bold mt-1 text-sm">40 SOL</div>
+            {/* Tabs aligned to the end */}
+            <div className="flex items-center gap-2">
+              {['live','upcoming','ended'].map((tab) => (
+                <button
+                  key={tab}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize transition-colors whitespace-nowrap ${
+                    activeTab === tab
+                      ? 'bg-[#0186EF] text-white'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Exhibitions & Events Card */}
-          <div className="bg-indigo-100 rounded-xl p-4 shadow-md">
-            <div className="w-full h-24 flex items-center justify-center">
-              <span className="text-3xl">✨</span>
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-gray-200 rounded-xl p-4 shadow-md animate-pulse">
+                  <div className="h-32 bg-gray-300 rounded mb-3"></div>
+                  <div className="h-4 bg-gray-300 rounded mb-2"></div>
+                  <div className="h-3 bg-gray-300 rounded w-3/4"></div>
+                </div>
+              ))}
             </div>
-            <h3 className="text-base font-bold text-gray-900 mt-2">Exhibitions & Events</h3>
-            <p className="text-gray-500 text-xs">
-              55 SOL MIN
-            </p>
-            <div className="mt-2">
-              <div className="bg-indigo-200 rounded-full w-12 h-4"></div>
-              <div className="text-gray-900 font-bold mt-1 text-sm">0,05 SOL</div>
+          ) : filteredCollections.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {filteredCollections.map((collection, index) => {
+                const progress = (collection.minted_count / collection.total_supply) * 100
+                const status = getStatusBadge(collection)
+                const gradients = [
+                  'from-purple-500 to-blue-500',
+                  'from-green-500 to-teal-500', 
+                  'from-orange-500 to-red-500'
+                ]
+                
+                return (
+                  <Link key={collection.id} href={`/mint/${collection.candy_machine_id}`}>
+                    <div className={`bg-gradient-to-r ${gradients[index % 3]} rounded-xl p-4 shadow-md hover:shadow-lg transition-shadow cursor-pointer`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <h2 className="text-lg font-bold text-white truncate">{collection.name}</h2>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          status === 'live' ? 'bg-green-100 text-green-800' :
+                          status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {status}
+                        </span>
+                      </div>
+                      
+                      {/* NFT Image */}
+                      <div className="w-full h-32 flex items-center justify-center relative overflow-hidden rounded-lg mb-3">
+                        {collection.image_uri ? (
+                          <OptimizedImage
+                            src={collection.image_uri}
+                            alt={collection.name}
+                            width={200}
+                            height={128}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-white text-4xl">🎨</div>
+                        )}
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="mb-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-white text-xs font-semibold">{progress.toFixed(0)}% minted</span>
+                          <span className="text-white text-xs font-bold">{collection.minted_count.toLocaleString()} / {collection.total_supply.toLocaleString()}</span>
+                        </div>
+                        <div className="w-full bg-white/30 rounded-full h-2">
+                          <div 
+                            className="bg-white h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, progress)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      
+                      {/* Mint Button */}
+                      <button className="w-full bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-full text-sm transition-colors backdrop-blur-sm">
+                        {status === 'live' ? 'Mint Now' : status === 'upcoming' ? 'Coming Soon' : 'Sold Out'}
+                      </button>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
-          </div>
-        </div>
-        
-        {/* Explore Mints Section */}
-        <div className="mt-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Explore Mints</h2>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* No Code Mint Card */}
-            <div className="bg-blue-100 rounded-xl p-4 shadow-md">
-              <div className="w-full h-20 flex items-center justify-center">
-                <span className="text-3xl">🌐</span>
-              </div>
-              <h3 className="text-base font-bold text-gray-900 mt-2">No Code Mint</h3>
-              <p className="text-gray-500 text-xs">
-                0,15 SOL / MIN
-              </p>
-              <div className="mt-2">
-                <div className="bg-blue-200 rounded-full w-12 h-4"></div>
-                <div className="text-gray-900 font-bold mt-1 text-sm">33,SOL</div>
-              </div>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-gray-400 text-4xl mb-2">🎨</div>
+              <p className="text-gray-500">No {activeTab} collections available</p>
+            </div>
+          )}
+
+          {/* Explore Mints Section */}
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Explore NFTs</h2>
+              <Link href="/marketplace" className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                View All →
+              </Link>
             </div>
             
-            {/* MintgAme Card */}
-            <div className="bg-green-100 rounded-xl p-4 shadow-md">
-              <div className="w-full h-20 flex items-center justify-center">
-                <span className="text-3xl">🌳</span>
+            {loading ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="bg-gray-200 rounded-xl p-4 shadow-md animate-pulse">
+                    <div className="h-20 bg-gray-300 rounded mb-2"></div>
+                    <div className="h-4 bg-gray-300 rounded mb-1"></div>
+                    <div className="h-3 bg-gray-300 rounded w-2/3"></div>
+                  </div>
+                ))}
               </div>
-              <h3 className="text-base font-bold text-gray-900 mt-2">MintgAme</h3>
-              <p className="text-gray-500 text-xs">
-                0,10 SOL / MIN
-              </p>
-              <div className="mt-2">
-                <div className="bg-green-200 rounded-full w-12 h-4"></div>
-                <div className="text-gray-900 font-bold mt-1 text-sm">11 SOL</div>
+            ) : exploreNFTs.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {exploreNFTs.map((nft, index) => {
+                  const bgColors = [
+                    'bg-blue-100',
+                    'bg-green-100', 
+                    'bg-purple-100',
+                    'bg-orange-100'
+                  ]
+                  const accentColors = [
+                    'bg-blue-200',
+                    'bg-green-200',
+                    'bg-purple-200', 
+                    'bg-orange-200'
+                  ]
+                  
+                  return (
+                    <Link key={nft.id} href={`/mint/${nft.candy_machine_id}`}>
+                      <div className={`${bgColors[index % 4]} rounded-xl p-4 shadow-md hover:shadow-lg transition-shadow cursor-pointer`}>
+                        <div className="w-full h-20 flex items-center justify-center rounded-lg overflow-hidden mb-2">
+                          {nft.image_uri ? (
+                            <OptimizedImage
+                              src={nft.image_uri}
+                              alt={nft.name}
+                              width={80}
+                              height={80}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-3xl">🎨</span>
+                          )}
+                        </div>
+                        <h3 className="text-base font-bold text-gray-900 truncate">{nft.name}</h3>
+                        <p className="text-gray-500 text-xs truncate">
+                          {nft.collection_name}
+                        </p>
+                        <div className="mt-2">
+                          <div className={`${accentColors[index % 4]} rounded-full w-12 h-2`}></div>
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                })}
               </div>
-            </div>
-            
-            {/* Zuno Coin Rewards Card */}
-            <div className="bg-blue-500 rounded-xl p-4 shadow-md">
-              <div className="w-full h-20 flex items-center justify-center">
-                <span className="text-white text-3xl font-bold">Z</span>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-gray-400 text-4xl mb-2">🎨</div>
+                <p className="text-gray-500">No NFTs available to explore</p>
+                <Link href="/creator" className="text-blue-600 hover:text-blue-700 text-sm font-medium mt-2 inline-block">
+                  Create your first collection →
+                </Link>
               </div>
-              <h3 className="text-base font-bold text-white mt-2">Zuno Coin Rewards</h3>
-              <p className="text-white/80 text-xs">
-                Priority access
-              </p>
-            </div>
-            
-            {/* Memeable Mascots Card */}
-            <div className="bg-yellow-100 rounded-xl p-4 shadow-md">
-              <div className="w-full h-20 flex items-center justify-center">
-                <span className="text-3xl">😃</span>
-              </div>
-              <h3 className="text-base font-bold text-gray-900 mt-2">Memeable Mascots</h3>
-            </div>
+            )}
           </div>
         </div>
       </div>
     </section>
   )
 }
+

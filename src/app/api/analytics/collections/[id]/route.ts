@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { SupabaseService } from '@/lib/supabase-service';
 
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     if (!id) {
       return new Response(JSON.stringify({ success: false, error: 'Missing collection id' }), {
         status: 400,

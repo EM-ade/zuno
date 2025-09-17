@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import ImageWithFallback from '@/components/ImageWithFallback';
+import BulkNFTUpload from '@/components/BulkNFTUpload';
 
 type Section = 'create' | 'exhibition' | 'projects' | 'analytics';
 
@@ -81,6 +82,18 @@ export default function Dashboard() {
   const [itemsLoading, setItemsLoading] = useState<boolean>(false);
   const [itemsError, setItemsError] = useState<string>('');
   const [itemsList, setItemsList] = useState<Array<{ id: string; name: string; image_uri: string | null }>>([]);
+
+  // Bulk upload modal state
+  const [showBulkUploadForId, setShowBulkUploadForId] = useState<string | null>(null);
+  const [selectedCollection, setSelectedCollection] = useState<UiCollection | null>(null);
+
+  // Phase editor modal state
+  const [showPhaseEditorForId, setShowPhaseEditorForId] = useState<string | null>(null);
+  const [editingPhases, setEditingPhases] = useState<Array<{ name: string; price: number; startTime: string; endTime?: string; allowList?: string[]; mintLimit?: number }>>([]);
+
+  // Collection analytics modal state
+  const [showAnalyticsForId, setShowAnalyticsForId] = useState<string | null>(null);
+  const [collectionAnalytics, setCollectionAnalytics] = useState<any>(null);
 
   const loadItems = async (collectionId: string, page = 1) => {
     try {
@@ -184,6 +197,59 @@ export default function Dashboard() {
     };
     loadCollections();
   }, [publicKey]);
+
+  // New functions for enhanced functionality
+  const openBulkUpload = (collection: UiCollection) => {
+    setSelectedCollection(collection);
+    setShowBulkUploadForId(collection.id);
+  };
+
+  const openPhaseEditor = (collection: UiCollection) => {
+    const phases = (collection.phases || []).map(phase => ({
+      name: phase.name,
+      price: phase.price,
+      startTime: phase.start_time,
+      endTime: phase.end_time || undefined,
+      allowList: undefined,
+      mintLimit: undefined
+    }));
+    setEditingPhases(phases);
+    setShowPhaseEditorForId(collection.id);
+  };
+
+  const openCollectionAnalytics = async (collection: UiCollection) => {
+    try {
+      const res = await fetch(`/api/analytics/collections/${collection.id}`);
+      const data = await res.json();
+      setCollectionAnalytics(data);
+      setShowAnalyticsForId(collection.id);
+    } catch (error) {
+      console.error('Failed to load analytics:', error);
+    }
+  };
+
+  const handleBulkUploadComplete = (results: any) => {
+    alert(`Successfully uploaded ${results.uploaded} NFTs!`);
+    setShowBulkUploadForId(null);
+    // Refresh collections
+    if (publicKey) {
+      const loadCollections = async () => {
+        const statuses: Array<'active' | 'draft' | 'completed'> = ['active', 'draft', 'completed'];
+        const [activeRes, draftRes, completedRes] = await Promise.all(
+          statuses.map((s) => fetch(`/api/collections?creator=${publicKey.toString()}&status=${s}`))
+        );
+        const [activeJson, draftJson, completedJson] = await Promise.all([
+          activeRes.json(),
+          draftRes.json(),
+          completedRes.json(),
+        ]);
+        setMyCollections(activeJson.collections || []);
+        setDraftCollections(draftJson.collections || []);
+        setCompletedCollections(completedJson.collections || []);
+      };
+      loadCollections();
+    }
+  };
 
   // Live analytics fetched from API per collection id
   const [analytics, setAnalytics] = useState({ totalMints: 0, totalSupply: 0, progressPct: 0, estRevenue: 0 });
@@ -437,8 +503,57 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="mt-6 flex gap-3">
-                <button className="zuno-button zuno-button-secondary" onClick={()=>alert('This is a UI-only demo. Persisting exhibitions would require a new API/table.')}>Save Draft</button>
-                <button className="zuno-button zuno-button-primary" onClick={()=>alert('Preview coming soon.')}>Preview</button>
+                <button 
+                  className="zuno-button zuno-button-secondary" 
+                  onClick={() => {
+                    // Save exhibition data to localStorage for now
+                    const exhibitionData = {
+                      title: exhibitionTitle,
+                      description: exhibitionDescription,
+                      start: exhibitionStart,
+                      end: exhibitionEnd,
+                      banner: exhibitionBanner,
+                      collections: selectedCollections,
+                      createdAt: new Date().toISOString()
+                    };
+                    localStorage.setItem(`exhibition_${Date.now()}`, JSON.stringify(exhibitionData));
+                    alert('Exhibition saved as draft!');
+                  }}
+                >
+                  Save Draft
+                </button>
+                <button 
+                  className="zuno-button zuno-button-primary" 
+                  onClick={() => {
+                    if (!exhibitionTitle || selectedCollections.length === 0) {
+                      alert('Please add a title and select at least one collection');
+                      return;
+                    }
+                    // Create a preview URL with exhibition data
+                    const previewData = {
+                      title: exhibitionTitle,
+                      description: exhibitionDescription,
+                      banner: exhibitionBanner,
+                      collections: selectedCollections
+                    };
+                    const encodedData = btoa(JSON.stringify(previewData));
+                    window.open(`/exhibition/preview?data=${encodedData}`, '_blank');
+                  }}
+                >
+                  Preview Exhibition
+                </button>
+                <button 
+                  className="zuno-button zuno-button-primary" 
+                  onClick={() => {
+                    if (!exhibitionTitle || selectedCollections.length === 0) {
+                      alert('Please add a title and select at least one collection');
+                      return;
+                    }
+                    alert('Publishing exhibitions will be available soon! For now, use the preview feature.');
+                  }}
+                >
+                  Publish
+                </button>
               </div>
             </div>
             <div className="zuno-card p-6">
@@ -497,11 +612,12 @@ export default function Dashboard() {
                                 </div>
                               </div>
                             </div>
-                            <div className="mt-3 flex items-center justify-end gap-2">
+                            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                               <Link href={`/mint/${c.candy_machine_id}`} className="zuno-button zuno-button-primary text-xs">View Mint</Link>
-                              <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>alert('Phase editor coming soon')}>Edit Phases</button>
-                              <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>{ setShowUploadForId(c.id); setUploadFiles([]); setUploadSummary(null); setUploadError(''); }}>Upload Items</button>
+                              <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>openPhaseEditor(c)}>Edit Phases</button>
+                              <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>openBulkUpload(c)}>Bulk Upload</button>
                               <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>{ setShowItemsForId(c.id); loadItems(c.id, 1); }}>View Items</button>
+                              <button className="zuno-button zuno-button-secondary text-xs" onClick={()=>openCollectionAnalytics(c)}>Analytics</button>
                               {c.status === 'draft' && (
                                 <button disabled={updatingStatusId===c.id} className="zuno-button zuno-button-secondary text-xs disabled:opacity-50" onClick={()=>updateStatus(c.id, 'active')}>{updatingStatusId===c.id? 'Updating…' : 'Activate'}</button>
                               )}
@@ -630,7 +746,8 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="mt-6">
-                  <div className={`text-sm font-semibold ${brandPrimary} mb-2`}>Mint Phases</div>
+                  <div className={`text-sm font-semibold ${brandPrimary} mb-2`}>Mint Phases (Optional)</div>
+                  <div className="text-xs text-black/60 mb-3">Add phases for different pricing tiers (OG, Whitelist, Public). Leave empty for simple collections.</div>
                   {mintPhases.map((phase, idx)=> (
                     <div key={idx} className="bg-white/70 border border-black/10 rounded-xl p-3 mb-3">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -638,9 +755,30 @@ export default function Dashboard() {
                         <input type="number" value={phase.price} onChange={(e)=>updateMintPhase(idx,'price', parseFloat(e.target.value||'0'))} placeholder="0.3" className="bg-white/90 border border-black/10 rounded-lg p-2 text-black placeholder-black/50" />
                         <input type="datetime-local" value={phase.startTime} onChange={(e)=>updateMintPhase(idx,'startTime', e.target.value)} className="bg-white/90 border border-black/10 rounded-lg p-2 text-black" />
                       </div>
+                      <div className="mt-2 flex justify-end">
+                        <button 
+                          onClick={() => {
+                            const updated = mintPhases.filter((_, i) => i !== idx);
+                            setMintPhases(updated);
+                          }}
+                          className="text-red-500 hover:text-red-700 text-xs"
+                        >
+                          Remove Phase
+                        </button>
+                      </div>
                     </div>
                   ))}
-                  <button onClick={addMintPhase} className="zuno-button zuno-button-primary">Add Phase</button>
+                  <div className="flex gap-2">
+                    <button onClick={addMintPhase} className="zuno-button zuno-button-primary">Add Phase</button>
+                    {mintPhases.length > 0 && (
+                      <button 
+                        onClick={() => setMintPhases([])} 
+                        className="zuno-button zuno-button-secondary"
+                      >
+                        Clear All Phases
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between">
                   <button onClick={()=>setActiveStep(1)} className="zuno-button zuno-button-primary">Back</button>
@@ -684,6 +822,182 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Upload Modal */}
+      {showBulkUploadForId && selectedCollection && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-xl font-bold text-gray-900">
+                Bulk Upload NFTs to {selectedCollection.name}
+              </h3>
+              <button
+                onClick={() => setShowBulkUploadForId(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              <BulkNFTUpload
+                collectionAddress={selectedCollection.candy_machine_id}
+                onUploadComplete={handleBulkUploadComplete}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase Editor Modal */}
+      {showPhaseEditorForId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Edit Mint Phases</h3>
+              <button
+                onClick={() => setShowPhaseEditorForId(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {editingPhases.map((phase, idx) => (
+                <div key={idx} className="border border-gray-200 rounded-lg p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Phase Name</label>
+                      <input
+                        value={phase.name}
+                        onChange={(e) => {
+                          const updated = [...editingPhases];
+                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          setEditingPhases(updated);
+                        }}
+                        placeholder="OG, WL, Public"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Price (SOL)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={phase.price}
+                        onChange={(e) => {
+                          const updated = [...editingPhases];
+                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value || '0') };
+                          setEditingPhases(updated);
+                        }}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Start Time</label>
+                      <input
+                        type="datetime-local"
+                        value={phase.startTime}
+                        onChange={(e) => {
+                          const updated = [...editingPhases];
+                          updated[idx] = { ...updated[idx], startTime: e.target.value };
+                          setEditingPhases(updated);
+                        }}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={() => {
+                        const updated = editingPhases.filter((_, i) => i !== idx);
+                        setEditingPhases(updated);
+                      }}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                    >
+                      Remove Phase
+                    </button>
+                  </div>
+                </div>
+              ))}
+              
+              <button
+                onClick={() => setEditingPhases([...editingPhases, { name: '', price: 0, startTime: '' }])}
+                className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 text-gray-500 hover:border-blue-500 hover:text-blue-500"
+              >
+                + Add New Phase
+              </button>
+              
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={() => setShowPhaseEditorForId(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    // TODO: Save phases to API
+                    alert('Phase saving functionality coming soon!');
+                    setShowPhaseEditorForId(null);
+                  }}
+                  className="px-4 py-2 bg-[#0186EF] text-white rounded-lg hover:brightness-95"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collection Analytics Modal */}
+      {showAnalyticsForId && collectionAnalytics && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Collection Analytics</h3>
+              <button
+                onClick={() => setShowAnalyticsForId(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="text-sm font-medium text-blue-600">Total Mints</div>
+                <div className="text-2xl font-bold text-blue-900">{collectionAnalytics.totalMints || 0}</div>
+              </div>
+              <div className="bg-green-50 rounded-lg p-4">
+                <div className="text-sm font-medium text-green-600">Revenue (SOL)</div>
+                <div className="text-2xl font-bold text-green-900">{(collectionAnalytics.revenue || 0).toFixed(2)}</div>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-4">
+                <div className="text-sm font-medium text-purple-600">Completion</div>
+                <div className="text-2xl font-bold text-purple-900">{collectionAnalytics.completionRate || 0}%</div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="font-semibold mb-3">Recent Activity</h4>
+              <div className="space-y-2">
+                {collectionAnalytics.recentMints?.length > 0 ? (
+                  collectionAnalytics.recentMints.map((mint: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
+                      <span className="text-sm">{mint.wallet}</span>
+                      <span className="text-sm text-gray-500">{mint.amount} minted</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-gray-500 text-sm">No recent activity</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --zuno-blue: #e2f2ff;
+  --zuno-blue: #0186EF;
   --zuno-dark-blue: #0077E6;
   --zuno-light: #f8fafc;
   --zuno-green: #7ED957;
@@ -37,9 +37,10 @@
 
 body {
   background: var(--zuno-blue);
-  color: white;
+  color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   overflow-x: hidden;
+  
 }
 
 /* Card styles */
@@ -78,11 +79,12 @@ body {
 
 .zuno-button-secondary {
   background-color: #0077E6;
-  color: var(--zuno-blue);
+  color: white;
 }
 
 .zuno-button-secondary:hover {
   background-color: var(--zuno-light);
+  color: #0077E6;
 }
 
 /* Mobile-first responsive design */

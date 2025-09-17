@@ -33,9 +33,8 @@ export default function ImageWithFallback({ src, alt, width, height, className, 
   const sources = useMemo(() => {
     if (cid) {
       const account = pinataGateway ? `https://${pinataGateway}/ipfs/${cid}` : null;
-      // Prefer signed URL first for private assets, then fall back to gateways
+      // Use public gateways directly - no signed URLs needed
       return [
-        '__SIGNED__',
         account,
         `https://gateway.pinata.cloud/ipfs/${cid}`,
         `https://ipfs.io/ipfs/${cid}`,
@@ -46,29 +45,7 @@ export default function ImageWithFallback({ src, alt, width, height, className, 
   }, [cid, pinataGateway, src]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const currentKey = sources[currentIndex];
-  const currentSrc = currentKey === '__SIGNED__' ? (signedUrl || null) : (currentKey ?? null);
-
-  // When targeting the signed URL slot and we don't have it yet, request it immediately
-  useEffect(() => {
-    let cancelled = false;
-    const fetchSigned = async () => {
-      if (currentKey === '__SIGNED__' && cid && !signedUrl) {
-        try {
-          const res = await fetch(`/api/pinata/signed-url?cid=${encodeURIComponent(cid)}&ttl=300`);
-          const json = await res.json();
-          if (!cancelled && json?.success && json?.signedUrl) {
-            setSignedUrl(json.signedUrl as string);
-          }
-        } catch (_) {
-          // ignore, onError will advance
-        }
-      }
-    };
-    fetchSigned();
-    return () => { cancelled = true; };
-  }, [currentKey, cid, signedUrl]);
+  const currentSrc = sources[currentIndex] || null;
 
   return (
     currentSrc ? (
