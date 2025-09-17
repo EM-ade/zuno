@@ -13,7 +13,7 @@ interface NFTItem {
 
 interface BulkNFTUploadProps {
   collectionAddress: string
-  onUploadComplete?: (results: any) => void
+  onUploadComplete?: (results: { uploaded: number }) => void
 }
 
 export default function BulkNFTUpload({ 
@@ -103,7 +103,7 @@ export default function BulkNFTUpload({
         items.map(async (item) => {
           if (!item.file) throw new Error(`No file selected for ${item.name}`)
           
-          return new Promise<any>((resolve, reject) => {
+          return new Promise<{ name: string; description: string; imageData: string; attributes: Array<{ trait_type: string; value: string }> }>((resolve, reject) => {
             const reader = new FileReader()
             reader.onload = () => {
               resolve({
@@ -163,7 +163,7 @@ export default function BulkNFTUpload({
 
       {items.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
-          No NFTs added yet. Click "Add NFT" to get started.
+          No NFTs added yet. Click &quot;Add NFT&quot; to get started.
         </div>
       ) : (
         <div className="space-y-6">
@@ -178,6 +178,7 @@ export default function BulkNFTUpload({
                   Remove
                 </button>
               </div>
+              <p className="text-gray-600 mb-4">Upload multiple NFT images. Supported formats: JPG, PNG, GIF. Each image will be automatically numbered (e.g., &quot;Item #1&quot;, &quot;Item #2&quot;).</p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Image Upload */}

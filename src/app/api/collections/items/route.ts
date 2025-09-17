@@ -29,12 +29,7 @@ export async function POST(request: NextRequest) {
       description: description || '',
       image_uri: image_uri || null,
       metadata_uri: null, // Will be set when uploaded to IPFS
-      attributes: attributes || [],
-      external_url: external_url || null,
-      animation_url: animation_url || null,
-      creator_wallet,
-      minted: false,
-      rarity_rank: null
+      attributes: attributes || []
     });
 
     return new Response(

@@ -32,6 +32,10 @@ interface Collection {
   phases: Phase[]
   minted_count: number
   items_count: number
+  website_url?: string | null
+  twitter_url?: string | null
+  discord_url?: string | null
+  instagram_url?: string | null
 }
 
 interface NFTPreview {
@@ -44,7 +48,7 @@ interface NFTPreview {
 export default function MintPage() {
   const params = useParams()
   const collectionAddress = params.address as string
-  const { publicKey, connected, sendTransaction, signTransaction, disconnect } = useWallet()
+  const { publicKey, connected, sendTransaction, disconnect } = useWallet()
   const { connection } = useConnection()
   const { setVisible } = useWalletModal()
 
@@ -56,8 +60,8 @@ export default function MintPage() {
   const [activePhase, setActivePhase] = useState<Phase | null>(null)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState<string>('')
-  // Mobile UI helpers
   const [solPrice, setSolPrice] = useState<number | null>(null)
+  // Mobile UI helpers
   // Carousel & quantity selection UI
   const [carouselIndex, setCarouselIndex] = useState(0)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -239,7 +243,7 @@ export default function MintPage() {
 
       if (recordResult.success) {
         // Show success with NFT details
-        const nftNames = result.selectedItems.map((item: any) => item.name).join(', ')
+        const nftNames = result.selectedItems.map((item: { name: string }) => item.name).join(', ')
         setSuccess(`Successfully minted: ${nftNames}! Check your wallet for the new NFTs.`)
 
         console.log('Minted NFTs:', result.selectedItems)
@@ -256,11 +260,12 @@ export default function MintPage() {
       // Refresh collection data
       loadCollection()
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Mint failed:', error)
-      if (error.message?.includes('User rejected')) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage?.includes('User rejected')) {
         setError('Transaction was cancelled by user')
-      } else if (error.message?.includes('insufficient funds')) {
+      } else if (errorMessage?.includes('insufficient funds')) {
         setError('Insufficient SOL balance for this transaction')
       } else {
         setError('Mint failed. Please try again.')
@@ -293,7 +298,7 @@ export default function MintPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Collection Not Found</h1>
-          <p className="text-gray-600 mb-6">The collection you're looking for doesn't exist or has been removed.</p>
+          <p className="text-gray-600 mb-6">The collection you&apos;re looking for doesn&apos;t exist or has been removed.</p>
           <Link href="/marketplace" className="text-blue-600 hover:text-blue-700">
             ← Back to Marketplace
           </Link>
@@ -893,7 +898,7 @@ export default function MintPage() {
                   </svg>
                 </div>
                 <div className="text-xl font-bold text-red-800 mb-2">SOLD OUT!</div>
-                <div className="text-red-600 mb-4">This collection has been completely minted out.</div>
+                <p className="text-gray-600">You&apos;ll receive a random NFT from this collection. Each NFT is unique and can only be minted once!</p>
                 <div className="flex justify-center space-x-4">
                   <a 
                     href={`https://magiceden.io/collections/solana/${collection.collection_mint_address}`}

@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -24,7 +24,7 @@ interface Collection {
   status: string
 }
 
-export default function ExhibitionPreview() {
+function ExhibitionPreviewContent() {
   const searchParams = useSearchParams()
   const [exhibitionData, setExhibitionData] = useState<ExhibitionData | null>(null)
   const [collections, setCollections] = useState<Collection[]>([])
@@ -233,5 +233,17 @@ export default function ExhibitionPreview() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ExhibitionPreview() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <ExhibitionPreviewContent />
+    </Suspense>
   )
 }

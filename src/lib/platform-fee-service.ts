@@ -15,7 +15,7 @@ export interface FeeDistribution {
 
 export class PlatformFeeService {
   private static platformWallet =
-    process.env.PLATFORM_WALLET || "PLATFORM_WALLET_NOT_SET";
+    process.env.PLATFORM_WALLET || "4mHpjYdrBDa5REkpCSnv9GsFNerXhDdTNG5pS8jhyxEe";
   private static feePercentage = 2.5; // 2.5% platform fee
   private static minFee = 0.01; // 0.01 SOL minimum fee
   private static maxFee = 0.1; // 0.1 SOL maximum fee

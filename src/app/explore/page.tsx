@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import ImageWithFallback from '@/components/ImageWithFallback';
+import { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
+import { useWallet } from '@solana/wallet-adapter-react'
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import OptimizedImage from '@/components/OptimizedImage';
 
 type StatusTab = 'live' | 'upcoming' | 'ended';
@@ -53,9 +54,6 @@ function resolveImageUrl(u?: string) {
   if (u.startsWith('ipfs://')) {
     const cid = u.replace('ipfs://', '').replace(/^ipfs\//, '');
     return `https://${PINATA_GATEWAY}/ipfs/${cid}`;
-  }
-  if (/^\w{46,}$/.test(u)) {
-    return `https://${PINATA_GATEWAY}/ipfs/${u}`;
   }
   return u;
 }
@@ -226,7 +224,7 @@ export default function ExplorePage() {
           <>
             <h2 className="text-xl font-bold text-black/80 mb-3">Launchpads</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-              {featured.map((c) => (
+              {featured.map((c: UiCollection) => (
                 <CollectionCard key={c.id} item={c} />
               ))}
             </div>
@@ -243,7 +241,7 @@ export default function ExplorePage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {rest.map((c) => (
+                {rest.map((c: UiCollection) => (
                   <CollectionCard key={c.id} item={c} compact />
                 ))}
               </div>

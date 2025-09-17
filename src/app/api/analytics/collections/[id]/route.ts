@@ -11,13 +11,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       });
     }
 
-    const [collection, phases, txs] = await Promise.all([
-      // Reuse service methods to retrieve data
-      (async () => {
-        // We only have getCollectionByMintAddress; add a small lookup via status endpoints if needed.
-        // For analytics, we just need ID validity; so try fetching phases. If none, still proceed.
-        return { id } as any;
-      })(),
+    const [phases, txs] = await Promise.all([
+      // Get collection data directly from phases and transactions
       SupabaseService.getMintPhasesByCollectionId(id),
       SupabaseService.getMintTransactionsByCollection(id),
     ]);

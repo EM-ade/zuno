@@ -71,8 +71,7 @@ export async function POST(request: NextRequest) {
       endDate,
       whitelistEnabled,
       whitelistPrice,
-      whitelistSpots,
-      metadata
+      whitelistSpots
     } = body;
 
     // Validate required fields
@@ -90,8 +89,7 @@ export async function POST(request: NextRequest) {
       try {
         const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
         const imageBuffer = Buffer.from(base64Data, 'base64');
-        const imageResult = await pinataService.uploadFile(imageBuffer, `${symbol}-collection.png`);
-        imageUri = `https://${process.env.NEXT_PUBLIC_PINATA_GATEWAY}/ipfs/${imageResult.IpfsHash}`;
+        imageUri = await pinataService.uploadFile(imageBuffer, `${symbol}-collection.png`, 'image/png');
       } catch (error) {
         console.error('Image upload failed:', error);
         // Continue without image
@@ -99,6 +97,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Create collection on blockchain
+    const mintPhases = [];
+    if (mintPrice && isPublic) {
+      mintPhases.push({
+        name: 'Public Mint',
+        price: mintPrice,
+        startTime: startDate || new Date().toISOString(),
+        endTime: endDate || null,
+        allowList: undefined,
+        mintLimit: undefined
+      });
+    }
+    if (whitelistEnabled && whitelistPrice) {
+      mintPhases.push({
+        name: 'Whitelist Mint',
+        price: whitelistPrice,
+        startTime: startDate || new Date().toISOString(),
+        endTime: endDate || null,
+        allowList: [],
+        mintLimit: whitelistSpots || undefined
+      });
+    }
+
     const collectionResult = await metaplexCoreService.createCollection({
       name: collectionName,
       symbol,
@@ -106,7 +126,8 @@ export async function POST(request: NextRequest) {
       totalSupply,
       royaltyPercentage: royaltyPercentage || 5,
       creatorWallet,
-      imageUri
+      imageUri,
+      phases: mintPhases
     });
 
     // Store in database

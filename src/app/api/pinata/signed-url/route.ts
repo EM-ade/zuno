@@ -1,32 +1,39 @@
 import { NextRequest } from 'next/server';
-import { pinataService } from '@/lib/pinata-service';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cid = searchParams.get('cid');
-    const ttl = searchParams.get('ttl');
 
     if (!cid) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing cid' }), {
+      return new Response(JSON.stringify({ success: false, error: 'Missing CID parameter' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const expiresSeconds = ttl ? Math.max(10, Math.min(3600, Number(ttl))) : 60; // clamp 10..3600s
-    const signedUrl = await pinataService.createPrivateAccessLink({ cid, expiresSeconds });
+    // Since using public Pinata, just return the public gateway URL
+    const gateway = process.env.PINATA_GATEWAY || process.env.NEXT_PUBLIC_PINATA_GATEWAY || 'gateway.pinata.cloud';
+    const publicUrl = `https://${gateway}/ipfs/${cid}`;
 
-    return new Response(JSON.stringify({ success: true, signedUrl, expiresSeconds }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      signedUrl: publicUrl,
+      publicUrl: publicUrl,
+      expiresSeconds: null // Public URLs don't expire
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ success: false, error: message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    console.error('Error creating public URL:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to create public URL' 
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
 

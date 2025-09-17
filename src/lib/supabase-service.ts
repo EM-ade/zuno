@@ -17,7 +17,7 @@ export interface CollectionRecord {
   discord_url?: string | null;
   website_url?: string | null;
   instagram_url?: string | null;
-  status: 'draft' | 'pending' | 'approved' | 'rejected';
+  status: 'draft' | 'active' | 'completed' | 'archived';
   created_at?: string;
   updated_at?: string;
 }
@@ -29,7 +29,7 @@ export interface ItemRecord {
   description?: string | null;
   image_uri?: string | null;
   metadata_uri?: string | null;
-  attributes?: any;
+  attributes?: Record<string, unknown>;
   item_index?: number | null;
   owner_wallet?: string | null;
   mint_signature?: string | null;
@@ -106,21 +106,6 @@ export class SupabaseService {
     return data;
   }
 
-  static async getItemsByCollection(collectionId: string, page = 1, limit = 50) {
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-    const { data, error, count } = await supabase
-      .from('items')
-      .select('*', { count: 'exact' })
-      .eq('collection_id', collectionId)
-      .order('item_index', { ascending: true })
-      .range(from, to);
-    if (error) {
-      console.error('Error fetching items:', error);
-      throw new Error(`Failed to fetch items: ${error.message}`);
-    }
-    return { items: data || [], total: count || 0 };
-  }
 
   static async getCollectionByMintAddress(collectionMintAddress: string) {
     const { data, error } = await supabase
@@ -229,7 +214,7 @@ export class SupabaseService {
   }
 
   static async updateItemMintStatus(itemId: string, minted: boolean, ownerWallet?: string, mintSignature?: string) {
-    const updateData: any = { 
+    const updateData: Partial<ItemRecord> = { 
       updated_at: new Date().toISOString()
     };
     
@@ -291,87 +276,11 @@ export class SupabaseService {
 
     return {
       items: data || [],
-      total: count || 0
+      total: count || 0,
+      hasNextPage: (count || 0) > limit
     };
   }
 
-  static async createCollectionItem(itemData: {
-    collection_id: string;
-    name: string;
-    description: string;
-    image_uri: string | null;
-    metadata_uri: string | null;
-    attributes: Array<{ trait_type: string; value: string | number }>;
-    external_url?: string | null;
-    animation_url?: string | null;
-    creator_wallet: string;
-    minted?: boolean;
-    rarity_rank?: number | null;
-  }) {
-    // Remove fields that don't exist in your schema
-    const { animation_url, minted, rarity_rank, creator_wallet, ...safeItemData } = itemData;
-    
-    console.log(`Creating item for creator: ${creator_wallet}`);
-    
-    const { data, error } = await supabaseServer
-      .from('items')
-      .insert({
-        ...safeItemData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating collection item:', error);
-      throw new Error(`Failed to create collection item: ${error.message}`);
-    }
-
-    return data;
-  }
-
-  static async createMintTransaction(transactionData: {
-    collection_id: string;
-    user_wallet: string;
-    phase_id: string | null;
-    signature: string;
-    amount_paid: number;
-    platform_fee: number;
-    quantity: number;
-    minted_items: string[];
-  }) {
-    try {
-      // Try to create the mint transaction record
-      const { data, error } = await supabaseServer
-        .from('mint_transactions')
-        .insert({
-          collection_id: transactionData.collection_id,
-          user_wallet: transactionData.user_wallet,
-          phase_id: transactionData.phase_id,
-          signature: transactionData.signature,
-          amount_paid: transactionData.amount_paid,
-          platform_fee: transactionData.platform_fee,
-          quantity: transactionData.quantity,
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error creating mint transaction (table may not exist):', error);
-        // Don't throw error - just log it and continue
-        console.log('Mint transaction not recorded, but mint can continue');
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Mint transaction recording failed:', error);
-      // Don't throw - allow mint to continue without transaction recording
-      return null;
-    }
-  }
 
   static async updateCollectionStatus(collectionId: string, status: CollectionRecord['status']) {
     const { data, error } = await supabaseServer

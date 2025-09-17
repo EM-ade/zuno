@@ -1,9 +1,44 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
-import Link from 'next/link'
 import OptimizedImage from '@/components/OptimizedImage'
+
+interface TopCollection {
+  name: string
+  mintedCount: number
+  totalSupply: number
+  progress: number
+  estimatedEarnings: number
+}
+
+interface RecentActivity {
+  type: string
+  collection: string
+  amount: number
+  timestamp: string
+}
+
+interface CollectionBreakdown {
+  id: string
+  name: string
+  mintedCount: number
+  progress: number
+  estimatedEarnings: number
+}
+
+interface CreatorAnalytics {
+  totalCollections: number
+  totalMints: number
+  totalEarnings: number
+  totalVolume: number
+  averageMintPrice: number
+  topCollection: TopCollection | null
+  recentActivity: RecentActivity[]
+  monthlyStats: Record<string, { mints: number; earnings: number }>
+  collectionBreakdown: CollectionBreakdown[]
+}
 
 interface Collection {
   id: string
@@ -27,7 +62,9 @@ export default function CreatorDashboard() {
   const { setVisible } = useWalletModal()
   const [activeTab, setActiveTab] = useState<Tab>('collections')
   const [collections, setCollections] = useState<Collection[]>([])
+  const [analytics, setAnalytics] = useState<CreatorAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [stats, setStats] = useState({
     totalCollections: 0,
     totalVolume: 0,
@@ -35,15 +72,7 @@ export default function CreatorDashboard() {
     totalItems: 0
   })
 
-  useEffect(() => {
-    if (publicKey) {
-      loadCreatorData()
-    } else {
-      setLoading(false)
-    }
-  }, [publicKey])
-
-  const loadCreatorData = async () => {
+  const loadCollections = useCallback(async () => {
     try {
       setLoading(true)
       const [collectionsRes, statsRes] = await Promise.all([
@@ -65,7 +94,41 @@ export default function CreatorDashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [publicKey])
+
+  const loadAnalytics = useCallback(async () => {
+    if (!publicKey) return
+    
+    setAnalyticsLoading(true)
+    try {
+      const response = await fetch(`/api/analytics/creator?wallet=${publicKey.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setAnalytics(data.analytics)
+      } else {
+        console.error('Failed to fetch analytics')
+      }
+    } catch (error) {
+      console.error('Error loading analytics:', error)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }, [publicKey])
+
+  useEffect(() => {
+    if (publicKey) {
+      loadCollections()
+      loadAnalytics()
+    } else {
+      setLoading(false)
+    }
+  }, [publicKey, loadCollections, loadAnalytics])
+
+  useEffect(() => {
+    if (publicKey && (activeTab === 'analytics' || activeTab === 'earnings')) {
+      loadAnalytics()
+    }
+  }, [activeTab, publicKey, loadAnalytics])
 
   if (!publicKey) {
     return (
@@ -96,9 +159,7 @@ export default function CreatorDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                Zuno
-              </Link>
+              <Link href="/" className="text-2xl font-extrabold tracking-tight"><span className="text-blue-600">ZUNO</span></Link>
               <span className="text-gray-400">|</span>
               <span className="text-gray-600">Creator Dashboard</span>
             </div>
@@ -201,16 +262,236 @@ export default function CreatorDashboard() {
             )}
 
             {activeTab === 'analytics' && (
-              <div className="text-center py-12">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Analytics Dashboard</h3>
-                <p className="text-gray-500">Detailed analytics coming soon...</p>
+              <div>
+                {analyticsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : analytics ? (
+                  <div className="space-y-6">
+                    {/* Overview Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div className="bg-white p-6 rounded-lg border border-gray-200">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0">
+                            <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                          </div>
+                          <div className="ml-5 w-0 flex-1">
+                            <dl>
+                              <dt className="text-sm font-medium text-gray-500 truncate">Total Collections</dt>
+                              <dd className="text-lg font-medium text-gray-900">{analytics.totalCollections}</dd>
+                            </dl>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white p-6 rounded-lg border border-gray-200">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0">
+                            <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                            </svg>
+                          </div>
+                          <div className="ml-5 w-0 flex-1">
+                            <dl>
+                              <dt className="text-sm font-medium text-gray-500 truncate">Total Mints</dt>
+                              <dd className="text-lg font-medium text-gray-900">{analytics.totalMints.toLocaleString()}</dd>
+                            </dl>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white p-6 rounded-lg border border-gray-200">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0">
+                            <svg className="h-8 w-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                            </svg>
+                          </div>
+                          <div className="ml-5 w-0 flex-1">
+                            <dl>
+                              <dt className="text-sm font-medium text-gray-500 truncate">Total Volume</dt>
+                              <dd className="text-lg font-medium text-gray-900">{analytics.totalVolume.toFixed(2)} SOL</dd>
+                            </dl>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white p-6 rounded-lg border border-gray-200">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0">
+                            <svg className="h-8 w-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                          </div>
+                          <div className="ml-5 w-0 flex-1">
+                            <dl>
+                              <dt className="text-sm font-medium text-gray-500 truncate">Avg. Price</dt>
+                              <dd className="text-lg font-medium text-gray-900">{analytics.averageMintPrice.toFixed(3)} SOL</dd>
+                            </dl>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Top Collection */}
+                    {analytics.topCollection && (
+                      <div className="bg-white p-6 rounded-lg border border-gray-200">
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">Top Performing Collection</h3>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-md font-medium text-gray-900">{analytics.topCollection.name}</h4>
+                            <p className="text-sm text-gray-500">{analytics.topCollection.mintedCount} / {analytics.topCollection.totalSupply} minted ({analytics.topCollection.progress.toFixed(1)}%)</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-semibold text-green-600">{analytics.topCollection.estimatedEarnings.toFixed(2)} SOL</p>
+                            <p className="text-sm text-gray-500">Total Earnings</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Collection Breakdown */}
+                    <div className="bg-white p-6 rounded-lg border border-gray-200">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Collection Performance</h3>
+                      <div className="space-y-4">
+                        {analytics.collectionBreakdown.map((collection) => (
+                          <div key={collection.id} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
+                            <div className="flex-1">
+                              <h4 className="text-sm font-medium text-gray-900">{collection.name}</h4>
+                              <div className="flex items-center mt-1">
+                                <div className="w-32 bg-gray-200 rounded-full h-2 mr-3">
+                                  <div 
+                                    className="bg-blue-600 h-2 rounded-full" 
+                                    style={{ width: `${Math.min(100, collection.progress)}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-xs text-gray-500">{collection.progress.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                            <div className="text-right ml-4">
+                              <p className="text-sm font-medium text-gray-900">{collection.estimatedEarnings.toFixed(2)} SOL</p>
+                              <p className="text-xs text-gray-500">{collection.mintedCount} minted</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Analytics Data</h3>
+                    <p className="text-gray-500">Create some collections to see analytics.</p>
+                  </div>
+                )}
               </div>
             )}
 
             {activeTab === 'earnings' && (
-              <div className="text-center py-12">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Earnings Overview</h3>
-                <p className="text-gray-500">Earnings tracking coming soon...</p>
+              <div>
+                {analyticsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : analytics ? (
+                  <div className="space-y-6">
+                    {/* Earnings Overview */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-gradient-to-r from-green-400 to-green-600 p-6 rounded-lg text-white">
+                        <div className="flex items-center">
+                          <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                          </svg>
+                          <div className="ml-4">
+                            <p className="text-green-100">Total Earnings</p>
+                            <p className="text-2xl font-bold">{analytics.totalEarnings.toFixed(2)} SOL</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-gradient-to-r from-blue-400 to-blue-600 p-6 rounded-lg text-white">
+                        <div className="flex items-center">
+                          <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                          </svg>
+                          <div className="ml-4">
+                            <p className="text-blue-100">Total Volume</p>
+                            <p className="text-2xl font-bold">{analytics.totalVolume.toFixed(2)} SOL</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-gradient-to-r from-purple-400 to-purple-600 p-6 rounded-lg text-white">
+                        <div className="flex items-center">
+                          <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                          <div className="ml-4">
+                            <p className="text-purple-100">Avg. Per Mint</p>
+                            <p className="text-2xl font-bold">{analytics.averageMintPrice.toFixed(3)} SOL</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Recent Activity */}
+                    <div className="bg-white p-6 rounded-lg border border-gray-200">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Activity</h3>
+                      {analytics.recentActivity.length > 0 ? (
+                        <div className="space-y-3">
+                          {analytics.recentActivity.map((activity, index) => (
+                            <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                              <div className="flex items-center">
+                                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                                  </svg>
+                                </div>
+                                <div className="ml-3">
+                                  <p className="text-sm font-medium text-gray-900">Mint from {activity.collection}</p>
+                                  <p className="text-xs text-gray-500">{new Date(activity.timestamp).toLocaleDateString()}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-medium text-green-600">+{activity.amount.toFixed(3)} SOL</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-center py-4">No recent activity</p>
+                      )}
+                    </div>
+
+                    {/* Earnings by Collection */}
+                    <div className="bg-white p-6 rounded-lg border border-gray-200">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Earnings by Collection</h3>
+                      <div className="space-y-4">
+                        {analytics.collectionBreakdown
+                          .sort((a, b) => b.estimatedEarnings - a.estimatedEarnings)
+                          .map((collection) => (
+                          <div key={collection.id} className="flex items-center justify-between">
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-900">{collection.name}</h4>
+                              <p className="text-xs text-gray-500">{collection.mintedCount} mints • {collection.progress.toFixed(1)}% complete</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-gray-900">{collection.estimatedEarnings.toFixed(2)} SOL</p>
+                              <p className="text-xs text-gray-500">{((collection.estimatedEarnings / analytics.totalEarnings) * 100).toFixed(1)}% of total</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Earnings Data</h3>
+                    <p className="text-gray-500">Create and mint collections to track earnings.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

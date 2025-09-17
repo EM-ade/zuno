@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '4');
 
     // Get random NFT items from approved collections
-    const collections = await SupabaseService.getCollectionsByStatus('approved');
+    const collections = await SupabaseService.getCollectionsByStatus('active');
     
     if (collections.length === 0) {
       return new Response(

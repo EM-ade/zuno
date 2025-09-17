@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { SupabaseService } from '@/lib/supabase-service';
+import { SupabaseService, CollectionRecord } from '@/lib/supabase-service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     // Get collections based on status filter or all collections
     let collections;
     if (status && status !== 'all') {
-      collections = await SupabaseService.getCollectionsByStatus(status as any);
+      collections = await SupabaseService.getCollectionsByStatus(status as CollectionRecord['status']);
     } else {
       // Get all collections (you might want to add a method for this)
       const [active, draft, completed] = await Promise.all([
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Enhance with marketplace data
     const enhancedCollections = await Promise.all(
       collections.slice(offset, offset + limit).map(async (collection) => {
-        const [items, mintStats] = await Promise.all([
+        const [, mintStats] = await Promise.all([
           SupabaseService.getItemsByCollection(collection.id!, 1, 1),
           SupabaseService.getCollectionMintStats(collection.id!)
         ]);

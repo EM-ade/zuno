@@ -26,16 +26,10 @@ export const envConfig: EnvConfig = {
   solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
   solanaNetwork: (process.env.SOLANA_NETWORK || 'devnet') as 'devnet' | 'testnet' | 'mainnet-beta',
   serverWalletPrivateKey: process.env.SERVER_WALLET_PRIVATE_KEY || '',
-  platformWallet: process.env.PLATFORM_WALLET || '',
+  platformWallet: process.env.PLATFORM_WALLET || '4mHpjYdrBDa5REkpCSnv9GsFNerXhDdTNG5pS8jhyxEe',
   platformFeeSol: parseFloat(process.env.PLATFORM_FEE_SOL || '0.01'),
   
-  // Platform fees
-  platformFeeUsd: 1.25, // $1.25 USD platform fee
-  creatorRevenueShare: parseFloat(process.env.CREATOR_REVENUE_SHARE || '0.05'), // 5% platform commission
-  
   // Pinata configuration
-  pinataApiKey: process.env.PINATA_API_KEY || '',
-  pinataSecretApiKey: process.env.PINATA_SECRET_API_KEY || '',
   pinataJwt: process.env.PINATA_JWT || '',
   pinataGateway: process.env.PINATA_GATEWAY || process.env.NEXT_PUBLIC_PINATA_GATEWAY || '',
   
@@ -48,7 +42,6 @@ export const envConfig: EnvConfig = {
   // Supabase configuration
   supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 };
 
 // Function to get current SOL price in USD

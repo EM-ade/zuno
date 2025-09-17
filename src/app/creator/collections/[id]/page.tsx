@@ -1,7 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { useWallet } from '@solana/wallet-adapter-react'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import OptimizedImage from '@/components/OptimizedImage'
 import MetadataUpload from '@/components/MetadataUpload'
@@ -41,9 +40,8 @@ interface UploadItem {
 type Tab = 'overview' | 'items' | 'upload' | 'settings'
 
 export default function CollectionManager() {
-  const params = useParams()
-  const router = useRouter()
-  const { publicKey } = useWallet()
+  const params = useParams() as { id: string }
+  // Removed unused variables: router, publicKey
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [collection, setCollection] = useState<Collection | null>(null)
   const [items, setItems] = useState<NFTItem[]>([])
@@ -53,16 +51,9 @@ export default function CollectionManager() {
   const [showMetadataUpload, setShowMetadataUpload] = useState(false)
   
   // Upload state
-  const [uploadProgress, setUploadProgress] = useState(0)
+  // Removed unused variable: uploadProgress
 
-  useEffect(() => {
-    if (params.id) {
-      loadCollection()
-      loadItems()
-    }
-  }, [params.id])
-
-  const loadCollection = async () => {
+  const loadCollection = useCallback(async () => {
     try {
       const response = await fetch(`/api/creator/collections/${params.id}`)
       const data = await response.json()
@@ -74,9 +65,9 @@ export default function CollectionManager() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [params.id])
 
-  const loadItems = async () => {
+  const loadItems = useCallback(async () => {
     try {
       const response = await fetch(`/api/creator/collections/${params.id}/items`)
       const data = await response.json()
@@ -86,7 +77,14 @@ export default function CollectionManager() {
     } catch (error) {
       console.error('Failed to load items:', error)
     }
-  }
+  }, [params.id])
+
+  useEffect(() => {
+    if (params.id) {
+      loadCollection()
+      loadItems()
+    }
+  }, [params.id, loadCollection, loadItems])
 
   const addUploadItem = () => {
     const newItem: UploadItem = {
@@ -152,7 +150,6 @@ export default function CollectionManager() {
     if (!collection || uploadItems.length === 0) return
 
     setUploading(true)
-    setUploadProgress(0)
 
     try {
       const validItems = uploadItems.filter(item => 
@@ -195,7 +192,6 @@ export default function CollectionManager() {
       alert('Upload failed. Please try again.')
     } finally {
       setUploading(false)
-      setUploadProgress(0)
     }
   }
 
@@ -468,7 +464,7 @@ export default function CollectionManager() {
                       </svg>
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to upload NFTs</h3>
-                    <p className="text-gray-500 mb-4">Click "Add NFT" to start uploading your collection items.</p>
+                    <p className="text-gray-500 mb-4">Click &quot;Add NFT&quot; to start uploading your collection items.</p>
                     <button
                       onClick={addUploadItem}
                       className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
@@ -556,9 +552,11 @@ export default function CollectionManager() {
                             <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                               {item.imagePreview ? (
                                 <div className="relative">
-                                  <img
+                                  <OptimizedImage
                                     src={item.imagePreview}
                                     alt="Preview"
+                                    width={200}
+                                    height={200}
                                     className="mx-auto max-h-48 rounded-lg"
                                   />
                                   <button
@@ -573,8 +571,7 @@ export default function CollectionManager() {
                                   <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                   </svg>
-                                  <p className="text-gray-500 mb-2">Upload NFT image</p>
-                                  <p className="text-xs text-gray-400">PNG, JPG up to 10MB</p>
+                                  <p className="text-gray-600 mb-4">Upload multiple NFT images and metadata files. Supported formats: JPG, PNG, GIF. Each image should have a corresponding JSON metadata file with the same name (e.g., &quot;1.jpg&quot; and &quot;1.json&quot;).</p>
                                 </div>
                               )}
                               <input

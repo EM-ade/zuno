@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             files: [{ uri: imageUri, type: f.type || 'application/octet-stream' }],
           },
         };
-        metadataUri = await pinataService.uploadJSON(metadata as any);
+        metadataUri = await pinataService.uploadJSON(metadata as Record<string, unknown>);
         uploaded.push({ image_uri: imageUri, metadata_uri: metadataUri, name, index: i });
       } else {
         const name = `${baseName} #${i + 1}`;
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       name: u.name,
       image_uri: u.image_uri,
       metadata_uri: u.metadata_uri || null,
-      attributes: null,
+      attributes: undefined,
       item_index: u.index,
     }));
 

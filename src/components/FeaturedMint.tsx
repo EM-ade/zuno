@@ -25,7 +25,7 @@ interface NFTItem {
   collection_id: string
   collection_name: string
   candy_machine_id: string
-  attributes?: any
+  attributes?: Record<string, unknown>
 }
 
 export default function FeaturedMint() {
@@ -47,15 +47,15 @@ export default function FeaturedMint() {
         const collections = data.collections || data
         // Sort by mint count and volume for trending
         const trending = collections
-          .filter((c: any) => c.status === 'active' || c.status === 'approved')
-          .map((c: any) => ({
+          .filter((c: Collection) => c.status === 'active' || c.status === 'completed')
+          .map((c: Collection) => ({
             id: c.id,
             name: c.name,
             symbol: c.symbol,
             description: c.description,
             image_uri: c.image_uri,
             total_supply: c.total_supply,
-            minted_count: c.mintCount || c.minted_count || 0,
+            minted_count: (c as Collection & { mintCount?: number }).mintCount || c.minted_count || 0,
             floor_price: c.floor_price || 0,
             volume: c.volume || 0,
             status: c.status,

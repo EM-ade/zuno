@@ -40,9 +40,7 @@ export async function POST(request: NextRequest) {
       phase_id: phaseId,
       signature,
       amount_paid: totalCost,
-      platform_fee: 0, // Can be calculated based on totalCost if needed
-      quantity,
-      minted_items: selectedItems.map(item => item.id)
+      platform_fee: 0 // Can be calculated based on totalCost if needed
     });
 
     return new Response(

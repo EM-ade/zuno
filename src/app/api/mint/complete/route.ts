@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
-import { SupabaseService } from '@/lib/supabase-service';
+import { SupabaseService, ItemRecord } from '@/lib/supabase-service';
 import { metaplexCoreService } from '@/lib/metaplex-core';
+import { envConfig } from '@/config/env';
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,9 +58,7 @@ export async function POST(request: NextRequest) {
       phase_id: phaseId,
       signature,
       amount_paid: totalCost,
-      platform_fee: 0.01, // 0.01 SOL platform fee
-      quantity,
-      minted_items: selectedItems.map((item: any) => item.id)
+      platform_fee: envConfig.platformFeeSol // Platform fee goes to 4mHpjYdrBDa5REkpCSnv9GsFNerXhDdTNG5pS8jhyxEe
     });
 
     return new Response(

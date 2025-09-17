@@ -93,7 +93,7 @@ export default function Dashboard() {
 
   // Collection analytics modal state
   const [showAnalyticsForId, setShowAnalyticsForId] = useState<string | null>(null);
-  const [collectionAnalytics, setCollectionAnalytics] = useState<any>(null);
+  const [collectionAnalytics, setCollectionAnalytics] = useState<Record<string, unknown> | null>(null);
 
   const loadItems = async (collectionId: string, page = 1) => {
     try {
@@ -102,7 +102,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/collections/by-id/${collectionId}/items?page=${page}&limit=${itemsLimit}`);
       const json = await res.json();
       if (!res.ok || !json?.success) throw new Error(json?.error || 'Failed to load items');
-      const items = (json.items || []).map((i: any) => ({ id: i.id, name: i.name, image_uri: i.image_uri || null }));
+      const items = (json.items || []).map((i: Record<string, unknown>) => ({ id: i.id as string, name: i.name as string, image_uri: (i.image_uri as string) || null }));
       setItemsList(items);
       setItemsTotal(json.pagination?.total || items.length || 0);
       setItemsPage(page);
@@ -228,7 +228,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleBulkUploadComplete = (results: any) => {
+  const handleBulkUploadComplete = (results: { uploaded: number }) => {
     alert(`Successfully uploaded ${results.uploaded} NFTs!`);
     setShowBulkUploadForId(null);
     // Refresh collections
@@ -294,13 +294,13 @@ export default function Dashboard() {
         body: JSON.stringify({ status }),
       });
       const raw = await res.text();
-      let json: any = null;
+      let json: Record<string, unknown> | null = null;
       try {
         json = JSON.parse(raw);
       } catch {
         throw new Error(`Failed to update status (non-JSON response): ${raw?.slice(0,200)}`);
       }
-      if (!res.ok || !json?.success) throw new Error(json?.error || 'Failed to update status');
+      if (!res.ok || !json?.success) throw new Error((json?.error as string) || 'Failed to update status');
       // Refresh lists
       const statuses: Array<'active' | 'draft' | 'completed'> = ['active', 'draft', 'completed'];
       const [activeRes, draftRes, completedRes] = await Promise.all(
@@ -364,10 +364,10 @@ export default function Dashboard() {
         body: fd,
       });
       const text = await res.text();
-      let json: any = null;
+      let json: Record<string, unknown> | null = null;
       try { json = JSON.parse(text); } catch { throw new Error(`Non-JSON response: ${text.slice(0,200)}`); }
-      if (!res.ok || !json?.success) throw new Error(json?.error || 'Upload failed');
-      setUploadSummary({ count: json.count, items: (json.items || []).map((i: any) => ({ id: i.id, name: i.name, image_uri: i.image_uri })) });
+      if (!res.ok || !json?.success) throw new Error((json?.error as string) || 'Upload failed');
+      setUploadSummary({ count: json.count as number, items: ((json.items as Record<string, unknown>[]) || []).map((i: Record<string, unknown>) => ({ id: i.id as string, name: i.name as string, image_uri: i.image_uri as string })) });
       // Optionally refresh lists after upload (no-op for now)
     } catch (e) {
       console.error(e);
@@ -971,26 +971,26 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="bg-blue-50 rounded-lg p-4">
                 <div className="text-sm font-medium text-blue-600">Total Mints</div>
-                <div className="text-2xl font-bold text-blue-900">{collectionAnalytics.totalMints || 0}</div>
+                <div className="text-2xl font-bold text-blue-900">{(collectionAnalytics.totalMints as number) || 0}</div>
               </div>
               <div className="bg-green-50 rounded-lg p-4">
                 <div className="text-sm font-medium text-green-600">Revenue (SOL)</div>
-                <div className="text-2xl font-bold text-green-900">{(collectionAnalytics.revenue || 0).toFixed(2)}</div>
+                <div className="text-2xl font-bold text-green-900">{((collectionAnalytics.revenue as number) || 0).toFixed(2)}</div>
               </div>
               <div className="bg-purple-50 rounded-lg p-4">
                 <div className="text-sm font-medium text-purple-600">Completion</div>
-                <div className="text-2xl font-bold text-purple-900">{collectionAnalytics.completionRate || 0}%</div>
+                <div className="text-2xl font-bold text-purple-900">{(collectionAnalytics.completionRate as number) || 0}%</div>
               </div>
             </div>
             
             <div className="bg-gray-50 rounded-lg p-4">
               <h4 className="font-semibold mb-3">Recent Activity</h4>
               <div className="space-y-2">
-                {collectionAnalytics.recentMints?.length > 0 ? (
-                  collectionAnalytics.recentMints.map((mint: any, idx: number) => (
+                {(collectionAnalytics.recentMints as Record<string, unknown>[])?.length > 0 ? (
+                  (collectionAnalytics.recentMints as Record<string, unknown>[]).map((mint: Record<string, unknown>, idx: number) => (
                     <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
-                      <span className="text-sm">{mint.wallet}</span>
-                      <span className="text-sm text-gray-500">{mint.amount} minted</span>
+                      <span className="text-sm">{mint.wallet as string}</span>
+                      <span className="text-sm text-gray-500">{mint.amount as number} minted</span>
                     </div>
                   ))
                 ) : (

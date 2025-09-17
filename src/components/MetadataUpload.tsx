@@ -250,7 +250,7 @@ export default function MetadataUpload({ collectionId, onUploadComplete, onClose
           if (value) {
             attributeColumns.push({
               trait_type: header,
-              value: isNaN(Number(value)) ? value : Number(value)
+              value: isNaN(Number(value)) ? value : String(Number(value))
             })
           }
       }
@@ -437,7 +437,7 @@ export default function MetadataUpload({ collectionId, onUploadComplete, onClose
                   ref={folderRef}
                   type="file"
                   multiple
-                  webkitdirectory=""
+                  {...({ webkitdirectory: '' } as Record<string, unknown>)}
                   onChange={handleFolderUpload}
                   className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />

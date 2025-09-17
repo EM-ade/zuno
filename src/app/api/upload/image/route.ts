@@ -21,14 +21,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Convert File to Buffer for upload
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
     // Upload to Pinata
-    const result = await pinataService.uploadFile(file);
+    const ipfsUrl = await pinataService.uploadFile(buffer, file.name, file.type);
+    
+    // Extract IPFS hash from URL
+    const ipfsHash = ipfsUrl.split('/ipfs/')[1];
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        ipfsUrl: `https://gateway.pinata.cloud/ipfs/${result.IpfsHash}`,
-        ipfsHash: result.IpfsHash
+        ipfsUrl: ipfsUrl,
+        ipfsHash: ipfsHash
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );

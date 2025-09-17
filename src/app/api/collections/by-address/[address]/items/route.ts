@@ -26,7 +26,7 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '50');
     const mintedFilter = searchParams.get('minted');
 
-    let filters: { minted?: boolean } = {};
+    const filters: { minted?: boolean } = {};
     if (mintedFilter !== null) {
       filters.minted = mintedFilter === 'true';
     }
