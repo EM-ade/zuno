@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { pinataService } from '@/lib/pinata-service';
 import { SupabaseService } from '@/lib/supabase-service';
+import { magicEdenService, MagicEdenNFTData } from '@/lib/magic-eden-service';
 
 export const maxDuration = 60;
 
@@ -160,6 +161,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 ...metadata.properties
               }
             };
+
+            // Validate metadata against Magic Eden standards
+            const magicEdenNFTData: MagicEdenNFTData = {
+              name: nftName,
+              description: description,
+              image: imageUri,
+              attributes: attributes,
+              properties: {
+                category: 'image',
+                files: [{ uri: imageUri, type: imageFile.type }]
+              }
+            };
+
+            const nftValidation = magicEdenService.validateNFTMetadata(magicEdenNFTData);
+            if (!nftValidation.isValid) {
+              console.warn(`Magic Eden NFT validation failed for ${nftName}:`, nftValidation.errors);
+            } else {
+              console.log(`Magic Eden NFT validation passed for ${nftName}`);
+            }
             
             console.log('Uploading metadata to Pinata...', { name: nftName });
             metadataUri = await pinataService.uploadJSON(updatedMetadata);
@@ -214,6 +234,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const items = await SupabaseService.createItems(itemsPayload);
     console.log(`Successfully saved ${items.length} items to database`);
+
+    // Get collection data for Magic Eden integration summary
+    try {
+      const collection = await SupabaseService.getCollectionById(id);
+      if (collection) {
+        console.log('=== Magic Eden Integration Summary ===');
+        console.log(`Collection: ${collection.name} (${collection.symbol})`);
+        console.log(`Total NFTs uploaded: ${items.length}`);
+        console.log(`Collection Mint Address: ${collection.collection_mint_address}`);
+        console.log('Magic Eden Status: Collection should auto-list once minted NFTs are available');
+        console.log('Note: Solana collections with proper Metaplex standards are automatically indexed by Magic Eden');
+      }
+    } catch (summaryError) {
+      console.warn('Could not generate Magic Eden summary:', summaryError);
+    }
 
     console.log('=== Folder Upload Completed Successfully ===');
     return new Response(

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { metaplexCoreService } from "@/lib/metaplex-core";
 import { pinataService } from "@/lib/pinata-service";
 import { SupabaseService } from "@/lib/supabase-service";
+import { magicEdenService, MagicEdenCollectionData } from "@/lib/magic-eden-service";
 
 // Types for the API request
 interface Phase {
@@ -138,6 +139,55 @@ export async function POST(request: NextRequest) {
       }
 
       console.log('Collection data stored in Supabase:', collectionRecord);
+
+      // Integrate with Magic Eden
+      try {
+        console.log('=== Magic Eden Integration Started ===');
+        
+        const magicEdenData: MagicEdenCollectionData = {
+          name: collectionName,
+          symbol: symbol,
+          description: description,
+          image: imageUri,
+          totalSupply: totalSupply,
+          royaltyPercentage: royaltyPercentage,
+          creatorWallet: creatorWallet,
+          collectionMintAddress: result.collectionMint,
+          candyMachineId: result.candyMachineId
+        };
+
+        // Validate data for Magic Eden
+        const validation = magicEdenService.validateCollectionData(magicEdenData);
+        if (!validation.isValid) {
+          console.warn('Magic Eden validation failed:', validation.errors);
+        } else {
+          console.log('Magic Eden validation passed');
+        }
+
+        // Prepare data for auto-listing (ensures proper formatting)
+        const preparedData = magicEdenService.prepareForAutoListing(magicEdenData);
+        
+        // Check if collection already exists on Magic Eden
+        const existsCheck = await magicEdenService.checkCollectionExists(symbol);
+        if (existsCheck.exists) {
+          console.log('Collection already exists on Magic Eden:', existsCheck.data);
+          await magicEdenService.logCollectionForMagicEden(preparedData, 'listed');
+        } else {
+          console.log('Collection not yet on Magic Eden - will be auto-listed');
+          await magicEdenService.logCollectionForMagicEden(preparedData, 'created');
+          
+          // Generate submission summary for manual fallback
+          const submissionData = magicEdenService.prepareSubmissionData(preparedData);
+          const submissionSummary = magicEdenService.generateSubmissionSummary(submissionData);
+          console.log('Magic Eden Submission Summary:\n', submissionSummary);
+        }
+
+        console.log('=== Magic Eden Integration Completed ===');
+        
+      } catch (magicEdenError) {
+        console.error('Magic Eden integration failed (non-critical):', magicEdenError);
+        // Don't fail the entire request if Magic Eden integration fails
+      }
 
     } catch (dbError) {
       console.error('Failed to store collection data in database:', dbError);
