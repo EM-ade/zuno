@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Auto-activate collections
         run: |
-          curl -X POST "${{ secrets.NEXT_PUBLIC_BASE_URL || 'https://your-domain.vercel.app' }}/api/collections/auto-activate" \
+          curl -X POST "${{ secrets.NEXT_PUBLIC_BASE_URL || 'https://zunoagent.xyz' }}/api/collections/auto-activate" \
             -H "Content-Type: application/json" \
             -H "User-Agent: GitHub-Actions-Auto-Activation/1.0" \
             --fail \
