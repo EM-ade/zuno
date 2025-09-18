@@ -27,7 +27,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       filesCount: files.length,
       baseName,
       fileNames: files.map(f => f.name),
-      filePaths: files.map(f => (f as any).webkitRelativePath || f.name)
+      filePaths: files.map(f => {
+        // Type assertion for webkitRelativePath property
+        const fileWithPath = f as File & { webkitRelativePath?: string };
+        return fileWithPath.webkitRelativePath || f.name;
+      })
     });
 
     if (!files || files.length === 0) {
@@ -169,7 +173,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       name: u.name,
       image_uri: u.image_uri,
       metadata_uri: u.metadata_uri || null,
-      attributes: u.attributes || [],
+      attributes: u.attributes ? u.attributes as unknown as Record<string, unknown> : {},
       item_index: u.index,
     }));
 

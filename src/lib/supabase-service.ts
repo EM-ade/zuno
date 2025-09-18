@@ -213,6 +213,27 @@ export class SupabaseService {
     return data;
   }
 
+  static async updateItem(itemId: string, updateData: Partial<Omit<ItemRecord, 'id' | 'created_at'>>) {
+    const finalUpdateData = {
+      ...updateData,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabaseServer
+      .from('items')
+      .update(finalUpdateData)
+      .eq('id', itemId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating item:', error);
+      throw new Error(`Failed to update item: ${error.message}`);
+    }
+
+    return data;
+  }
+
   static async updateItemMintStatus(itemId: string, minted: boolean, ownerWallet?: string, mintSignature?: string) {
     const updateData: Partial<ItemRecord> = { 
       updated_at: new Date().toISOString()
