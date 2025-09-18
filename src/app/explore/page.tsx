@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import OptimizedImage from '@/components/OptimizedImage';
+import PageHeader from '@/components/PageHeader';
 
 type StatusTab = 'live' | 'upcoming' | 'ended';
 type DbStatus = 'active' | 'draft' | 'completed';
@@ -140,6 +141,8 @@ export default function ExplorePage() {
 
   return (
     <div className="min-h-screen bg-[var(--zuno-blue)]">
+      <PageHeader title="Explore Collections" />
+      
       {/* Header */}
       <header className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

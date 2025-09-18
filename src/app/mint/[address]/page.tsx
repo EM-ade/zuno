@@ -6,6 +6,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 import { Transaction } from '@solana/web3.js'
 import OptimizedImage from '@/components/OptimizedImage'
+import PageHeader from '@/components/PageHeader'
 
 interface Phase {
   id: string
@@ -285,6 +286,20 @@ export default function MintPage() {
     setMintQuantity((q) => Math.min(Math.max(1, q), maxMintQuantity))
   }, [maxMintQuantity])
 
+  const getPhaseStatus = (phase: Phase) => {
+    const now = new Date()
+    const startTime = new Date(phase.start_time)
+    const endTime = phase.end_time ? new Date(phase.end_time) : null
+    
+    if (now < startTime) {
+      return 'upcoming'
+    } else if (endTime && now > endTime) {
+      return 'ended'
+    } else {
+      return 'live'
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -309,74 +324,12 @@ export default function MintPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/marketplace" className="text-blue-600 hover:text-blue-700">
-              ← Back to Marketplace
-            </Link>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Powered by Solana</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PageHeader title={`Mint ${collection.name}`} />
 
       {/* Mobile UI (matches provided design) */}
       <div className="block lg:hidden px-4 py-6">
         {/* Top bar with dropdown */}
-        <div className="relative">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/" className="text-2xl font-extrabold tracking-tight"><span className="text-blue-600">ZUNO</span></Link>
-            <div className="flex items-center space-x-3">
-              {connected ? (
-                <button className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-semibold">
-                  {publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}
-                </button>
-              ) : (
-                <button onClick={() => setVisible(true)} className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-semibold">CONNECT WALLET</button>
-              )}
-              <button 
-                onClick={() => setMobileNavOpen(!mobileNavOpen)}
-                className="w-10 h-10 rounded-lg border border-blue-300 text-blue-500 flex items-center justify-center"
-              >
-                <span className="sr-only">Menu</span>
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={mobileNavOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
-                </svg>
-              </button>
-            </div>
-          </div>
-          
-          {/* Mobile dropdown menu */}
-          {mobileNavOpen && (
-            <div className="absolute left-0 right-0 top-full bg-white rounded-xl shadow-lg border border-gray-200 z-50 p-4 mb-4">
-              <div className="space-y-3">
-                <Link href="/marketplace" onClick={() => setMobileNavOpen(false)} className="block text-gray-900 hover:text-blue-600 font-medium py-2">
-                  Marketplace
-                </Link>
-                <Link href="/explore" onClick={() => setMobileNavOpen(false)} className="block text-gray-900 hover:text-blue-600 font-medium py-2">
-                  Explore
-                </Link>
-                <Link href="/creator" onClick={() => setMobileNavOpen(false)} className="block text-gray-900 hover:text-blue-600 font-medium py-2">
-                  Create
-                </Link>
-                <div className="border-t border-gray-200 pt-3">
-                  {!connected ? (
-                    <button onClick={() => { setVisible(true); setMobileNavOpen(false); }} className="w-full text-left text-blue-600 hover:text-blue-800 font-medium py-2">
-                      Connect Wallet
-                    </button>
-                  ) : (
-                    <button onClick={() => { disconnect(); setMobileNavOpen(false); }} className="w-full text-left text-red-600 hover:text-red-800 font-medium py-2">
-                      Disconnect Wallet
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        
 
         {/* Collection name pill */}
         <div className="inline-block px-4 py-2 rounded-full bg-blue-100 text-blue-800 font-semibold mb-4">
@@ -427,30 +380,40 @@ export default function MintPage() {
         {/* Phases */}
         <div className="text-blue-900 font-bold tracking-wide mb-2">PHASES</div>
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {/* OG */}
-          <div className="relative p-3 rounded-xl bg-white shadow">
-            <div className="absolute -inset-1 pointer-events-none">
-              <div className="absolute left-0 top-0 w-4 h-4 border-t-2 border-l-2 border-blue-300 rounded-tl-md" />
-              <div className="absolute right-0 top-0 w-4 h-4 border-t-2 border-r-2 border-blue-300 rounded-tr-md" />
-              <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
-              <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
+          {collection.phases && collection.phases.length > 0 ? (
+            collection.phases.slice(0, 2).map((phase, index) => {
+              const isActive = activePhase?.id === phase.id
+              const phaseStatus = getPhaseStatus(phase)
+              
+              return (
+                <div key={phase.id} className="relative p-3 rounded-xl bg-white shadow">
+                  <div className="absolute -inset-1 pointer-events-none">
+                    <div className="absolute left-0 top-0 w-4 h-4 border-t-2 border-l-2 border-blue-300 rounded-tl-md" />
+                    <div className="absolute right-0 top-0 w-4 h-4 border-t-2 border-r-2 border-blue-300 rounded-tr-md" />
+                    <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
+                    <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
+                  </div>
+                  <div className={`inline-block px-3 py-1 rounded-full font-semibold text-sm ${
+                    isActive ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'
+                  }`}>
+                    {phase.name}
+                  </div>
+                  {isActive && (
+                    <div className="flex items-center mt-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                      <span className="text-green-600 font-bold text-xs">Live</span>
+                    </div>
+                  )}
+                  <div className="mt-1 font-extrabold">{phaseStatus}</div>
+                  <div className="text-xs text-gray-500 mt-1">SOL: {phase.price.toFixed(4)}</div>
+                </div>
+              )
+            })
+          ) : (
+            <div className="col-span-2 text-center text-gray-500 py-4">
+              No phases configured
             </div>
-            <div className="inline-block px-3 py-1 rounded-full bg-blue-500 text-white font-semibold text-sm">OG</div>
-            <div className="mt-1 font-extrabold">{collection.phases?.find(p => p.name.toLowerCase().includes('og')) ? 'ended' : '—'}</div>
-            <div className="text-xs text-gray-500 mt-1">SOL: {(collection.phases?.find(p => p.name.toLowerCase().includes('og'))?.price ?? 0).toFixed(3)}</div>
-          </div>
-          {/* WL */}
-          <div className="relative p-3 rounded-xl bg-white shadow">
-            <div className="absolute -inset-1 pointer-events-none">
-              <div className="absolute left-0 top-0 w-4 h-4 border-t-2 border-l-2 border-blue-300 rounded-tl-md" />
-              <div className="absolute right-0 top-0 w-4 h-4 border-t-2 border-r-2 border-blue-300 rounded-tr-md" />
-              <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
-              <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
-            </div>
-            <div className="inline-block px-3 py-1 rounded-full bg-blue-500 text-white font-semibold text-sm">WL</div>
-            <div className="mt-1 font-extrabold">{collection.phases?.find(p => p.name.toLowerCase().includes('wl')) ? 'ended' : '—'}</div>
-            <div className="text-xs text-gray-500 mt-1">SOL: {(collection.phases?.find(p => p.name.toLowerCase().includes('wl'))?.price ?? 0).toFixed(3)}</div>
-          </div>
+          )}
         </div>
 
         {/* Progress */}
@@ -682,21 +645,37 @@ export default function MintPage() {
             <div>
               <div className="text-blue-900 font-bold tracking-wide mb-2">PHASES</div>
               <div className="grid grid-cols-2 gap-3 mb-4">
-                {collection.phases.map((phase) => (
-                  <div key={phase.id} className="relative p-3 rounded-xl bg-white shadow">
-                    <div className="absolute -inset-1 pointer-events-none">
-                      <div className="absolute left-0 top-0 w-4 h-4 border-t-2 border-l-2 border-blue-300 rounded-tl-md" />
-                      <div className="absolute right-0 top-0 w-4 h-4 border-t-2 border-r-2 border-blue-300 rounded-tr-md" />
-                      <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
-                      <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
+                {collection.phases.map((phase) => {
+                  const isActive = activePhase?.id === phase.id
+                  const phaseStatus = getPhaseStatus(phase)
+                  
+                  return (
+                    <div key={phase.id} className="relative p-3 rounded-xl bg-white shadow">
+                      <div className="absolute -inset-1 pointer-events-none">
+                        <div className="absolute left-0 top-0 w-4 h-4 border-t-2 border-l-2 border-blue-300 rounded-tl-md" />
+                        <div className="absolute right-0 top-0 w-4 h-4 border-t-2 border-r-2 border-blue-300 rounded-tr-md" />
+                        <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
+                        <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
+                      </div>
+                      <div className={`inline-block px-3 py-1 rounded-full font-bold text-xs ${
+                        isActive ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'
+                      }`}>
+                        {phase.name.toUpperCase()}
+                      </div>
+                      <div className="mt-1 font-bold text-sm">
+                        {isActive ? (
+                          <span className="text-green-600 font-bold text-xs flex items-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-600 mr-1 animate-pulse"></span>
+                            Live
+                          </span>
+                        ) : (
+                          <span className="text-gray-600 font-bold text-xs">{phaseStatus}</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">SOL: {phase.price.toFixed(4)}</div>
                     </div>
-                    <div className="inline-block px-3 py-1 rounded-full bg-blue-500 text-white font-bold text-xs">{phase.name.toUpperCase()}</div>
-                    <div className="mt-1 font-bold text-sm">{activePhase?.id === phase.id ? (
-                      <span className="text-red-600 font-bold text-xs flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1"></span>Live</span>
-                    ) : 'Ended'}</div>
-                    <div className="text-xs text-gray-500 mt-1">SOL: {phase.price.toFixed(4)}</div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ) : (

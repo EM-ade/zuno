@@ -1,9 +1,12 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useWallet } from '@solana/wallet-adapter-react'
+import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 import OptimizedImage from '@/components/OptimizedImage'
 import MetadataUpload from '@/components/MetadataUpload'
+import PageHeader from '@/components/PageHeader'
 
 interface Collection {
   id: string
@@ -13,7 +16,7 @@ interface Collection {
   image_uri: string | null
   total_supply: number
   minted_count: number
-  status: 'draft' | 'revealed' | 'live' | 'sold_out'
+  status: 'draft' | 'active' | 'live' | 'completed' | 'revealed' | 'sold_out' | 'archived'
   candy_machine_id: string
   creator_wallet: string
 }
@@ -45,9 +48,10 @@ export default function CollectionManager() {
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [collection, setCollection] = useState<Collection | null>(null)
   const [items, setItems] = useState<NFTItem[]>([])
-  const [loading, setLoading] = useState(true)
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([])
+  const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
   const [showMetadataUpload, setShowMetadataUpload] = useState(false)
   
   // Upload state
@@ -195,6 +199,34 @@ export default function CollectionManager() {
     }
   }
 
+  const handleGoLive = async () => {
+    if (!collection || collection.status !== 'draft') return
+    
+    setUpdatingStatus(true)
+    try {
+      const response = await fetch(`/api/collections/status-by-id/${collection.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'active' })
+      })
+      
+      const data = await response.json()
+      if (data.success) {
+        setCollection(prev => prev ? { ...prev, status: 'active' } : null)
+        alert('Collection is now live and available for minting!')
+      } else {
+        alert('Failed to update collection status: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Error updating collection status:', error)
+      alert('Failed to update collection status')
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -220,26 +252,12 @@ export default function CollectionManager() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/creator" className="text-blue-600 hover:text-blue-700">
-                ← Back to Dashboard
-              </Link>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                href={`/mint/${collection.candy_machine_id}`}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                View Mint Page
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PageHeader 
+        title={`Manage ${collection.name}`} 
+        showCreateButton={true} 
+        createButtonText="View Mint Page" 
+        createButtonHref={`/mint/${collection.candy_machine_id}`} 
+      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Collection Header */}
@@ -343,12 +361,25 @@ export default function CollectionManager() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-medium text-gray-900 mb-2">Collection Status</h3>
-                    <p className="text-sm text-gray-600">
-                      {collection.status === 'draft' && 'Collection is in draft mode. Upload NFTs and deploy to make it live.'}
-                      {collection.status === 'live' && 'Collection is live and available for minting.'}
-                      {collection.status === 'revealed' && 'Collection metadata has been revealed.'}
-                      {collection.status === 'sold_out' && 'All NFTs have been minted!'}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-gray-600">
+                        {collection.status === 'draft' && 'Collection is in draft mode. Upload NFTs and click "Go Live" to make it available for minting.'}
+                        {collection.status === 'active' && 'Collection is live and available for minting.'}
+                        {collection.status === 'completed' && 'All NFTs have been minted!'}
+                        {collection.status === 'live' && 'Collection is live and available for minting.'}
+                        {collection.status === 'sold_out' && 'All NFTs have been minted!'}
+                      </p>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        collection.status === 'active' || collection.status === 'live' ? 'bg-green-100 text-green-800' :
+                        collection.status === 'draft' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {collection.status === 'active' ? 'Live' :
+                         collection.status === 'draft' ? 'Draft' :
+                         collection.status === 'completed' ? 'Completed' :
+                         collection.status}
+                      </span>
+                    </div>
                   </div>
                   
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -369,6 +400,15 @@ export default function CollectionManager() {
                       >
                         Upload NFTs →
                       </button>
+                      {collection.status === 'draft' && items.length > 0 && (
+                        <button
+                          onClick={handleGoLive}
+                          disabled={updatingStatus}
+                          className="w-full text-left text-sm bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {updatingStatus ? 'Going Live...' : 'Go Live →'}
+                        </button>
+                      )}
                       <Link
                         href={`/mint/${collection.candy_machine_id}`}
                         className="block text-sm text-blue-600 hover:text-blue-700"

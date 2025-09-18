@@ -6,8 +6,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '4');
 
-    // Get random NFT items from approved collections
-    const collections = await SupabaseService.getCollectionsByStatus('active');
+    // Get random NFT items from all available collections (active, draft, completed)
+    const [activeCollections, draftCollections, completedCollections] = await Promise.all([
+      SupabaseService.getCollectionsByStatus('active'),
+      SupabaseService.getCollectionsByStatus('draft'),
+      SupabaseService.getCollectionsByStatus('completed')
+    ]);
+    
+    const collections = [...activeCollections, ...draftCollections, ...completedCollections];
     
     if (collections.length === 0) {
       return new Response(

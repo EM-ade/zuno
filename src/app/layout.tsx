@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "./providers";
+import AutoActivationChecker from "@/components/AutoActivationChecker";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,6 +30,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
+          <AutoActivationChecker />
           {/* Site wrapper card to match mock: white panel with rounded corners */}
           <div className="m-4 md:m-6 lg:m-8 lg:mx-14">
             <div className="bg-white rounded-3xl shadow-lg overflow-hidden">

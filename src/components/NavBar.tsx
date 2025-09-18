@@ -187,36 +187,47 @@ export default function NavBar() {
 
       {/* Mobile Navigation */}
       <div className={`md:hidden mt-3 sm:mt-4 ${mobileMenuOpen ? 'block' : 'hidden'} fixed left-0 right-0 px-3 sm:px-4 z-50`}>
-        <div className="flex flex-col space-y-2 sm:space-y-3 bg-white/10 rounded-xl p-3 sm:p-4 backdrop-blur-sm shadow-lg">
-          <Link
-            href="/marketplace"
-            className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            Explore Mints
-          </Link>
-          <Link
-            href="#"
-            className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            Exhibition
-          </Link>
-
-          <Link
-            href="/creator"
-            className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            Create
-          </Link>
-          <Link
-            href="#"
-            className="text-[#0077E6] hover:text-gray-200 transition-colors py-2 px-3 rounded-lg hover:bg-white/10 text-sm sm:text-base"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            Community
-          </Link>
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4">
+          <div className="space-y-3">
+            <Link
+              href="/marketplace"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-gray-900 hover:text-blue-600 font-medium py-2"
+            >
+              Marketplace
+            </Link>
+            <Link
+              href="/explore"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-gray-900 hover:text-blue-600 font-medium py-2"
+            >
+              Explore
+            </Link>
+            <Link
+              href="/creator"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block text-gray-900 hover:text-blue-600 font-medium py-2"
+            >
+              Create
+            </Link>
+            <div className="border-t border-gray-200 pt-3">
+              {!publicKey ? (
+                <button
+                  onClick={() => { setVisible(true); setMobileMenuOpen(false); }}
+                  className="w-full text-left text-blue-600 hover:text-blue-800 font-medium py-2"
+                >
+                  Connect Wallet
+                </button>
+              ) : (
+                <button
+                  onClick={() => { handleDisconnect(); setMobileMenuOpen(false); }}
+                  className="w-full text-left text-red-600 hover:text-red-800 font-medium py-2"
+                >
+                  Disconnect Wallet
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </nav>

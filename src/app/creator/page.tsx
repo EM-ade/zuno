@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 import OptimizedImage from '@/components/OptimizedImage'
+import PageHeader from '@/components/PageHeader'
 
 interface TopCollection {
   name: string
@@ -50,7 +51,7 @@ interface Collection {
   minted_count: number
   floor_price: number
   volume: number
-  status: 'draft' | 'revealed' | 'live' | 'sold_out'
+  status: 'draft' | 'active' | 'live' | 'completed' | 'revealed' | 'sold_out' | 'archived'
   created_at: string
   candy_machine_id: string
 }
@@ -154,55 +155,38 @@ export default function CreatorDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/" className="text-2xl font-extrabold tracking-tight"><span className="text-blue-600">ZUNO</span></Link>
-              <span className="text-gray-400">|</span>
-              <span className="text-gray-600">Creator Dashboard</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/creator/create"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Create Collection
-              </Link>
-              <div className="text-sm text-gray-600">
-                {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PageHeader 
+        title="Creator Dashboard" 
+        showCreateButton={true} 
+        createButtonText="Create Collection" 
+        createButtonHref="/creator/create" 
+      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg p-6 shadow-sm">
-            <div className="text-sm font-medium text-gray-500">Collections</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.totalCollections}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
+          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
+            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Collections</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalCollections}</div>
           </div>
-          <div className="bg-white rounded-lg p-6 shadow-sm">
-            <div className="text-sm font-medium text-gray-500">Total Volume</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.totalVolume.toFixed(2)} SOL</div>
+          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
+            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Total Volume</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalVolume.toFixed(2)} SOL</div>
           </div>
-          <div className="bg-white rounded-lg p-6 shadow-sm">
-            <div className="text-sm font-medium text-gray-500">Earnings</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.totalEarnings.toFixed(2)} SOL</div>
+          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
+            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Earnings</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalEarnings.toFixed(2)} SOL</div>
           </div>
-          <div className="bg-white rounded-lg p-6 shadow-sm">
-            <div className="text-sm font-medium text-gray-500">Items Created</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.totalItems}</div>
+          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
+            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Items Created</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalItems}</div>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="bg-white rounded-lg shadow-sm">
           <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
+            <nav className="flex space-x-4 sm:space-x-6 md:space-x-8 px-3 sm:px-4 md:px-6 overflow-x-auto">
               {[
                 { key: 'collections', label: 'Collections', count: collections.length },
                 { key: 'analytics', label: 'Analytics' },
@@ -211,15 +195,15 @@ export default function CreatorDashboard() {
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key as Tab)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  className={`py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                     activeTab === tab.key
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  {tab.label}
+                  <span className="block sm:inline">{tab.label}</span>
                   {tab.count !== undefined && (
-                    <span className="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs">
+                    <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-900 py-0.5 px-1.5 sm:px-2.5 rounded-full text-xs">
                       {tab.count}
                     </span>
                   )}
@@ -228,7 +212,7 @@ export default function CreatorDashboard() {
             </nav>
           </div>
 
-          <div className="p-6">
+          <div className="p-3 sm:p-4 md:p-6">
             {activeTab === 'collections' && (
               <div>
                 {loading ? (
@@ -502,13 +486,45 @@ export default function CreatorDashboard() {
 }
 
 function CollectionCard({ collection }: { collection: Collection }) {
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'live': return 'bg-green-100 text-green-800'
-      case 'draft': return 'bg-gray-100 text-gray-800'
-      case 'revealed': return 'bg-blue-100 text-blue-800'
-      case 'sold_out': return 'bg-red-100 text-red-800'
+      case 'live':
+      case 'active': return 'bg-green-100 text-green-800'
+      case 'draft': return 'bg-blue-100 text-blue-800'
+      case 'revealed': return 'bg-purple-100 text-purple-800'
+      case 'sold_out':
+      case 'completed': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+  
+  const handleGoLive = async () => {
+    if (collection.status !== 'draft') return
+    
+    setUpdatingStatus(true)
+    try {
+      const response = await fetch(`/api/collections/status-by-id/${collection.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'active' })
+      })
+      
+      const data = await response.json()
+      if (data.success) {
+        // Refresh the page to show updated status
+        window.location.reload()
+      } else {
+        alert('Failed to update collection status: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Error updating collection status:', error)
+      alert('Failed to update collection status')
+    } finally {
+      setUpdatingStatus(false)
     }
   }
 
@@ -534,7 +550,10 @@ function CollectionCard({ collection }: { collection: Collection }) {
         )}
         <div className="absolute top-3 right-3">
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(collection.status)}`}>
-            {collection.status.replace('_', ' ')}
+            {collection.status === 'active' ? 'Live' :
+             collection.status === 'draft' ? 'Draft' :
+             collection.status === 'completed' ? 'Completed' :
+             collection.status.replace('_', ' ')}
           </span>
         </div>
       </div>
@@ -571,19 +590,30 @@ function CollectionCard({ collection }: { collection: Collection }) {
           </div>
         </div>
         
-        <div className="flex space-x-2">
-          <Link
-            href={`/creator/collections/${collection.id}`}
-            className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors text-center"
-          >
-            Manage
-          </Link>
-          <Link
-            href={`/mint/${collection.candy_machine_id}`}
-            className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors text-center"
-          >
-            View Mint
-          </Link>
+        <div className="space-y-2">
+          {collection.status === 'draft' && (
+            <button
+              onClick={handleGoLive}
+              disabled={updatingStatus}
+              className="w-full bg-green-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {updatingStatus ? 'Going Live...' : 'Go Live 🚀'}
+            </button>
+          )}
+          <div className="flex space-x-2">
+            <Link
+              href={`/creator/collections/${collection.id}`}
+              className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors text-center"
+            >
+              Manage
+            </Link>
+            <Link
+              href={`/mint/${collection.candy_machine_id}`}
+              className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors text-center"
+            >
+              View Mint
+            </Link>
+          </div>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 import OptimizedImage from '@/components/OptimizedImage'
+import PageHeader from '@/components/PageHeader'
 
 interface Collection {
   id: string
@@ -15,7 +16,7 @@ interface Collection {
   minted_count: number
   floor_price: number
   volume: number
-  status: 'draft' | 'revealed' | 'live' | 'sold_out'
+  status: 'draft' | 'active' | 'live' | 'completed' | 'revealed' | 'sold_out' | 'archived'
   candy_machine_id: string
   creator_wallet: string
   created_at?: string
@@ -138,74 +139,7 @@ export default function Marketplace() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/" className="text-blue-600 hover:text-blue-700">
-              ← Back to Home
-            </Link>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">NFT Marketplace</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Header */}
-      <div className="block lg:hidden px-4 py-6">
-        <div className="relative">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/" className="text-2xl font-extrabold tracking-tight"><span className="text-blue-600">ZUNO</span></Link>
-            <div className="flex items-center space-x-3">
-              {connected ? (
-                <button className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-semibold">
-                  {publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}
-                </button>
-              ) : (
-                <button onClick={() => setVisible(true)} className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-semibold">CONNECT WALLET</button>
-              )}
-              <button 
-                onClick={() => setMobileNavOpen(!mobileNavOpen)}
-                className="w-10 h-10 rounded-lg border border-blue-300 text-blue-500 flex items-center justify-center"
-              >
-                <span className="sr-only">Menu</span>
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={mobileNavOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
-                </svg>
-              </button>
-            </div>
-          </div>
-          
-          {/* Mobile dropdown menu */}
-          {mobileNavOpen && (
-            <div className="absolute left-0 right-0 top-full bg-white rounded-xl shadow-lg border border-gray-200 z-50 p-4 mb-4">
-              <div className="space-y-3">
-                <Link href="/marketplace" onClick={() => setMobileNavOpen(false)} className="block text-gray-900 hover:text-blue-600 font-medium py-2">
-                  Marketplace
-                </Link>
-                <Link href="/explore" onClick={() => setMobileNavOpen(false)} className="block text-gray-900 hover:text-blue-600 font-medium py-2">
-                  Explore
-                </Link>
-                <Link href="/creator" onClick={() => setMobileNavOpen(false)} className="block text-gray-900 hover:text-blue-600 font-medium py-2">
-                  Create
-                </Link>
-                <div className="border-t border-gray-200 pt-3">
-                  {!connected ? (
-                    <button onClick={() => { setVisible(true); setMobileNavOpen(false); }} className="w-full text-left text-blue-600 hover:text-blue-800 font-medium py-2">
-                      Connect Wallet
-                    </button>
-                  ) : (
-                    <button onClick={() => { disconnect(); setMobileNavOpen(false); }} className="w-full text-left text-red-600 hover:text-red-800 font-medium py-2">
-                      Disconnect Wallet
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <PageHeader title="NFT Marketplace" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Search and Filters Bar - Hidden on mobile */}
@@ -372,7 +306,7 @@ function CollectionCard({ collection }: { collection: Collection }) {
   const getStatusBadge = (status: string, mintedCount: number, totalSupply: number) => {
     const progress = (mintedCount / totalSupply) * 100
     
-    // Determine actual status based on mint progress
+    // Check if sold out first (100% minted)
     if (progress >= 100) {
       return (
         <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
@@ -381,30 +315,38 @@ function CollectionCard({ collection }: { collection: Collection }) {
       )
     }
     
-    // If collection has been approved and has supply, it's live
-    if (status === 'approved' || status === 'live' || totalSupply > 0) {
-      return (
-        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-          Live • {progress.toFixed(0)}% minted
-        </span>
-      )
+    // Check status from marketplace API mapping
+    switch (status) {
+      case 'live':
+      case 'approved':
+      case 'active':
+        return (
+          <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+            Live • {progress.toFixed(0)}% minted
+          </span>
+        )
+      case 'draft':
+      case 'pending':
+      case 'upcoming':
+        return (
+          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+            Coming Soon
+          </span>
+        )
+      case 'completed':
+      case 'sold_out':
+        return (
+          <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
+            Sold Out
+          </span>
+        )
+      default:
+        return (
+          <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">
+            {status}
+          </span>
+        )
     }
-    
-    // Only show coming soon for draft/pending status
-    if (status === 'draft' || status === 'pending') {
-      return (
-        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-          Coming Soon
-        </span>
-      )
-    }
-    
-    // Default to live for any other status
-    return (
-      <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-        Live • {progress.toFixed(0)}% minted
-      </span>
-    )
   }
 
   return (

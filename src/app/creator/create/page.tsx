@@ -4,6 +4,7 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import PageHeader from '@/components/PageHeader'
 
 interface CollectionData {
   name: string
@@ -136,20 +137,7 @@ export default function CreateCollection() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/creator" className="text-blue-600 hover:text-blue-700">
-                ← Back to Dashboard
-              </Link>
-            </div>
-            <h1 className="text-xl font-semibold text-gray-900">Create Collection</h1>
-            <div></div>
-          </div>
-        </div>
-      </div>
+      <PageHeader title="Create Collection" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Progress Steps */}
