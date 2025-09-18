@@ -461,7 +461,7 @@ export default function AdminDistributePage() {
             <li>Enter the wallet address of the user who paid but didn&apos;t receive NFTs</li>
             <li>Select the specific NFT items they should have received (usually sequential from the next unminted)</li>
             <li>Provide a clear reason for the distribution (for audit purposes)</li>
-            <li>Click "Distribute" to send the NFTs directly to their wallet</li>
+            <li>Click &quot;Distribute&quot; to send the NFTs directly to their wallet</li>
           </ol>
           
           <div className="mt-4 p-3 bg-yellow-900/30 rounded-lg">
