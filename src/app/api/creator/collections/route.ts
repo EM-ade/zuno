@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     const mintPhases = [];
     if (mintPrice && isPublic) {
       mintPhases.push({
-        name: 'Public Mint',
+        name: 'Public',
         price: mintPrice,
         startTime: startDate || new Date().toISOString(),
         endTime: endDate || null,
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
     if (whitelistEnabled && whitelistPrice) {
       mintPhases.push({
-        name: 'Whitelist Mint',
+        name: 'WL',
         price: whitelistPrice,
         startTime: startDate || new Date().toISOString(),
         endTime: endDate || null,
