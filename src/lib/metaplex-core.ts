@@ -318,9 +318,18 @@ export class MetaplexCoreService {
       const transaction = new Transaction();
       transaction.recentBlockhash = blockhash;
       
+      // Define interface for UMI transaction result
+      interface UMITransactionResult {
+        instructions?: Array<{
+          keys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+          programId: string;
+          data: Uint8Array;
+        }>;
+      }
+
       // Convert UMI instructions to web3.js format
       if (builtTx && typeof builtTx === 'object' && 'instructions' in builtTx) {
-        for (const instruction of (builtTx as any).instructions) {
+        for (const instruction of (builtTx as UMITransactionResult).instructions!) {
           const keys = instruction.keys.map((key: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
             pubkey: new PublicKey(key.pubkey),
             isSigner: key.isSigner,
