@@ -59,6 +59,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       metadataNames: metadataFiles.map(f => f.name)
     });
 
+    // Get collection data for proper NFT naming
+    const collection = await SupabaseService.getCollectionById(id);
+    if (!collection) {
+      console.error('Collection not found');
+      return new Response(JSON.stringify({ success: false, error: 'Collection not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('Collection data for naming:', {
+      name: collection.name,
+      symbol: collection.symbol,
+      totalSupply: collection.total_supply
+    });
+
     const uploaded: Array<{ 
       image_uri: string; 
       metadata_uri?: string; 
@@ -91,13 +107,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           cleanBaseName = baseName;
         }
         
-        // Find matching metadata file
+        // Find matching metadata file with improved matching logic
         const metadataFile = metadataFiles.find(f => {
           const metaBaseName = f.name.replace(/\.json$/, '');
-          return metaBaseName === baseName || 
-                 metaBaseName === cleanBaseName ||
-                 metaBaseName === `${baseName}_metadata` ||
-                 f.name === `${baseName}.json`;
+          const matches = [
+            metaBaseName === baseName,
+            metaBaseName === cleanBaseName,
+            metaBaseName === `${baseName}_metadata`,
+            metaBaseName === `${cleanBaseName}_metadata`,
+            f.name === `${baseName}.json`,
+            f.name === `${cleanBaseName}.json`,
+            // Also try matching by index number (e.g., "6.json" matches "nft_6.png")
+            metaBaseName === baseName.match(/\d+$/)?.[0],
+            // Try matching without prefixes (e.g., "6.json" matches "image_6.png")
+            baseName.endsWith(metaBaseName),
+            cleanBaseName.endsWith(metaBaseName)
+          ];
+          
+          console.log(`Metadata matching for ${f.name}:`, {
+            metaBaseName,
+            baseName,
+            cleanBaseName,
+            matches: matches.map((match, i) => ({ condition: i, result: match })).filter(m => m.result)
+          });
+          
+          return matches.some(match => match);
         });
 
         console.log('Name processing and metadata matching:', {
@@ -128,7 +162,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         // Process metadata if available
         let metadataUri: string | undefined = undefined;
         let attributes: Array<{ trait_type: string; value: string | number }> = [];
-        let nftName = cleanBaseName || baseName; // Use clean name without folder path
+        let nftName = cleanBaseName || baseName; // Default fallback name
         let description = `${cleanBaseName || baseName} from the collection`;
 
         if (metadataFile) {
@@ -137,14 +171,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             const metadataText = await metadataFile.text();
             const metadata = JSON.parse(metadataText);
             
-            // Use metadata values if available, prioritize metadata name
-            if (metadata.name) {
-              nftName = metadata.name;
+            console.log('Parsed metadata:', {
+              metadataName: metadata.name,
+              metadataDescription: metadata.description,
+              hasAttributes: !!metadata.attributes
+            });
+            
+            // PRIORITIZE metadata values - use metadata name if it exists
+            if (metadata.name && metadata.name.trim()) {
+              nftName = metadata.name.trim();
+              console.log(`Using metadata name: "${nftName}"`);
+            } else {
+              console.log(`No valid metadata name found, using fallback: "${nftName}"`);
             }
-            if (metadata.description) {
-              description = metadata.description;
+            
+            if (metadata.description && metadata.description.trim()) {
+              description = metadata.description.trim();
             }
-            if (metadata.attributes) {
+            
+            if (metadata.attributes && Array.isArray(metadata.attributes)) {
               attributes = metadata.attributes;
             }
             
@@ -192,9 +237,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
 
         console.log('Final NFT naming:', {
+          originalFileName: imageFile.name,
+          baseName: baseName,
+          cleanBaseName: cleanBaseName,
           finalName: nftName,
           description: description,
           hasMetadata: !!metadataFile,
+          metadataFileName: metadataFile?.name || 'none',
           attributeCount: attributes.length
         });
 

@@ -8,13 +8,22 @@ export async function GET(request: NextRequest) {
     const creatorWallet = searchParams.get('creator');
     const status = searchParams.get('status') || 'approved';
 
+    // Map frontend status to database status
+    const statusMap: Record<string, 'draft' | 'active' | 'completed' | 'archived'> = {
+      'approved': 'active',
+      'live': 'active',
+      'pending': 'draft',
+      'rejected': 'archived'
+    };
+    const dbStatus = statusMap[status] || (status as 'draft' | 'active' | 'completed' | 'archived');
+
     // Get collections from database
     let collections;
     if (creatorWallet) {
-      collections = await SupabaseService.getCollectionsByStatus(status as any);
+      collections = await SupabaseService.getCollectionsByStatus(dbStatus);
       collections = collections.filter(c => c.creator_wallet === creatorWallet);
     } else {
-      collections = await SupabaseService.getCollectionsByStatus(status as any);
+      collections = await SupabaseService.getCollectionsByStatus(dbStatus);
     }
 
     // Check Magic Eden status for each collection

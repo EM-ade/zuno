@@ -200,7 +200,7 @@ class MagicEdenService {
   /**
    * Checks if a collection exists on Magic Eden
    */
-  async checkCollectionExists(symbol: string): Promise<{ exists: boolean; data?: any; error?: any }> {
+  async checkCollectionExists(symbol: string): Promise<{ exists: boolean; data?: unknown; error?: unknown }> {
     return magicEdenErrorHandler.withErrorHandling(
       async () => {
         const response = await fetch(`${this.API_BASE_URL}/collections/${symbol}`);
@@ -228,7 +228,7 @@ class MagicEdenService {
   /**
    * Gets collection stats from Magic Eden
    */
-  async getCollectionStats(symbol: string): Promise<any | null> {
+  async getCollectionStats(symbol: string): Promise<Record<string, unknown> | null> {
     const result = await magicEdenErrorHandler.withErrorHandling(
       async () => {
         const response = await fetch(`${this.API_BASE_URL}/collections/${symbol}/stats`);
@@ -249,7 +249,7 @@ class MagicEdenService {
   /**
    * Gets collection activities from Magic Eden
    */
-  async getCollectionActivities(symbol: string, limit: number = 100): Promise<any[] | null> {
+  async getCollectionActivities(symbol: string, limit: number = 100): Promise<Record<string, unknown>[] | null> {
     const result = await magicEdenErrorHandler.withErrorHandling(
       async () => {
         const response = await fetch(`${this.API_BASE_URL}/collections/${symbol}/activities?limit=${limit}`);

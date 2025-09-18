@@ -8,7 +8,7 @@
 export interface MagicEdenError {
   code: string;
   message: string;
-  details?: any;
+  details?: string | Record<string, unknown> | Error;
   timestamp: string;
   collectionId?: string;
   symbol?: string;
@@ -35,7 +35,7 @@ export class MagicEdenErrorHandler {
   /**
    * Handles API errors from Magic Eden
    */
-  static handleApiError(error: any, context?: { collectionId?: string; symbol?: string }): MagicEdenError {
+  static handleApiError(error: unknown, context?: { collectionId?: string; symbol?: string }): MagicEdenError {
     const timestamp = new Date().toISOString();
     
     // Network/fetch errors
@@ -50,13 +50,14 @@ export class MagicEdenErrorHandler {
     }
 
     // HTTP response errors
-    if (error.status) {
-      switch (error.status) {
+    if (error && typeof error === 'object' && 'status' in error) {
+      const httpError = error as { status: number; statusText?: string };
+      switch (httpError.status) {
         case 404:
           return {
             code: this.ERROR_CODES.COLLECTION_NOT_FOUND,
             message: 'Collection not found on Magic Eden. This is normal for new collections.',
-            details: `HTTP ${error.status}`,
+            details: `HTTP ${httpError.status}`,
             timestamp,
             ...context
           };
@@ -64,7 +65,7 @@ export class MagicEdenErrorHandler {
           return {
             code: this.ERROR_CODES.RATE_LIMITED,
             message: 'Magic Eden API rate limit exceeded. Please try again later.',
-            details: `HTTP ${error.status}`,
+            details: `HTTP ${httpError.status}`,
             timestamp,
             ...context
           };
@@ -74,15 +75,15 @@ export class MagicEdenErrorHandler {
           return {
             code: this.ERROR_CODES.API_UNAVAILABLE,
             message: 'Magic Eden API is temporarily unavailable. Please try again later.',
-            details: `HTTP ${error.status}`,
+            details: `HTTP ${httpError.status}`,
             timestamp,
             ...context
           };
         default:
           return {
             code: this.ERROR_CODES.API_UNAVAILABLE,
-            message: `Magic Eden API returned an error: ${error.status}`,
-            details: error.statusText || `HTTP ${error.status}`,
+            message: `Magic Eden API returned an error: ${httpError.status}`,
+            details: httpError.statusText || `HTTP ${httpError.status}`,
             timestamp,
             ...context
           };
@@ -90,7 +91,7 @@ export class MagicEdenErrorHandler {
     }
 
     // Validation errors
-    if (error.message && error.message.includes('validation')) {
+    if (error instanceof Error && error.message.includes('validation')) {
       return {
         code: this.ERROR_CODES.VALIDATION_FAILED,
         message: 'Collection data validation failed for Magic Eden standards.',
@@ -101,10 +102,21 @@ export class MagicEdenErrorHandler {
     }
 
     // Generic error
+    if (error instanceof Error) {
+      return {
+        code: 'ME_UNKNOWN_ERROR',
+        message: error.message || 'An unknown error occurred with Magic Eden integration.',
+        details: error.stack || error.toString(),
+        timestamp,
+        ...context
+      };
+    }
+
+    // Unknown error type
     return {
       code: 'ME_UNKNOWN_ERROR',
-      message: error.message || 'An unknown error occurred with Magic Eden integration.',
-      details: error.stack || error.toString(),
+      message: 'An unknown error occurred with Magic Eden integration.',
+      details: String(error),
       timestamp,
       ...context
     };
@@ -180,7 +192,7 @@ export class MagicEdenErrorHandler {
    * Creates a safe error response that doesn't break the main flow
    */
   static createSafeErrorResponse(
-    error: any, 
+    error: unknown, 
     context?: { collectionId?: string; symbol?: string }
   ): MagicEdenErrorResponse {
     const magicEdenError = this.handleApiError(error, context);
