@@ -169,12 +169,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           try {
             console.log('Processing metadata file...');
             const metadataText = await metadataFile.text();
+            console.log('Raw metadata text:', metadataText.substring(0, 200) + '...');
+            
             const metadata = JSON.parse(metadataText);
             
             console.log('Parsed metadata:', {
               metadataName: metadata.name,
               metadataDescription: metadata.description,
-              hasAttributes: !!metadata.attributes
+              metadataSymbol: metadata.symbol,
+              hasAttributes: !!metadata.attributes,
+              attributeCount: metadata.attributes?.length || 0,
+              fullMetadata: metadata
             });
             
             // PRIORITIZE metadata values - use metadata name if it exists
@@ -194,18 +199,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             }
             
             // Create updated metadata with correct image URI
+            // IMPORTANT: Preserve the individual NFT metadata, don't override with collection data
             const updatedMetadata = {
               ...metadata,
-              name: nftName,
-              description: description,
-              image: imageUri,
-              attributes: attributes,
+              // Use the individual NFT name from metadata, not collection name
+              name: nftName, // This should be "ZUNO #6" from the metadata
+              description: description, // This should be "{ZUNO} - GENESIS MINT." from the metadata
+              image: imageUri, // Update with the uploaded image URI
+              attributes: attributes, // Preserve the individual NFT attributes
               properties: {
                 category: 'image',
                 files: [{ uri: imageUri, type: imageFile.type }],
                 ...metadata.properties
               }
             };
+
+            console.log('Updated metadata being uploaded:', {
+              name: updatedMetadata.name,
+              description: updatedMetadata.description,
+              attributeCount: updatedMetadata.attributes?.length || 0,
+              imageUri: updatedMetadata.image
+            });
 
             // Validate metadata against Magic Eden standards
             const magicEdenNFTData: MagicEdenNFTData = {
@@ -232,8 +246,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             
           } catch (metadataError) {
             console.error('Failed to process metadata file:', metadataError);
-            // Continue with default metadata
+            // Continue with default metadata - reset to fallback values
+            nftName = cleanBaseName || baseName;
+            description = `${cleanBaseName || baseName} from the collection`;
+            attributes = [];
           }
+        } else {
+          // No metadata file found - create basic metadata
+          console.log('No metadata file found, creating basic metadata');
+          const basicMetadata = {
+            name: nftName,
+            description: description,
+            image: imageUri,
+            attributes: [],
+            properties: {
+              category: 'image',
+              files: [{ uri: imageUri, type: imageFile.type }]
+            }
+          };
+          
+          console.log('Uploading basic metadata to Pinata...', { name: nftName });
+          metadataUri = await pinataService.uploadJSON(basicMetadata);
+          console.log('Basic metadata uploaded successfully:', metadataUri);
         }
 
         console.log('Final NFT naming:', {

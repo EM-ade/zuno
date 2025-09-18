@@ -223,13 +223,13 @@ export class MagicEdenErrorHandler {
    * Determines if an error is retryable
    */
   static isRetryableError(error: MagicEdenError): boolean {
-    const retryableCodes = [
+    const retryableCodes: string[] = [
       this.ERROR_CODES.API_UNAVAILABLE,
       this.ERROR_CODES.NETWORK_ERROR,
       this.ERROR_CODES.RATE_LIMITED
     ];
 
-    return retryableCodes.includes(error.code as any);
+    return retryableCodes.includes(error.code);
   }
 
   /**
