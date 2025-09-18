@@ -354,6 +354,7 @@ export default function CreateCollection() {
                     step="0.01"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Set to 0 for free minting (users only pay platform fee)</p>
                 </div>
               </div>
 
@@ -450,7 +451,13 @@ export default function CreateCollection() {
                     </div>
                     <div>
                       <span className="text-gray-500">Price:</span>
-                      <p className="font-medium">{mintSettings.mintPrice} SOL</p>
+                      <p className="font-medium">
+                        {mintSettings.mintPrice === 0 ? (
+                          <span className="text-green-600 font-semibold">FREE</span>
+                        ) : (
+                          `${mintSettings.mintPrice} SOL`
+                        )}
+                      </p>
                     </div>
                     <div>
                       <span className="text-gray-500">Whitelist:</span>
@@ -517,7 +524,7 @@ export default function CreateCollection() {
                 }}
                 disabled={
                   (currentStep === 'collection' && (!collectionData.name || !collectionData.symbol || !collectionData.description)) ||
-                  (currentStep === 'mint-settings' && (!mintSettings.totalSupply || !mintSettings.mintPrice))
+                  (currentStep === 'mint-settings' && (!mintSettings.totalSupply || mintSettings.mintPrice < 0))
                 }
                 className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
