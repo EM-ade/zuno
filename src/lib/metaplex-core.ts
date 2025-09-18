@@ -112,6 +112,8 @@ export class MetaplexCoreService {
         throw new Error('If phases are provided, at least one mint phase is required');
       }
 
+      // Server wallet balance check removed - let Solana network handle insufficient funds
+
       // Create collection NFT
       const collectionMint = generateSigner(this.umi);
       const collectionImageUri = imageUri || 'https://placeholder.com/collection-image.png';
@@ -236,6 +238,119 @@ export class MetaplexCoreService {
     // This would be implemented to verify a wallet is in the whitelist for a phase
     // using Merkle tree verification
     return true; // Placeholder implementation
+  }
+
+  async createCollectionTransaction(config: CollectionConfig): Promise<{ 
+    transactionBase64: string; 
+    collectionMint: string; 
+    candyMachineId: string;
+    metadataUri: string;
+  }> {
+    try {
+      const { name, symbol, description, totalSupply, phases, creatorWallet, imageUri } = config;
+
+      // Validate phases (now optional) - only validate if phases array is explicitly provided and empty
+      if (Array.isArray(phases) && phases.length === 0) {
+        throw new Error('If phases are provided, at least one mint phase is required');
+      }
+
+      // For now, use a simple placeholder metadata URI to avoid Pinata issues
+      const collectionImageUri = imageUri || 'https://placeholder.com/collection-image.png';
+      const collectionMetadataUri = `https://api.jsonbin.io/v3/b/placeholder-${Date.now()}`; // Temporary placeholder
+
+      // Create UMI instance with creator as signer
+      const creatorUmi = createUmi(envConfig.solanaRpcUrl)
+        .use(mplCore())
+        .use(mplCandyMachine());
+
+      // Generate signers for collection and candy machine
+      const collectionMint = generateSigner(creatorUmi);
+      const candyMachine = generateSigner(creatorUmi);
+
+      // Configure guard groups for each phase (if phases exist)
+      const guardGroups = (phases || []).map((phase, index) => ({
+        label: phase.name,
+        guards: this.configureGuardsForPhase(phase, creatorWallet),
+      }));
+
+      // Create a temporary UMI instance for building the transaction
+      const tempUmi = createUmi(envConfig.solanaRpcUrl)
+        .use(mplCore())
+        .use(mplCandyMachine());
+
+      // Build the actual collection creation transaction that user will sign
+      const umiTransaction = transactionBuilder()
+        .add(
+          await createCollectionV1(tempUmi, {
+            collection: collectionMint,
+            name,
+            uri: collectionMetadataUri,
+          })
+        )
+        .add(
+          await createCandyMachine(tempUmi, {
+            candyMachine,
+            itemsAvailable: BigInt(totalSupply),
+            collection: collectionMint.publicKey,
+            collectionUpdateAuthority: publicKey(creatorWallet),
+            authority: publicKey(creatorWallet),
+            isMutable: false,
+            configLineSettings: some({
+              prefixName: 'NFT #',
+              nameLength: 10,
+              prefixUri: 'https://example.com/',
+              uriLength: 30,
+              isSequential: false,
+            }),
+            guards: phases && phases.length > 0 ? this.configureGuardsForPhase(phases[0], creatorWallet) : {},
+            groups: guardGroups,
+          })
+        );
+
+      // Convert UMI transaction to web3.js transaction
+      const connection = new Connection(envConfig.solanaRpcUrl);
+      const { blockhash } = await connection.getLatestBlockhash('finalized');
+      
+      // Build the transaction and get the serialized version
+      const builtTx = await umiTransaction.build(tempUmi);
+      
+      // Create web3.js transaction
+      const transaction = new Transaction();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = new PublicKey(creatorWallet);
+      
+      // Convert UMI instructions to web3.js format
+      for (const instruction of builtTx.instructions) {
+        const keys = instruction.keys.map((key: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
+          pubkey: new PublicKey(key.pubkey),
+          isSigner: key.isSigner,
+          isWritable: key.isWritable
+        }));
+        
+        transaction.add(new TransactionInstruction({
+          keys,
+          programId: new PublicKey(instruction.programId),
+          data: Buffer.from(instruction.data)
+        }));
+      }
+
+      // Serialize transaction to base64
+      const transactionBase64 = transaction.serialize({ 
+        requireAllSignatures: false,
+        verifySignatures: false 
+      }).toString('base64');
+
+      return { 
+        transactionBase64,
+        collectionMint: collectionMint.publicKey,
+        candyMachineId: candyMachine.publicKey,
+        metadataUri: collectionMetadataUri
+      };
+
+    } catch (error) {
+      console.error('Error creating collection transaction:', error);
+      throw new Error(`Failed to create collection transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async createMintTransaction(params: {

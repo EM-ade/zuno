@@ -23,8 +23,8 @@ function getEnvVar(key: string, defaultValue?: string): string {
 }
 
 export const envConfig: EnvConfig = {
-  solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
-  solanaNetwork: (process.env.SOLANA_NETWORK || 'devnet') as 'devnet' | 'testnet' | 'mainnet-beta',
+  solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=ba9e35f3-579f-4071-8d87-4a59b8160bb3',
+  solanaNetwork: (process.env.SOLANA_NETWORK || 'mainnet-beta') as 'devnet' | 'testnet' | 'mainnet-beta',
   serverWalletPrivateKey: process.env.SERVER_WALLET_PRIVATE_KEY || '',
   platformWallet: process.env.PLATFORM_WALLET || '4mHpjYdrBDa5REkpCSnv9GsFNerXhDdTNG5pS8jhyxEe',
   platformFeeSol: parseFloat(process.env.PLATFORM_FEE_SOL || '0.01'),

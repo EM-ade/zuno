@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
       endDate,
       whitelistEnabled,
       whitelistPrice,
-      whitelistSpots
+      whitelistSpots,
+      useWalletSigning = true // New flag to determine if user wallet should sign
     } = body;
 
     // Validate required fields
@@ -98,7 +99,18 @@ export async function POST(request: NextRequest) {
 
     // Create collection on blockchain
     const mintPhases = [];
+    
+    console.log('Collection creation parameters:', {
+      isPublic,
+      mintPrice,
+      whitelistEnabled,
+      whitelistPrice,
+      whitelistSpots,
+      useWalletSigning
+    });
+    
     if (isPublic && (mintPrice >= 0)) { // Allow 0 for free mints
+      console.log('Adding public phase with price:', mintPrice);
       mintPhases.push({
         name: 'Public',
         price: mintPrice,
@@ -109,6 +121,7 @@ export async function POST(request: NextRequest) {
       });
     }
     if (whitelistEnabled && (whitelistPrice >= 0)) { // Allow 0 for free whitelist
+      console.log('Adding whitelist phase with price:', whitelistPrice);
       mintPhases.push({
         name: 'WL',
         price: whitelistPrice,
@@ -118,7 +131,46 @@ export async function POST(request: NextRequest) {
         mintLimit: whitelistSpots || undefined
       });
     }
+    
+    console.log('Final mint phases for blockchain:', mintPhases);
 
+    // If using wallet signing, return unsigned transaction
+    if (useWalletSigning) {
+      const transactionData = await metaplexCoreService.createCollectionTransaction({
+        name: collectionName,
+        symbol,
+        description,
+        totalSupply,
+        royaltyPercentage: royaltyPercentage || 5,
+        creatorWallet,
+        imageUri,
+        phases: mintPhases
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          requiresWalletSignature: true,
+          transactionBase64: transactionData.transactionBase64,
+          collectionMint: transactionData.collectionMint,
+          candyMachineId: transactionData.candyMachineId,
+          metadataUri: transactionData.metadataUri,
+          collectionData: {
+            name: collectionName,
+            symbol,
+            description,
+            totalSupply,
+            royaltyPercentage: royaltyPercentage || 5,
+            imageUri,
+            creatorWallet
+          },
+          phases: mintPhases
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Otherwise use server wallet (old flow)
     const collectionResult = await metaplexCoreService.createCollection({
       name: collectionName,
       symbol,

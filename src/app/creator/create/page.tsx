@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import PageHeader from '@/components/PageHeader'
+import { Transaction, Connection } from '@solana/web3.js'
 
 interface CollectionData {
   name: string
@@ -32,7 +33,7 @@ interface MintSettings {
 type Step = 'collection' | 'mint-settings' | 'review' | 'deploy'
 
 export default function CreateCollection() {
-  const { publicKey } = useWallet()
+  const { publicKey, signTransaction } = useWallet()
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState<Step>('collection')
   const [loading, setLoading] = useState(false)
@@ -98,6 +99,7 @@ export default function CreateCollection() {
         whitelistEnabled: mintSettings.whitelistEnabled,
         whitelistPrice: mintSettings.whitelistPrice,
         whitelistSpots: mintSettings.whitelistSpots,
+        useWalletSigning: true, // Enable wallet signing
         metadata: {
           website: collectionData.website,
           twitter: collectionData.twitter,
@@ -114,7 +116,69 @@ export default function CreateCollection() {
       const result = await response.json()
       
       if (result.success) {
-        router.push(`/creator/collections/${result.collectionId}`)
+        // Check if wallet signature is required
+        if (result.requiresWalletSignature) {
+          console.log('Collection requires wallet signature...')
+          
+          // Deserialize the transaction
+          const transaction = Transaction.from(Buffer.from(result.transactionBase64, 'base64'))
+          
+          // Get connection
+          const connection = new Connection(
+            process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=ba9e35f3-579f-4071-8d87-4a59b8160bb3'
+          )
+          
+          // Get latest blockhash
+          const { blockhash } = await connection.getLatestBlockhash('finalized')
+          transaction.recentBlockhash = blockhash
+          transaction.feePayer = publicKey
+          
+          // Request wallet to sign the transaction
+          if (!signTransaction) {
+            throw new Error('Wallet does not support signing')
+          }
+          
+          console.log('Requesting wallet signature...')
+          const signedTransaction = await signTransaction(transaction)
+          
+          // Send the signed transaction
+          console.log('Sending signed transaction...')
+          const signature = await connection.sendRawTransaction(
+            signedTransaction.serialize(),
+            { skipPreflight: false, preflightCommitment: 'finalized' }
+          )
+          
+          // Wait for confirmation
+          console.log('Waiting for confirmation...')
+          await connection.confirmTransaction(signature, 'finalized')
+          
+          console.log('Transaction confirmed:', signature)
+          
+          // Finalize the collection creation in the database
+          const finalizeResponse = await fetch('/api/creator/collections/finalize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              signature,
+              collectionMint: result.collectionMint,
+              candyMachineId: result.candyMachineId,
+              collectionData: result.collectionData,
+              phases: result.phases
+            })
+          })
+          
+          const finalizeResult = await finalizeResponse.json()
+          
+          if (finalizeResult.success) {
+            console.log('Collection created successfully!')
+            router.push(`/creator/collections/${finalizeResult.collectionId}`)
+          } else {
+            throw new Error(finalizeResult.error || 'Failed to finalize collection')
+          }
+        } else {
+          // Old flow without wallet signing
+          router.push(`/creator/collections/${result.collectionId}`)
+        }
       } else {
         throw new Error(result.error || 'Failed to create collection')
       }

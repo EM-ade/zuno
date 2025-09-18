@@ -73,7 +73,7 @@ export class PriceOracleService {
       solPrice: 20, // Conservative SOL price estimate
       usdtPrice: 1,
       solToUsdt: 20,
-      usdtToSol: 0.05, // 1 USDT = 0.05 SOL
+      usdtToSol: 0.0041, // 1 USDT = 0.05 SOL
     };
   }
 

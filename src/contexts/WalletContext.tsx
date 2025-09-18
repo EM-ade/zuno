@@ -21,9 +21,12 @@ interface WalletProviderProps {
 }
 
 export function WalletProvider({ children }: WalletProviderProps) {
-  // Use devnet for testing
-  const network = WalletAdapterNetwork.Devnet;
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  // Use mainnet to match wallet network
+  const network = WalletAdapterNetwork.Mainnet;
+  const endpoint = useMemo(() => 
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl(network), 
+    [network]
+  );
 
   const wallets = useMemo(
     () => [
