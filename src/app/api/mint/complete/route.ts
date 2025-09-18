@@ -59,9 +59,11 @@ export async function POST(request: NextRequest) {
       user_wallet: wallet,
       phase_id: phaseId,
       signature,
-      amount_paid: totalCost,
+      amount_paid: totalCost || 0, // Handle free mints (totalCost could be 0)
       platform_fee: envConfig.platformFeeSol // Platform fee goes to 4mHpjYdrBDa5REkpCSnv9GsFNerXhDdTNG5pS8jhyxEe
     });
+
+    console.log(`Mint transaction recorded: ${totalCost > 0 ? `${totalCost} SOL paid` : 'FREE MINT'}`);
 
     console.log(`Successfully completed mint for wallet ${wallet}: ${quantity} NFTs created`);
     

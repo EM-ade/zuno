@@ -73,12 +73,15 @@ export class MetaplexCoreService {
       });
     }
 
-    // SOL payment guard
+    // SOL payment guard - only add if price > 0 (allows free mints)
     if (phase.price > 0) {
       guards.solPayment = some({
         lamports: sol(phase.price),
         destination: publicKey(creatorWallet),
       });
+      console.log(`Added SOL payment guard: ${phase.price} SOL to ${creatorWallet}`);
+    } else {
+      console.log(`Free mint phase detected: ${phase.name} - no payment guard added`);
     }
 
     // Allow list guard (whitelist)
@@ -392,15 +395,21 @@ export class MetaplexCoreService {
         })
       );
 
-      // Add creator payment transfer - send mint price to creator
-      const creatorPaymentLamports = Math.round(price * amount * LAMPORTS_PER_SOL);
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(userWallet),
-          toPubkey: new PublicKey(creatorWallet),
-          lamports: creatorPaymentLamports,
-        })
-      );
+      // Add creator payment transfer - send mint price to creator (only if price > 0)
+      const totalPrice = price * amount;
+      if (totalPrice > 0) {
+        const creatorPaymentLamports = Math.round(totalPrice * LAMPORTS_PER_SOL);
+        console.log(`Adding creator payment: ${creatorPaymentLamports} lamports (${totalPrice} SOL)`);
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: new PublicKey(userWallet),
+            toPubkey: new PublicKey(creatorWallet),
+            lamports: creatorPaymentLamports,
+          })
+        );
+      } else {
+        console.log('Free mint detected - no creator payment required');
+      }
 
       // Create actual NFTs using Metaplex Core (separate UMI transaction)
       const mintIds: string[] = [];
