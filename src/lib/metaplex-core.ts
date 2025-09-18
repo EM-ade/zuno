@@ -138,7 +138,7 @@ export class MetaplexCoreService {
           ]
         },
         seller_fee_basis_points: config.royaltyPercentage * 100,
-        external_url: 'https://zuno.app',
+        external_url: 'https://zunoagent.xyz',
         collection: {
           name,
           family: symbol
@@ -428,7 +428,7 @@ export class MetaplexCoreService {
             family: collection.symbol || 'ZUNO'
           },
           seller_fee_basis_points: collection.royalty_percentage ? collection.royalty_percentage * 100 : 0,
-          external_url: `https://zuno.app/nft/${assetSigner.publicKey}`,
+          external_url: `https://zunoagent.xyz/nft/${assetSigner.publicKey}`,
         };
         
         // Upload NFT metadata to IPFS
@@ -568,7 +568,7 @@ export class MetaplexCoreService {
             verified: false // Will be true once collection is verified
           },
           seller_fee_basis_points: collection.royalty_percentage ? collection.royalty_percentage * 100 : 0,
-          external_url: `https://zuno.app/collection/${collection.id}`,
+          external_url: `https://zunoagent.xyz/collection/${collection.id}`,
           // Add standard NFT metadata fields
           compiler: 'Zuno NFT Platform',
           date: new Date().toISOString(),
