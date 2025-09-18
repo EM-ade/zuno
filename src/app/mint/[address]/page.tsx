@@ -405,7 +405,13 @@ export default function MintPage() {
                     </div>
                   )}
                   <div className="mt-1 font-extrabold">{phaseStatus}</div>
-                  <div className="text-xs text-gray-500 mt-1">SOL: {phase.price.toFixed(4)}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {phase.price === 0 ? (
+                      <span className="text-green-600 font-semibold">FREE</span>
+                    ) : (
+                      `SOL: ${phase.price.toFixed(4)}`
+                    )}
+                  </div>
                 </div>
               )
             })
@@ -531,7 +537,15 @@ export default function MintPage() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <div className="text-gray-500">Price</div>
-                <div className="font-medium text-black">{activePhase ? `${activePhase.price} SOL` : '—'}</div>
+                <div className="font-medium text-black">
+                  {activePhase ? (
+                    activePhase.price === 0 ? (
+                      <span className="text-green-600 font-semibold">FREE</span>
+                    ) : (
+                      `${activePhase.price} SOL`
+                    )
+                  ) : '—'}
+                </div>
               </div>
               <div>
                 <div className="text-gray-500">Quantity</div>
@@ -539,7 +553,15 @@ export default function MintPage() {
               </div>
               <div>
                 <div className="text-gray-500">Total Cost</div>
-                <div className="font-medium text-black">{activePhase ? (activePhase.price * mintQuantity).toFixed(3) : '0.000'} SOL</div>
+                <div className="font-medium text-black">
+                  {activePhase ? (
+                    activePhase.price === 0 ? (
+                      <span className="text-green-600 font-semibold">FREE</span>
+                    ) : (
+                      `${(activePhase.price * mintQuantity).toFixed(3)} SOL`
+                    )
+                  ) : '0.000 SOL'}
+                </div>
               </div>
               <div>
                 <div className="text-gray-500">Blockchain</div>
@@ -672,7 +694,13 @@ export default function MintPage() {
                           <span className="text-gray-600 font-bold text-xs">{phaseStatus}</span>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">SOL: {phase.price.toFixed(4)}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {phase.price === 0 ? (
+                          <span className="text-green-600 font-semibold">FREE</span>
+                        ) : (
+                          `SOL: ${phase.price.toFixed(4)}`
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -842,7 +870,15 @@ export default function MintPage() {
             <div className="grid grid-cols-3 gap-6 text-base">
               <div>
                 <div className="text-gray-500">Price</div>
-                <div className="font-bold text-xl text-black">{activePhase ? `${activePhase.price} SOL` : '—'}</div>
+                <div className="font-bold text-xl text-black">
+                  {activePhase ? (
+                    activePhase.price === 0 ? (
+                      <span className="text-green-600">FREE</span>
+                    ) : (
+                      `${activePhase.price} SOL`
+                    )
+                  ) : '—'}
+                </div>
               </div>
               <div>
                 <div className="text-gray-500">Quantity</div>
@@ -850,7 +886,15 @@ export default function MintPage() {
               </div>
               <div>
                 <div className="text-gray-500">Total Cost</div>
-                <div className="font-bold text-xl text-black">{activePhase ? (activePhase.price * mintQuantity).toFixed(3) : '0.000'} SOL</div>
+                <div className="font-bold text-xl text-black">
+                  {activePhase ? (
+                    activePhase.price === 0 ? (
+                      <span className="text-green-600">FREE</span>
+                    ) : (
+                      `${(activePhase.price * mintQuantity).toFixed(3)} SOL`
+                    )
+                  ) : '0.000 SOL'}
+                </div>
               </div>
               <div>
                 <div className="text-gray-500">Supply</div>
@@ -919,7 +963,11 @@ export default function MintPage() {
                     disabled={minting || mintQuantity <= 0}
                     className="py-4 rounded-xl bg-blue-600 text-white font-bold text-lg shadow col-span-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {minting ? 'MINTING...' : `MINT ${mintQuantity} NFT${mintQuantity > 1 ? 'S' : ''} FOR ${activePhase ? (activePhase.price * mintQuantity).toFixed(3) : '0.000'} SOL`}
+                    {minting ? 'MINTING...' : 
+                      activePhase && activePhase.price === 0 
+                        ? `MINT ${mintQuantity} NFT${mintQuantity > 1 ? 'S' : ''} FOR FREE`
+                        : `MINT ${mintQuantity} NFT${mintQuantity > 1 ? 'S' : ''} FOR ${activePhase ? (activePhase.price * mintQuantity).toFixed(3) : '0.000'} SOL`
+                    }
                   </button>
                   <div className="col-span-2 text-center text-sm text-gray-500">
                     {remainingSupply} of {collection.total_supply} remaining

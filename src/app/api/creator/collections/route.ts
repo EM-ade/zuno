@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     // Create collection on blockchain
     const mintPhases = [];
-    if (mintPrice && isPublic) {
+    if (isPublic && (mintPrice >= 0)) { // Allow 0 for free mints
       mintPhases.push({
         name: 'Public',
         price: mintPrice,
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
         mintLimit: undefined
       });
     }
-    if (whitelistEnabled && whitelistPrice) {
+    if (whitelistEnabled && (whitelistPrice >= 0)) { // Allow 0 for free whitelist
       mintPhases.push({
         name: 'WL',
         price: whitelistPrice,
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     // Create mint phases if configured
     const phases = [];
     
-    if (whitelistEnabled && whitelistPrice && whitelistSpots) {
+    if (whitelistEnabled && (whitelistPrice >= 0) && whitelistSpots) { // Allow 0 for free whitelist
       phases.push({
         collection_id: collection.id!,
         name: 'Whitelist',
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (isPublic && mintPrice) {
+    if (isPublic && (mintPrice >= 0)) { // Allow 0 for free mints
       phases.push({
         collection_id: collection.id!,
         name: 'Public',

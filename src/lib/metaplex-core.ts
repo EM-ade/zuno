@@ -107,8 +107,8 @@ export class MetaplexCoreService {
     try {
       const { name, symbol, description, totalSupply, phases, creatorWallet, imageUri } = config;
 
-      // Validate phases (now optional)
-      if (phases && phases.length === 0) {
+      // Validate phases (now optional) - only validate if phases array is explicitly provided and empty
+      if (Array.isArray(phases) && phases.length === 0) {
         throw new Error('If phases are provided, at least one mint phase is required');
       }
 
@@ -151,8 +151,8 @@ export class MetaplexCoreService {
       // Create candy machine
       const candyMachine = generateSigner(this.umi);
 
-      // Configure guard groups for each phase
-      const guardGroups = phases.map((phase, index) => ({
+      // Configure guard groups for each phase (if phases exist)
+      const guardGroups = (phases || []).map((phase, index) => ({
         label: phase.name,
         guards: this.configureGuardsForPhase(phase, creatorWallet),
       }));
@@ -181,7 +181,7 @@ export class MetaplexCoreService {
               uriLength: 30,
               isSequential: false,
             }),
-            guards: this.configureGuardsForPhase(phases[0], creatorWallet), // Default guards
+            guards: phases && phases.length > 0 ? this.configureGuardsForPhase(phases[0], creatorWallet) : {}, // Default guards
             groups: guardGroups,
           })
         );
@@ -193,7 +193,7 @@ export class MetaplexCoreService {
 
       // Map phases to guard group IDs
       const phaseMapping: Record<string, string> = {};
-      phases.forEach((phase, index) => {
+      (phases || []).forEach((phase, index) => {
         phaseMapping[phase.name] = index.toString();
       });
 
