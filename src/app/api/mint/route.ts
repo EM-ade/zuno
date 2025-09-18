@@ -89,16 +89,22 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // Creator payment (price * amount)
+    // Creator payment (price * amount) - only add if price > 0
     const lamportsPerSol = 1_000_000_000;
     const creatorPaymentLamports = Math.round(priceSol * amount * lamportsPerSol);
-    tx.add(
-      SystemProgram.transfer({
-        fromPubkey: userPubkey,
-        toPubkey: creatorWallet,
-        lamports: creatorPaymentLamports,
-      })
-    );
+    
+    if (creatorPaymentLamports > 0) {
+      console.log(`Adding creator payment: ${creatorPaymentLamports} lamports (${priceSol} SOL per NFT)`);
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: userPubkey,
+          toPubkey: creatorWallet,
+          lamports: creatorPaymentLamports,
+        })
+      );
+    } else {
+      console.log('Free mint detected - no creator payment required');
+    }
 
     // TODO: Add Candy Machine mint instruction(s) here when wiring full mint
 

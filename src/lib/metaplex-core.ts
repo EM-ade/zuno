@@ -276,30 +276,41 @@ export class MetaplexCoreService {
         throw new Error('Collection not found');
       }
 
-      // Calculate creator payment with platform commission
+      // Calculate creator payment with platform commission - only if price > 0
       const totalMintPrice = price * quantity;
-      const platformCommission = totalMintPrice * 0.05; // 5% platform commission
-      const creatorPayment = totalMintPrice - platformCommission;
       
-      // Add creator payment transfer (after platform commission)
-      const creatorPaymentLamports = Math.round(creatorPayment * LAMPORTS_PER_SOL);
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(buyerWallet),
-          toPubkey: new PublicKey(collection.creator_wallet),
-          lamports: creatorPaymentLamports,
-        })
-      );
-      
-      // Add platform commission transfer (separate from the $1.25 fee)
-      const platformCommissionLamports = Math.round(platformCommission * LAMPORTS_PER_SOL);
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(buyerWallet),
-          toPubkey: new PublicKey(envConfig.platformWallet),
-          lamports: platformCommissionLamports,
-        })
-      );
+      if (totalMintPrice > 0) {
+        const platformCommission = totalMintPrice * 0.05; // 5% platform commission
+        const creatorPayment = totalMintPrice - platformCommission;
+        
+        // Add creator payment transfer (after platform commission)
+        const creatorPaymentLamports = Math.round(creatorPayment * LAMPORTS_PER_SOL);
+        if (creatorPaymentLamports > 0) {
+          console.log(`Adding creator payment: ${creatorPaymentLamports} lamports (${creatorPayment} SOL)`);
+          transaction.add(
+            SystemProgram.transfer({
+              fromPubkey: new PublicKey(buyerWallet),
+              toPubkey: new PublicKey(collection.creator_wallet),
+              lamports: creatorPaymentLamports,
+            })
+          );
+        }
+        
+        // Add platform commission transfer (separate from the $1.25 fee)
+        const platformCommissionLamports = Math.round(platformCommission * LAMPORTS_PER_SOL);
+        if (platformCommissionLamports > 0) {
+          console.log(`Adding platform commission: ${platformCommissionLamports} lamports (${platformCommission} SOL)`);
+          transaction.add(
+            SystemProgram.transfer({
+              fromPubkey: new PublicKey(buyerWallet),
+              toPubkey: new PublicKey(envConfig.platformWallet),
+              lamports: platformCommissionLamports,
+            })
+          );
+        }
+      } else {
+        console.log('Free mint detected - no creator payment or platform commission required');
+      }
 
       // Add recent blockhash and set fee payer
       const { blockhash } = await connection.getLatestBlockhash('finalized');
@@ -307,10 +318,14 @@ export class MetaplexCoreService {
       transaction.feePayer = new PublicKey(buyerWallet);
 
       // Add a memo instruction to make the transaction more explicit for wallets
+      const memoText = totalMintPrice > 0 
+        ? `Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? 's' : ''} for ${(price * quantity).toFixed(3)} SOL`
+        : `Zuno NFT Free Mint: ${quantity} NFT${quantity > 1 ? 's' : ''} (FREE)`;
+        
       const memoInstruction = new TransactionInstruction({
         keys: [],
         programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-        data: Buffer.from(`Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? 's' : ''} for ${(price * quantity).toFixed(3)} SOL`, 'utf8')
+        data: Buffer.from(memoText, 'utf8')
       });
       transaction.add(memoInstruction);
 
