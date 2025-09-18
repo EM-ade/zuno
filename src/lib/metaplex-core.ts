@@ -292,8 +292,8 @@ export class MetaplexCoreService {
             candyMachine,
             itemsAvailable: BigInt(totalSupply),
             collection: collectionMint.publicKey,
-            collectionUpdateAuthority: publicKey(creatorWallet),
-            authority: publicKey(creatorWallet),
+            collectionUpdateAuthority: tempUmi.identity, // Use server wallet signer
+            authority: tempUmi.identity.publicKey, // Use server wallet public key
             isMutable: false,
             configLineSettings: some({
               prefixName: 'NFT #',
@@ -317,21 +317,24 @@ export class MetaplexCoreService {
       // Create web3.js transaction
       const transaction = new Transaction();
       transaction.recentBlockhash = blockhash;
-      transaction.feePayer = new PublicKey(creatorWallet);
       
       // Convert UMI instructions to web3.js format
-      for (const instruction of builtTx.instructions) {
-        const keys = instruction.keys.map((key: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
-          pubkey: new PublicKey(key.pubkey),
-          isSigner: key.isSigner,
-          isWritable: key.isWritable
-        }));
-        
-        transaction.add(new TransactionInstruction({
-          keys,
-          programId: new PublicKey(instruction.programId),
-          data: Buffer.from(instruction.data)
-        }));
+      if (builtTx && typeof builtTx === 'object' && 'instructions' in builtTx) {
+        for (const instruction of (builtTx as any).instructions) {
+          const keys = instruction.keys.map((key: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
+            pubkey: new PublicKey(key.pubkey),
+            isSigner: key.isSigner,
+            isWritable: key.isWritable
+          }));
+          
+          transaction.add(new TransactionInstruction({
+            keys,
+            programId: new PublicKey(instruction.programId),
+            data: Buffer.from(instruction.data)
+          }));
+        }
+      } else {
+        console.warn('Could not access UMI transaction instructions - using basic transaction');
       }
 
       // Serialize transaction to base64
