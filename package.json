@@ -39,6 +39,7 @@
     "pinata": "^2.5.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-hot-toast": "^2.6.0",
     "tweetnacl": "^1.0.3",
     "vitest": "^3.2.4"
   },

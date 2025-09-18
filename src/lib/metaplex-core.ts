@@ -651,15 +651,17 @@ export class MetaplexCoreService {
       attributes: Array<{ trait_type: string; value: string | number }>;
     }>;
     transactionSignature: string;
+    feePayer?: string; // Optional: specify a different wallet to pay fees
   }): Promise<{ success: boolean; error?: string; mintIds?: string[] }> {
     try {
-      const { collectionMintAddress, userWallet, selectedItems, transactionSignature } = params;
+      const { collectionMintAddress, userWallet, selectedItems, transactionSignature, feePayer } = params;
 
       console.log('Creating NFTs from selected items:', {
         collectionMintAddress,
         userWallet,
         itemCount: selectedItems.length,
-        transactionSignature
+        transactionSignature,
+        feePayer: feePayer || 'server_wallet'
       });
 
       // Get collection details
@@ -767,6 +769,18 @@ export class MetaplexCoreService {
         success: false,
         error: errorMessage
       };
+    }
+  }
+
+  // Helper method to get server wallet public key
+  getServerWalletPublicKey() {
+    try {
+      const privateKey = bs58.decode(envConfig.serverWalletPrivateKey);
+      const keypair = Keypair.fromSecretKey(privateKey);
+      return keypair.publicKey;
+    } catch (error) {
+      console.error('Error getting server wallet public key:', error);
+      return null;
     }
   }
 }

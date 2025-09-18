@@ -58,6 +58,7 @@ export interface MintTransactionRecord {
   signature: string;
   amount_paid: number;
   platform_fee: number;
+  metadata?: Record<string, unknown>; // Additional metadata for special transactions
   created_at?: string;
 }
 
@@ -457,4 +458,40 @@ export class SupabaseService {
 
     return count || 0;
   }
+
+  // Get items by their indices
+  static async getItemsByIndices(collectionId: string, itemIndices: number[]) {
+    const { data, error } = await supabaseServer
+      .from('items')
+      .select('*')
+      .eq('collection_id', collectionId)
+      .in('item_index', itemIndices)
+      .is('owner_wallet', null) // Only get unminted items
+      .order('item_index', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching items by indices:', error);
+      throw new Error(`Failed to fetch items: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  // Get all unminted items from a collection
+  static async getUnmintedItems(collectionId: string) {
+    const { data, error } = await supabaseServer
+      .from('items')
+      .select('*')
+      .eq('collection_id', collectionId)
+      .is('owner_wallet', null) // Only get unminted items
+      .order('item_index', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching unminted items:', error);
+      throw new Error(`Failed to fetch unminted items: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
 }
