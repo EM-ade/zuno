@@ -70,7 +70,17 @@ export class PinataService {
 
       const formData = new FormData();
       const blob = new Blob([new Uint8Array(fileBuffer)], { type: contentType });
-      formData.append('file', blob, fileName);
+      
+      // Ensure unique filename to prevent conflicts
+      const timestamp = Date.now();
+      const uniqueFileName = `${timestamp}_${fileName}`;
+      formData.append('file', blob, uniqueFileName);
+      
+      // Add pinata options to ensure individual file upload
+      formData.append('pinataOptions', JSON.stringify({
+        cidVersion: 1,
+        wrapWithDirectory: false // This ensures individual file upload, not folder
+      }));
 
       console.log('Sending request to Pinata API...');
       const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
@@ -98,7 +108,14 @@ export class PinataService {
       }
 
       const gatewayUrl = await this.toGatewayUrl(result.IpfsHash);
-      console.log(`File uploaded successfully: ${gatewayUrl}`);
+      console.log(`File uploaded successfully:`, {
+        originalFileName: fileName,
+        uniqueFileName,
+        ipfsHash: result.IpfsHash,
+        gatewayUrl: gatewayUrl,
+        pinSize: result.PinSize,
+        timestamp: result.Timestamp
+      });
       return gatewayUrl;
     } catch (error) {
       console.error('Failed to upload file to Pinata:', error);

@@ -53,8 +53,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const safeName = `${baseName}-${String(i + 1).padStart(3, '0')}${f.type === 'image/png' ? '.png' : f.name?.match(/\.[a-zA-Z0-9]+$/)?.[0] || ''}`;
 
         console.log('Uploading image to Pinata...', { safeName, fileType: f.type, bufferSize: buffer.length });
+        
+        // Upload each file individually to get unique IPFS hashes
         const imageUri = await pinataService.uploadFile(buffer, safeName, f.type || 'application/octet-stream');
         console.log('Image uploaded successfully:', imageUri);
+        
+        // Verify the URL is accessible
+        try {
+          const testResponse = await fetch(imageUri, { method: 'HEAD' });
+          if (!testResponse.ok) {
+            console.warn(`Image URL may not be immediately accessible: ${imageUri} (${testResponse.status})`);
+          }
+        } catch (testError) {
+          console.warn(`Could not verify image URL accessibility: ${imageUri}`, testError);
+        }
 
         let metadataUri: string | undefined = undefined;
         if (withMetadata) {

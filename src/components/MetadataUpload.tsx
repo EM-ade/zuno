@@ -283,56 +283,84 @@ export default function MetadataUpload({ collectionId, onUploadComplete, onClose
     try {
       let uploadedCount = 0
 
-      for (let i = 0; i < validNFTs.length; i++) {
-        const nft = validNFTs[i]
+      // Handle folder upload differently for better bulk processing
+      if (uploadMethod === 'folder' && folderRef.current?.files) {
+        console.log('Using bulk folder upload...')
         
-        // Upload image if provided
-        let imageUri = nft.metadata.image
-        if (nft.imageFile) {
-          const formData = new FormData()
-          formData.append('file', nft.imageFile)
-          
-          const imageResponse = await fetch('/api/upload/image', {
-            method: 'POST',
-            body: formData
-          })
-          
-          if (imageResponse.ok) {
-            const imageResult = await imageResponse.json()
-            imageUri = imageResult.ipfsUrl
-          }
-        }
-
-        // Create the NFT item
-        const itemData = {
-          collection_id: collectionId,
-          name: nft.metadata.name,
-          description: nft.metadata.description,
-          image_uri: imageUri,
-          attributes: nft.metadata.attributes,
-          external_url: nft.metadata.external_url,
-          animation_url: nft.metadata.animation_url,
-          creator_wallet: publicKey.toString()
-        }
-
-        const response = await fetch('/api/collections/items', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(itemData)
+        const formData = new FormData()
+        const files = Array.from(folderRef.current.files)
+        
+        files.forEach(file => {
+          formData.append('files', file)
         })
-
+        formData.append('baseName', 'NFT')
+        
+        const response = await fetch(`/api/collections/by-id/${collectionId}/items/upload-folder`, {
+          method: 'POST',
+          body: formData
+        })
+        
         if (response.ok) {
-          uploadedCount++
+          const result = await response.json()
+          uploadedCount = result.count || 0
+          setProgress(100)
+        } else {
+          const errorResult = await response.json()
+          throw new Error(errorResult.error || 'Folder upload failed')
         }
+      } else {
+        // Handle individual uploads for JSON and CSV methods
+        for (let i = 0; i < validNFTs.length; i++) {
+          const nft = validNFTs[i]
+          
+          // Upload image if provided
+          let imageUri = nft.metadata.image
+          if (nft.imageFile) {
+            const formData = new FormData()
+            formData.append('file', nft.imageFile)
+            
+            const imageResponse = await fetch('/api/upload/image', {
+              method: 'POST',
+              body: formData
+            })
+            
+            if (imageResponse.ok) {
+              const imageResult = await imageResponse.json()
+              imageUri = imageResult.ipfsUrl
+            }
+          }
 
-        setProgress(Math.round(((i + 1) / validNFTs.length) * 100))
+          // Create the NFT item
+          const itemData = {
+            collection_id: collectionId,
+            name: nft.metadata.name,
+            description: nft.metadata.description,
+            image_uri: imageUri,
+            attributes: nft.metadata.attributes,
+            external_url: nft.metadata.external_url,
+            animation_url: nft.metadata.animation_url,
+            creator_wallet: publicKey.toString()
+          }
+
+          const response = await fetch('/api/collections/items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(itemData)
+          })
+
+          if (response.ok) {
+            uploadedCount++
+          }
+
+          setProgress(Math.round(((i + 1) / validNFTs.length) * 100))
+        }
       }
 
       onUploadComplete(uploadedCount)
       
     } catch (error) {
       console.error('Upload failed:', error)
-      setError('Upload failed. Please try again.')
+      setError(`Upload failed: ${error instanceof Error ? error.message : 'Please try again.'}`)
     } finally {
       setUploading(false)
     }
