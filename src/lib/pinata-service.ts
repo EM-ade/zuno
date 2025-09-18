@@ -21,15 +21,38 @@ export class PinataService {
     const pinataJwt = process.env.PINATA_JWT;
     const pinataGateway = process.env.PINATA_GATEWAY;
 
+    console.log('Initializing Pinata service...');
+    console.log('PINATA_JWT exists:', !!pinataJwt);
+    console.log('PINATA_JWT length:', pinataJwt ? pinataJwt.length : 0);
+    console.log('PINATA_GATEWAY exists:', !!pinataGateway);
+    console.log('PINATA_GATEWAY value:', pinataGateway ? `${pinataGateway.substring(0, 20)}...` : 'undefined');
+
     if (!pinataJwt) {
-      throw new Error('PINATA_JWT environment variable is required');
+      console.error('PINATA_JWT environment variable is missing!');
+      console.error('Available env vars:', Object.keys(process.env).filter(key => key.includes('PINATA')));
+      throw new Error('PINATA_JWT environment variable is required. Please set it in your .env.local file.');
     }
     if (!pinataGateway) {
-      throw new Error('PINATA_GATEWAY environment variable is required');
+      console.error('PINATA_GATEWAY environment variable is missing!');
+      console.error('Available env vars:', Object.keys(process.env).filter(key => key.includes('PINATA')));
+      throw new Error('PINATA_GATEWAY environment variable is required. Please set it in your .env.local file.');
+    }
+
+    // Validate JWT format (should start with 'eyJ')
+    if (!pinataJwt.startsWith('eyJ')) {
+      console.error('PINATA_JWT appears to be invalid (should start with "eyJ")');
+      throw new Error('PINATA_JWT appears to be invalid. Please check your JWT token.');
+    }
+
+    // Validate gateway format
+    if (!pinataGateway.includes('.')) {
+      console.error('PINATA_GATEWAY appears to be invalid (should be a domain)');
+      throw new Error('PINATA_GATEWAY appears to be invalid. Should be like "gateway-name.mypinata.cloud"');
     }
 
     this.gateway = pinataGateway;
     this.jwt = pinataJwt;
+    console.log('Pinata service initialized successfully');
   }
 
   private async toGatewayUrl(cid: string): Promise<string> {
@@ -38,10 +61,18 @@ export class PinataService {
 
   async uploadFile(fileBuffer: Buffer, fileName: string, contentType: string): Promise<string> {
     try {
+      console.log(`Starting file upload to Pinata:`, {
+        fileName,
+        contentType,
+        bufferSize: fileBuffer.length,
+        gatewayConfigured: !!this.gateway
+      });
+
       const formData = new FormData();
       const blob = new Blob([new Uint8Array(fileBuffer)], { type: contentType });
       formData.append('file', blob, fileName);
 
+      console.log('Sending request to Pinata API...');
       const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
         method: 'POST',
         headers: {
@@ -50,16 +81,25 @@ export class PinataService {
         body: formData,
       });
 
+      console.log(`Pinata API response status: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Pinata API error response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('Pinata upload result:', result);
+      
       if (!result.IpfsHash) {
+        console.error('Upload response missing IpfsHash:', result);
         throw new Error('Upload response missing IpfsHash');
       }
 
-      return await this.toGatewayUrl(result.IpfsHash);
+      const gatewayUrl = await this.toGatewayUrl(result.IpfsHash);
+      console.log(`File uploaded successfully: ${gatewayUrl}`);
+      return gatewayUrl;
     } catch (error) {
       console.error('Failed to upload file to Pinata:', error);
       throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -68,6 +108,12 @@ export class PinataService {
 
   async uploadJSON(data: Record<string, unknown>): Promise<string> {
     try {
+      console.log('Starting JSON upload to Pinata:', {
+        dataKeys: Object.keys(data),
+        hasName: !!data.name,
+        hasImage: !!data.image
+      });
+
       const response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
         method: 'POST',
         headers: {
@@ -82,16 +128,25 @@ export class PinataService {
         }),
       });
 
+      console.log(`Pinata JSON API response status: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Pinata JSON API error response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('Pinata JSON upload result:', result);
+      
       if (!result.IpfsHash) {
+        console.error('JSON upload response missing IpfsHash:', result);
         throw new Error('JSON upload response missing IpfsHash');
       }
 
-      return `https://${this.gateway}/ipfs/${result.IpfsHash}`;
+      const metadataUrl = `https://${this.gateway}/ipfs/${result.IpfsHash}`;
+      console.log(`JSON uploaded successfully: ${metadataUrl}`);
+      return metadataUrl;
     } catch (error) {
       console.error('Failed to upload JSON to Pinata:', error);
       throw new Error(`Failed to upload JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
