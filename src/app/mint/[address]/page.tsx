@@ -225,8 +225,8 @@ export default function MintPage() {
       // Step 4: Wait for confirmation
       await connection.confirmTransaction(signature, 'confirmed')
 
-      // Step 5: Record successful mint and create NFTs
-      const recordResponse = await fetch('/api/mint/record', {
+      // Step 5: Complete mint and create NFTs on blockchain
+      const recordResponse = await fetch('/api/mint/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

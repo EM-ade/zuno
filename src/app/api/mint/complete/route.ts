@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Verify the transaction was actually confirmed on-chain
     // This is important for security - we should verify the signature exists
-    console.log(`Processing completed mint transaction: ${signature}`);
+    console.log(`Processing completed mint transaction: ${signature} for wallet ${wallet} - ${quantity} NFTs`);
 
     // Create the actual NFTs on the blockchain using the confirmed transaction
     const collection = await SupabaseService.getCollectionById(collectionId);
@@ -47,8 +47,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark items as minted in database
+    console.log(`Marking ${selectedItems.length} items as minted for wallet ${wallet}`);
     for (const item of selectedItems) {
       await SupabaseService.updateItemMintStatus(item.id, true, wallet, signature);
+      console.log(`Marked item ${item.id} (${item.name}) as minted`);
     }
 
     // Record the mint transaction
@@ -61,16 +63,21 @@ export async function POST(request: NextRequest) {
       platform_fee: envConfig.platformFeeSol // Platform fee goes to 4mHpjYdrBDa5REkpCSnv9GsFNerXhDdTNG5pS8jhyxEe
     });
 
+    console.log(`Successfully completed mint for wallet ${wallet}: ${quantity} NFTs created`);
+    
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Successfully created ${quantity} NFT${quantity > 1 ? 's' : ''}!`,
+        message: `Successfully created ${quantity} NFT${quantity > 1 ? 's' : ''} and sent to your wallet!`,
         mintedNfts: mintResult.mintIds?.map((mintId: string, index: number) => ({
           mintAddress: mintId,
           name: selectedItems[index]?.name || `NFT #${index + 1}`,
           image_uri: selectedItems[index]?.image_uri,
-          attributes: selectedItems[index]?.attributes
-        })) || []
+          attributes: selectedItems[index]?.attributes,
+          itemIndex: selectedItems[index]?.item_index
+        })) || [],
+        transactionSignature: signature,
+        totalMinted: quantity
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );

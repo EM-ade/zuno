@@ -7,7 +7,7 @@ import { envConfig, convertUsdToSol } from '../config/env';
 import bs58 from 'bs58';
 import { MerkleTree } from 'merkletreejs';
 import keccak256 from 'keccak256';
-import { Connection, Keypair, SystemProgram, Transaction, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, SystemProgram, Transaction, LAMPORTS_PER_SOL, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { SupabaseService } from "./supabase-service";
 
 export interface MintPhase {
@@ -302,9 +302,17 @@ export class MetaplexCoreService {
       );
 
       // Add recent blockhash and set fee payer
-      const { blockhash } = await connection.getLatestBlockhash();
+      const { blockhash } = await connection.getLatestBlockhash('finalized');
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = new PublicKey(buyerWallet);
+
+      // Add a memo instruction to make the transaction more explicit for wallets
+      const memoInstruction = new TransactionInstruction({
+        keys: [],
+        programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
+        data: Buffer.from(`Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? 's' : ''} for ${(price * quantity).toFixed(3)} SOL`, 'utf8')
+      });
+      transaction.add(memoInstruction);
 
       // Serialize transaction to base64
       const transactionBase64 = transaction.serialize({ 

@@ -88,10 +88,13 @@ export async function POST(
       );
     }
 
-    // Select sequential NFTs from available items (first available ones)
+    // Select sequential NFTs from available items (first available ones by item_index)
     const selectedItems = availableItems
+      .filter(item => !item.is_minted && !item.owner_wallet) // Ensure unminted
       .sort((a, b) => (a.item_index || 0) - (b.item_index || 0)) // Sort by item_index for sequential order
       .slice(0, quantity);
+
+    console.log(`Sequential mint selection: Selected items ${selectedItems.map(i => i.item_index).join(', ')} for user ${wallet}`);
 
     // Calculate platform fee
     const platformFeeData = await priceOracle.calculatePlatformFee();
