@@ -47,15 +47,16 @@ export class PriceOracleService {
       const data = await response.json();
       
       // Extract prices from Jupiter API response
-      const solPrice = data.data?.SOL?.price || 0;
-      const usdtPrice = data.data?.USDT?.price || 1; // USDT is typically $1
+      // Jupiter API returns format: { data: { SOL: { price: X }, USDT: { price: Y } } }
+      const solPrice = data.data?.SOL?.price || data.SOL?.price || 0;
+      const usdtPrice = data.data?.USDT?.price || data.USDT?.price || 1; // USDT is typically $1
 
       if (solPrice > 0) {
         const priceData: PriceData = {
           solPrice,
           usdtPrice,
           solToUsdt: solPrice, // 1 SOL = X USDT
-          usdtToSol: usdtPrice > 0 ? 1 / usdtPrice : 0, // 1 USDT = Y SOL
+          usdtToSol: solPrice > 0 ? 1 / solPrice : 0.05, // 1 USDT = Y SOL
         };
 
         // Update cache
@@ -69,11 +70,12 @@ export class PriceOracleService {
     }
     
     // Fallback to reasonable defaults if oracle fails
+    // Using conservative estimates for mainnet
     return {
       solPrice: 20, // Conservative SOL price estimate
       usdtPrice: 1,
       solToUsdt: 20,
-      usdtToSol: 0.0041, // 1 USDT = 0.05 SOL
+      usdtToSol: 0.05, // 1 USDT = 0.05 SOL (at $20 SOL price)
     };
   }
 
@@ -87,13 +89,25 @@ export class PriceOracleService {
     return solAmount * prices.solToUsdt;
   }
 
-  async calculatePlatformFee(): Promise<{
+  async calculatePlatformFee(): Promise<number> {
+    const platformFeeUSDT = 1.25;
+    try {
+      const feeInSOL = await this.usdtToSol(platformFeeUSDT);
+      return feeInSOL;
+    } catch (error) {
+      console.error('Error calculating platform fee:', error);
+      // Fallback to a reasonable default (assuming $20 SOL price)
+      return 0.0625; // $1.25 / $20 = 0.0625 SOL
+    }
+  }
+
+  async calculatePlatformFeeDetailed(): Promise<{
     feeInSOL: number;
     feeInLamports: bigint;
     feeInUSDT: number;
   }> {
     const platformFeeUSDT = 1.25;
-    const feeInSOL = await this.usdtToSol(platformFeeUSDT);
+    const feeInSOL = await this.calculatePlatformFee();
     const feeInLamports = BigInt(Math.ceil(feeInSOL * 1_000_000_000));
 
     return {

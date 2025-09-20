@@ -5,6 +5,7 @@ export interface EnvConfig {
   solanaNetwork: 'devnet' | 'testnet' | 'mainnet-beta';
   platformWallet: string;
   serverWalletPrivateKey: string;
+  serverWalletPublicKey: string;
   nftStorageApiKey: string;
   pinataJwt: string;
   pinataGateway: string;
@@ -23,9 +24,10 @@ function getEnvVar(key: string, defaultValue?: string): string {
 }
 
 export const envConfig: EnvConfig = {
-  solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=ba9e35f3-579f-4071-8d87-4a59b8160bb3',
-  solanaNetwork: (process.env.SOLANA_NETWORK || 'mainnet-beta') as 'devnet' | 'testnet' | 'mainnet-beta',
+  solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+  solanaNetwork: (process.env.SOLANA_NETWORK || 'devnet') as 'devnet' | 'testnet' | 'mainnet-beta',
   serverWalletPrivateKey: process.env.SERVER_WALLET_PRIVATE_KEY || '',
+  serverWalletPublicKey: process.env.SERVER_WALLET_PUBLIC_KEY || '',
   platformWallet: process.env.PLATFORM_WALLET || '4mHpjYdrBDa5REkpCSnv9GsFNerXhDdTNG5pS8jhyxEe',
   platformFeeSol: parseFloat(process.env.PLATFORM_FEE_SOL || '0.01'),
   
@@ -37,7 +39,7 @@ export const envConfig: EnvConfig = {
   nftStorageApiKey: process.env.NFT_STORAGE_API_KEY || '',
   
   // Price Oracle
-  priceOracleUrl: process.env.PRICE_ORACLE_URL || 'https://price.jup.ag/v4/price?ids=SOL,USDT',
+  priceOracleUrl: process.env.PRICE_ORACLE_URL || 'https://quote-api.jup.ag/v6/price?ids=SOL,USDT',
   
   // Supabase configuration
   supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',

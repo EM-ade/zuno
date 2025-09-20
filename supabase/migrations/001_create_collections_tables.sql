@@ -65,6 +65,40 @@ CREATE INDEX IF NOT EXISTS idx_mint_transactions_user ON mint_transactions(user_
 CREATE INDEX IF NOT EXISTS idx_mint_transactions_created ON mint_transactions(created_at);
 CREATE INDEX IF NOT EXISTS idx_mint_transactions_signature ON mint_transactions(signature);
 
+-- Items table (for individual NFTs)
+CREATE TABLE IF NOT EXISTS items (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    collection_id UUID NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    image_uri TEXT,
+    metadata_uri TEXT,
+    attributes JSONB,
+    item_index INTEGER,
+    owner_wallet TEXT,
+    mint_signature TEXT,
+    is_minted BOOLEAN NOT NULL DEFAULT FALSE, -- Definitive mint status
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes for items table
+CREATE INDEX IF NOT EXISTS idx_items_collection_id ON items(collection_id);
+
+-- Alter table to add the is_minted column if it doesn't exist (for robustness)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'items' AND column_name = 'is_minted'
+    ) THEN
+        ALTER TABLE items ADD COLUMN is_minted BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+END;
+$$;
+CREATE INDEX IF NOT EXISTS idx_items_owner_wallet ON items(owner_wallet);
+CREATE INDEX IF NOT EXISTS idx_items_is_minted ON items(is_minted);
+
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

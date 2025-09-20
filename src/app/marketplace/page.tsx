@@ -18,6 +18,7 @@ interface Collection {
   volume: number
   status: 'draft' | 'active' | 'live' | 'completed' | 'revealed' | 'sold_out' | 'archived'
   candy_machine_id: string
+  collection_mint_address?: string
   creator_wallet: string
   created_at?: string
 }
@@ -350,7 +351,7 @@ function CollectionCard({ collection }: { collection: Collection }) {
   }
 
   return (
-    <Link href={`/mint/${collection.candy_machine_id}`}>
+    <Link href={`/mint/${collection.collection_mint_address || collection.candy_machine_id}`}>
       <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group">
         <div className="aspect-square relative overflow-hidden">
           {collection.image_uri ? (

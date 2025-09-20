@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
+import { Toaster, toast } from 'react-hot-toast'
 import { Transaction } from '@solana/web3.js'
 import OptimizedImage from '@/components/OptimizedImage'
 import PageHeader from '@/components/PageHeader'
@@ -56,11 +57,11 @@ export default function MintPage() {
   const [collection, setCollection] = useState<Collection | null>(null)
   const [nftPreviews, setNftPreviews] = useState<NFTPreview[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [minting, setMinting] = useState(false)
   const [mintQuantity, setMintQuantity] = useState(1)
   const [activePhase, setActivePhase] = useState<Phase | null>(null)
-  const [error, setError] = useState<string>('')
-  const [success, setSuccess] = useState<string>('')
   const [solPrice, setSolPrice] = useState<number | null>(null)
   // Mobile UI helpers
   // Carousel & quantity selection UI
@@ -139,24 +140,33 @@ export default function MintPage() {
   const loadCollection = async () => {
     try {
       setLoading(true)
+      setError(null)
+      setSuccess(null)
       const response = await fetch(`/api/mint/${collectionAddress}`, { cache: 'no-store' })
       const data = await response.json()
 
       if (data.success) {
-        // Get real-time minted count
-        const itemsResponse = await fetch(`/api/collections/by-id/${data.collection.id}/items?minted=true`, { cache: 'no-store' })
-        if (itemsResponse.ok) {
-          const itemsData = await itemsResponse.json()
-          // Update collection with real minted count
-          data.collection.minted_count = itemsData.total || 0
+        // Get real-time minted count if collection has ID
+        if (data.collection.id) {
+          const itemsResponse = await fetch(`/api/collections/by-id/${data.collection.id}/items?minted=true`, { cache: 'no-store' })
+          if (itemsResponse.ok) {
+            const itemsData = await itemsResponse.json()
+            // Update collection with real minted count
+            data.collection.minted_count = itemsData.total || 0
+          }
         }
 
         setCollection(data.collection)
       } else {
-        setError(data.error || 'Failed to load collection')
+        const errorMsg = data.error || 'Failed to load collection'
+        setError(errorMsg)
+        toast.error(errorMsg)
       }
-    } catch (error) {
-      console.error('Failed to load collection:', error)
+    } catch (err) {
+      console.error('Failed to load collection:', err)
+      const errorMsg = 'Failed to load collection. Please try again.'
+      setError(errorMsg)
+      toast.error(errorMsg)
     } finally {
       setLoading(false)
     }
@@ -167,8 +177,14 @@ export default function MintPage() {
       const response = await fetch(`/api/mint/${collectionAddress}/previews?limit=6`, { cache: 'no-store' })
       const data = await response.json()
 
-      if (data.success) {
+      if (data.success && data.previews) {
+        console.log(`Loaded ${data.previews.length} NFT previews`);
+        if (data.previews.length > 0) {
+          console.log('First preview image:', data.previews[0].image_uri);
+        }
         setNftPreviews(data.previews)
+      } else {
+        console.log('No previews found or error:', data);
       }
     } catch (error) {
       console.error('Failed to load NFT previews:', error)
@@ -190,86 +206,132 @@ export default function MintPage() {
   }
 
   const handleMint = async () => {
-    if (!publicKey || !collection || !activePhase || !connected) return
+    if (!publicKey || !collection) return
 
     setMinting(true)
-    setError('')
-    setSuccess('')
-
+    setError(null)
+    setSuccess(null)
     try {
-      // Step 1: Get unsigned transaction from API
-      const response = await fetch(`/api/mint/${collectionAddress}/mint`, {
+      // Step 1: Get mint transaction from simplified API
+      const response = await fetch('/api/mint/simple', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          wallet: publicKey.toString(),
-          quantity: mintQuantity,
-          phaseId: activePhase.id
+          collectionAddress: collection.collection_mint_address,
+          candyMachineAddress: collection.candy_machine_id,
+          buyerWallet: publicKey.toString(),
+          quantity: mintQuantity
         })
       })
 
       const result = await response.json()
 
       if (!result.success) {
-        setError(result.error || 'Failed to create mint transaction')
+        const errorMsg = result.error || 'Failed to create mint transaction'
+        setError(errorMsg)
+        toast.error(errorMsg)
         return
       }
 
-      // Step 2: Decode and sign transaction with user's wallet (browser-safe base64 decoding)
-      const rawTx = Uint8Array.from(atob(result.transactionBase64), c => c.charCodeAt(0))
-      const transaction = Transaction.from(rawTx)
-
-      // Step 3: Send transaction through user's wallet (this will prompt for signature)
-      const signature = await sendTransaction(transaction, connection)
-
-      // Step 4: Wait for confirmation
-      await connection.confirmTransaction(signature, 'confirmed')
-
-      // Step 5: Complete mint and create NFTs on blockchain
-      const recordResponse = await fetch('/api/mint/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          collectionId: result.collectionId,
-          phaseId: result.phaseId,
-          wallet: publicKey.toString(),
-          signature,
-          quantity: mintQuantity,
-          selectedItems: result.selectedItems,
-          totalCost: result.totalCost
-        })
-      })
-
-      const recordResult = await recordResponse.json()
-
-      if (recordResult.success) {
-        // Show success with NFT details
-        const nftNames = result.selectedItems.map((item: { name: string }) => item.name).join(', ')
-        setSuccess(`Successfully minted: ${nftNames}! Check your wallet for the new NFTs.`)
-
-        console.log('Minted NFTs:', result.selectedItems)
-        console.log('Transaction signature:', signature)
-        // Reset quantity after successful mint
+      // Handle candy machine transactions (user signs and pays)
+      if (result.requiresSignature && result.transactions) {
+        console.log('Candy Machine mint - user will sign and pay');
+        
+        for (const txData of result.transactions) {
+          // Decode and sign transaction with user's wallet
+          const rawTx = Uint8Array.from(atob(txData.transaction), c => c.charCodeAt(0))
+          const transaction = Transaction.from(rawTx)
+          
+          // Send transaction through user's wallet (this will prompt for signature and payment)
+          const signature = await sendTransaction(transaction, connection)
+          
+          // Wait for confirmation
+          await connection.confirmTransaction(signature, 'confirmed')
+          
+          console.log(`NFT minted: ${txData.nftMint}, signature: ${signature}`)
+        }
+        
+        const successMsg = `Successfully minted ${result.transactions.length} NFT(s)! Check your wallet.`
+        setSuccess(successMsg)
+        toast.success(successMsg)
         setMintQuantity(1)
         
-        // Refresh mint stats immediately
-        setTimeout(() => refreshMintStats(), 1000) // Small delay to ensure DB is updated
-      } else {
-        setError('Mint completed but failed to record. Please contact support.')
+        // Update database with mint record
+        setTimeout(() => refreshMintStats(), 2000)
+        loadCollection()
+        return
       }
+      
+      // Handle manual minting (payment transaction)
+      if (result.transaction) {
+        console.log('Processing manual mint transaction');
+        console.log('NFTs to mint:', result.nfts);
+        
+        // Step 2: Decode and sign transaction with user's wallet
+        const rawTx = Uint8Array.from(atob(result.transaction), c => c.charCodeAt(0))
+        const transaction = Transaction.from(rawTx)
 
-      // Refresh collection data
-      loadCollection()
+        // Step 3: Send transaction through user's wallet (this will prompt for signature)
+        console.log('Requesting wallet signature...');
+        const signature = await sendTransaction(transaction, connection)
+        console.log('Transaction signed:', signature);
+
+        // Step 4: Wait for confirmation
+        console.log('Waiting for transaction confirmation...');
+        await connection.confirmTransaction(signature, 'confirmed')
+        console.log('Transaction confirmed!');
+
+        // Step 5: Complete mint and create NFTs on blockchain
+        console.log('Completing mint process...');
+        const completeResponse = await fetch('/api/mint/simple', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collectionAddress: collection.collection_mint_address,
+            nftIds: result.nfts.map((nft: any) => nft.id),
+            buyerWallet: publicKey.toString(),
+            transactionSignature: signature
+          })
+        })
+
+        console.log('Complete response status:', completeResponse.status);
+        const completeResult = await completeResponse.json()
+        console.log('Complete result:', completeResult);
+
+        if (completeResult.success) {
+          const nftNames = completeResult.nfts.map((nft: any) => nft.name).join(', ')
+          const successMsg = `Successfully minted: ${nftNames}! Check your wallet.`
+          setSuccess(successMsg)
+          toast.success(successMsg)
+          console.log('Minted NFTs:', completeResult.nfts)
+          console.log('Transaction signature:', signature)
+          setMintQuantity(1)
+          setTimeout(() => refreshMintStats(), 1000)
+        } else {
+          const errorMsg = completeResult.error || 'Mint completed but failed to record. Please contact support.'
+          setError(errorMsg)
+          toast.error(errorMsg)
+        }
+
+        // Refresh collection data
+        loadCollection()
+      }
 
     } catch (error: unknown) {
       console.error('Mint failed:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
       if (errorMessage?.includes('User rejected')) {
-        setError('Transaction was cancelled by user')
+        const errorMsg = 'Transaction was cancelled by user.'
+        setError(errorMsg)
+        toast.error(errorMsg)
       } else if (errorMessage?.includes('insufficient funds')) {
-        setError('Insufficient SOL balance for this transaction')
+        const errorMsg = 'Insufficient SOL for transaction.'
+        setError(errorMsg)
+        toast.error(errorMsg)
       } else {
-        setError('Mint failed. Please try again.')
+        const errorMsg = 'Mint failed. Please check the console for details.'
+        setError(errorMsg)
+        toast.error(errorMsg)
       }
     } finally {
       setMinting(false)
@@ -323,206 +385,208 @@ export default function MintPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <PageHeader title={`Mint ${collection.name}`} />
+    <>
+      <Toaster position="top-center" toastOptions={{ duration: 5000 }} />
+      <div className="min-h-screen bg-gray-50">
+        <PageHeader title={`Mint ${collection.name}`} />
 
-      {/* Mobile UI (matches provided design) */}
-      <div className="block lg:hidden px-4 py-6">
-        {/* Top bar with dropdown */}
+        {/* Mobile UI (matches provided design) */}
+        <div className="block lg:hidden px-4 py-6">
+          {/* Top bar with dropdown */}
         
 
-        {/* Collection name pill */}
-        <div className="inline-block px-4 py-2 rounded-full bg-blue-100 text-blue-800 font-semibold mb-4">
-          {collection.name}
-        </div>
-
-        {/* Framed image / Carousel */}
-        <div className="relative mx-auto mb-6" style={{ maxWidth: 340 }}>
-          <div className="absolute -inset-2 pointer-events-none">
-            {/* corner brackets */}
-            <div className="absolute left-0 top-0 w-6 h-6 border-t-4 border-l-4 border-blue-400 rounded-tl-xl" />
-            <div className="absolute right-0 top-0 w-6 h-6 border-t-4 border-r-4 border-blue-400 rounded-tr-xl" />
-            <div className="absolute left-0 bottom-0 w-6 h-6 border-b-4 border-l-4 border-blue-400 rounded-bl-xl" />
-            <div className="absolute right-0 bottom-0 w-6 h-6 border-b-4 border-r-4 border-blue-400 rounded-br-xl" />
+          {/* Collection name pill */}
+          <div className="inline-block px-4 py-2 rounded-full bg-blue-100 text-blue-800 font-semibold mb-4">
+            {collection.name}
           </div>
-          <div className="rounded-xl overflow-hidden shadow">
-            {nftPreviews.length > 0 ? (
-              <OptimizedImage
-                src={nftPreviews[carouselIndex]?.image_uri || collection.image_uri || ''}
-                alt={nftPreviews[carouselIndex]?.name || collection.name}
-                width={680}
-                height={680}
-                className="w-full h-auto object-cover"
-                priority
-              />
-            ) : collection.image_uri ? (
-              <OptimizedImage
-                src={collection.image_uri}
-                alt={collection.name}
-                width={680}
-                height={680}
-                className="w-full h-auto object-cover"
-                priority
-              />
-            ) : (
-              <div className="aspect-square bg-gray-100" />
+
+          {/* Framed image / Carousel */}
+          <div className="relative mx-auto mb-6" style={{ maxWidth: 340 }}>
+            <div className="absolute -inset-2 pointer-events-none">
+              {/* corner brackets */}
+              <div className="absolute left-0 top-0 w-6 h-6 border-t-4 border-l-4 border-blue-400 rounded-tl-xl" />
+              <div className="absolute right-0 top-0 w-6 h-6 border-t-4 border-r-4 border-blue-400 rounded-tr-xl" />
+              <div className="absolute left-0 bottom-0 w-6 h-6 border-b-4 border-l-4 border-blue-400 rounded-bl-xl" />
+              <div className="absolute right-0 bottom-0 w-6 h-6 border-b-4 border-r-4 border-blue-400 rounded-br-xl" />
+            </div>
+            <div className="rounded-xl overflow-hidden shadow">
+              {nftPreviews.length > 0 ? (
+                <OptimizedImage
+                  src={nftPreviews[carouselIndex]?.image_uri || collection.image_uri || ''}
+                  alt={nftPreviews[carouselIndex]?.name || collection.name}
+                  width={680}
+                  height={680}
+                  className="w-full h-auto object-cover"
+                  priority
+                />
+              ) : collection.image_uri ? (
+                <OptimizedImage
+                  src={collection.image_uri}
+                  alt={collection.name}
+                  width={680}
+                  height={680}
+                  className="w-full h-auto object-cover"
+                  priority
+                />
+              ) : (
+                <div className="aspect-square bg-gray-100" />
+              )}
+            </div>
+            {nftPreviews.length > 1 && (
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-1">
+                {nftPreviews.map((_, idx) => (
+                  <button key={idx} onClick={() => setCarouselIndex(idx)} className={`w-2 h-2 rounded-full ${idx === carouselIndex ? 'bg-blue-600' : 'bg-white/70'}`} aria-label={`Go to slide ${idx + 1}`} />
+                ))}
+              </div>
             )}
           </div>
-          {nftPreviews.length > 1 && (
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-1">
-              {nftPreviews.map((_, idx) => (
-                <button key={idx} onClick={() => setCarouselIndex(idx)} className={`w-2 h-2 rounded-full ${idx === carouselIndex ? 'bg-blue-600' : 'bg-white/70'}`} aria-label={`Go to slide ${idx + 1}`} />
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Phases */}
-        <div className="text-blue-900 font-bold tracking-wide mb-2">PHASES</div>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          {collection.phases && collection.phases.length > 0 ? (
-            collection.phases.slice(0, 2).map((phase, index) => {
-              const isActive = activePhase?.id === phase.id
-              const phaseStatus = getPhaseStatus(phase)
-              
-              return (
-                <div key={phase.id} className="relative p-3 rounded-xl bg-white shadow">
-                  <div className="absolute -inset-1 pointer-events-none">
-                    <div className="absolute left-0 top-0 w-4 h-4 border-t-2 border-l-2 border-blue-300 rounded-tl-md" />
-                    <div className="absolute right-0 top-0 w-4 h-4 border-t-2 border-r-2 border-blue-300 rounded-tr-md" />
-                    <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
-                    <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
-                  </div>
-                  <div className={`inline-block px-3 py-1 rounded-full font-semibold text-sm ${
-                    isActive ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'
-                  }`}>
-                    {phase.name}
-                  </div>
-                  {isActive && (
-                    <div className="flex items-center mt-1">
-                      <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
-                      <span className="text-green-600 font-bold text-xs">Live</span>
+          {/* Phases */}
+          <div className="text-blue-900 font-bold tracking-wide mb-2">PHASES</div>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            {collection.phases && collection.phases.length > 0 ? (
+              collection.phases.slice(0, 2).map((phase, index) => {
+                const isActive = activePhase?.id === phase.id
+                const phaseStatus = getPhaseStatus(phase)
+                
+                return (
+                  <div key={phase.id} className="relative p-3 rounded-xl bg-white shadow">
+                    <div className="absolute -inset-1 pointer-events-none">
+                      <div className="absolute left-0 top-0 w-4 h-4 border-t-2 border-l-2 border-blue-300 rounded-tl-md" />
+                      <div className="absolute right-0 top-0 w-4 h-4 border-t-2 border-r-2 border-blue-300 rounded-tr-md" />
+                      <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
+                      <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
                     </div>
-                  )}
-                  <div className="mt-1 font-extrabold">{phaseStatus}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {phase.price === 0 ? (
-                      <span className="text-green-600 font-semibold">FREE</span>
-                    ) : (
-                      `SOL: ${phase.price.toFixed(4)}`
+                    <div className={`inline-block px-3 py-1 rounded-full font-semibold text-sm ${
+                      isActive ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'
+                    }`}>
+                      {phase.name}
+                    </div>
+                    {isActive && (
+                      <div className="flex items-center mt-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                        <span className="text-green-600 font-bold text-xs">Live</span>
+                      </div>
                     )}
+                    <div className="mt-1 font-extrabold">{phaseStatus}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {phase.price === 0 ? (
+                        <span className="text-green-600 font-semibold">FREE</span>
+                      ) : (
+                        `SOL: ${phase.price.toFixed(4)}`
+                      )}
+                    </div>
                   </div>
-                </div>
-              )
-            })
-          ) : (
-            <div className="col-span-2 text-center text-gray-500 py-4">
-              No phases configured
-            </div>
-          )}
-        </div>
-
-        {/* Progress */}
-        <div className="mb-2">
-          <div className="w-full h-6 bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-6 bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, mintProgress))}%` }} />
+                )
+              })
+            ) : (
+              <div className="col-span-2 text-center text-gray-500 py-4">
+                No phases configured
+              </div>
+            )}
           </div>
-        </div>
-        <div className="flex items-center justify-between text-sm text-blue-700 font-bold mb-4">
-          <div>{Math.round(Math.min(100, Math.max(0, mintProgress)))}%</div>
-          <div>{collection.minted_count}/{collection.total_supply}</div>
-        </div>
 
-        {/* Collection Details Section - Mobile */}
-        <div className="bg-white rounded-2xl shadow-lg p-4 mb-4">
-          <h3 className="text-lg font-bold text-blue-900 mb-3">COLLECTION DETAILS</h3>
-          
-          {/* Description */}
-          {collection.description && (
-            <div className="mb-4">
-              <div className="text-gray-500 text-sm mb-1">Description</div>
-              <div className="text-gray-800 text-sm leading-relaxed">{collection.description}</div>
+          {/* Progress */}
+          <div className="mb-2">
+            <div className="w-full h-6 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-6 bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, mintProgress))}%` }} />
             </div>
-          )}
-          
-          {/* Contract Information */}
-          <div className="space-y-3 mb-4">
-            <div>
-              <div className="text-gray-500 text-xs mb-1">Collection Address</div>
-              <div className="flex items-center space-x-2">
-                <code className="bg-gray-100 px-2 py-1 rounded text-xs font-mono text-black flex-1">
-                  {collection.collection_mint_address.slice(0, 6)}...{collection.collection_mint_address.slice(-6)}
-                </code>
-                <button 
-                  onClick={() => navigator.clipboard.writeText(collection.collection_mint_address)}
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                  title="Copy address"
-                >
-                  📋
-                </button>
-                <a 
-                  href={`https://explorer.solana.com/address/${collection.collection_mint_address}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                  title="View on Solana Explorer"
-                >
-                  🔍
-                </a>
+          </div>
+          <div className="flex items-center justify-between text-sm text-blue-700 font-bold mb-4">
+            <div>{Math.round(Math.min(100, Math.max(0, mintProgress)))}%</div>
+            <div>{collection.minted_count}/{collection.total_supply}</div>
+          </div>
+
+          {/* Collection Details Section - Mobile */}
+          <div className="bg-white rounded-2xl shadow-lg p-4 mb-4">
+            <h3 className="text-lg font-bold text-blue-900 mb-3">COLLECTION DETAILS</h3>
+            
+            {/* Description */}
+            {collection.description && (
+              <div className="mb-4">
+                <div className="text-gray-500 text-sm mb-1">Description</div>
+                <div className="text-gray-800 text-sm leading-relaxed">{collection.description}</div>
+              </div>
+            )}
+            
+            {/* Contract Information */}
+            <div className="space-y-3 mb-4">
+              <div>
+                <div className="text-gray-500 text-xs mb-1">Collection Address</div>
+                <div className="flex items-center space-x-2">
+                  <code className="bg-gray-100 px-2 py-1 rounded text-xs font-mono text-black flex-1">
+                    {collection.collection_mint_address.slice(0, 6)}...{collection.collection_mint_address.slice(-6)}
+                  </code>
+                  <button 
+                    onClick={() => navigator.clipboard.writeText(collection.collection_mint_address)}
+                    className="text-blue-600 hover:text-blue-800 text-sm"
+                    title="Copy address"
+                  >
+                    📋
+                  </button>
+                  <a 
+                    href={`https://explorer.solana.com/address/${collection.collection_mint_address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 text-sm"
+                    title="View on Solana Explorer"
+                  >
+                    🔍
+                  </a>
+                </div>
               </div>
             </div>
-          </div>
-          
-          {/* Social Media Links */}
-          <div className="flex flex-wrap gap-2">
-            {collection.website_url && (
-              <a 
-                href={collection.website_url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center space-x-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition-colors"
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4.083 9h1.946c.089-1.546.383-2.97.837-4.118A6.004 6.004 0 004.083 9zM10 2a8 8 0 100 16 8 8 0 000-16zm0 2c-.076 0-.232.032-.465.262-.238.234-.497.623-.737 1.182-.389.907-.673 2.142-.766 3.556h3.936c-.093-1.414-.377-2.649-.766-3.556-.24-.56-.5-.948-.737-1.182C10.232 4.032 10.076 4 10 4zm3.971 5c-.089-1.546-.383-2.97-.837-4.118A6.004 6.004 0 0115.917 9h-1.946zm-2.003 2H8.032c.093 1.414.377 2.649.766 3.556.24.56.5.948.737 1.182.233.23.389.262.465.262.076 0 .232-.032.465-.262.238-.234.498-.623.737-1.182.389-.907.673-2.142.766-3.556zm1.166 4.118c.454-1.147.748-2.572.837-4.118h1.946a6.004 6.004 0 01-2.783 4.118zm-6.268 0C6.412 13.97 6.118 12.546 6.03 11H4.083a6.004 6.004 0 002.783 4.118z" clipRule="evenodd" />
-                </svg>
-                <span className="text-black">Website</span>
-              </a>
-            )}
-            {collection.twitter_url && (
-              <a 
-                href={collection.twitter_url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center space-x-1 px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs transition-colors"
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
-                </svg>
-                <span className="text-black">Twitter</span>
-              </a>
-            )}
-            {collection.discord_url && (
-              <a 
-                href={collection.discord_url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center space-x-1 px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded text-xs transition-colors"
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-                </svg>
-                <span className="text-black">Discord</span>
-              </a>
-            )}
-            {collection.instagram_url && (
-              <a 
-                href={collection.instagram_url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center space-x-1 px-2 py-1 bg-pink-100 hover:bg-pink-200 rounded text-xs transition-colors"
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 6.62 5.367 11.987 11.988 11.987s11.987-5.367 11.987-11.987C24.004 5.367 18.637.001 12.017.001zM8.449 16.988c-1.297 0-2.448-.49-3.323-1.297C4.198 14.895 3.708 13.744 3.708 12.447s.49-2.448 1.297-3.323c.875-.807 2.026-1.297 3.323-1.297s2.448.49 3.323 1.297c.807.875 1.297 2.026 1.297 3.323s-.49 2.448-1.297 3.323c-.875.807-2.026 1.297-3.323 1.297zm7.83-9.781c-.49 0-.875-.385-.875-.875s.385-.875.875-.875.875.385.875.875-.385.875-.875.875zm-4.262 1.781c-1.297 0-2.345 1.048-2.345 2.345s1.048 2.345 2.345 2.345 2.345-1.048 2.345-2.345-1.048-2.345-2.345-2.345z"/>
+            
+            {/* Social Media Links */}
+            <div className="flex flex-wrap gap-2">
+              {collection.website_url && (
+                <a 
+                  href={collection.website_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4.083 9h1.946c.089-1.546.383-2.97.837-4.118A6.004 6.004 0 004.083 9zM10 2a8 8 0 100 16 8 8 0 000-16zm0 2c-.076 0-.232.032-.465.262-.238.234-.497.623-.737 1.182-.389.907-.673 2.142-.766 3.556h3.936c-.093-1.414-.377-2.649-.766-3.556-.24-.56-.5-.948-.737-1.182C10.232 4.032 10.076 4 10 4zm3.971 5c-.089-1.546-.383-2.97-.837-4.118A6.004 6.004 0 0115.917 9h-1.946zm-2.003 2H8.032c.093 1.414.377 2.649.766 3.556.24.56.5.948.737 1.182.233.23.389.262.465.262.076 0 .232-.032.465-.262.238-.234.498-.623.737-1.182.389-.907.673-2.142.766-3.556zm1.166 4.118c.454-1.147.748-2.572.837-4.118h1.946a6.004 6.004 0 01-2.783 4.118zm-6.268 0C6.412 13.97 6.118 12.546 6.03 11H4.083a6.004 6.004 0 002.783 4.118z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-black">Website</span>
+                </a>
+              )}
+              {collection.twitter_url && (
+                <a 
+                  href={collection.twitter_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
+                  </svg>
+                  <span className="text-black">Twitter</span>
+                </a>
+              )}
+              {collection.discord_url && (
+                <a 
+                  href={collection.discord_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded text-xs transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                  </svg>
+                  <span className="text-black">Discord</span>
+                </a>
+              )}
+              {collection.instagram_url && (
+                <a 
+                  href={collection.instagram_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 px-2 py-1 bg-pink-100 hover:bg-pink-200 rounded text-xs transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 6.62 5.367 11.987 11.988 11.987s11.987-5.367 11.987-11.987C24.004 5.367 18.637.001 12.017.001zM8.449 16.988c-1.297 0-2.448-.49-3.323-1.297C4.198 14.895 3.708 13.744 3.708 12.447s.49-2.448 1.297-3.323c.875-.807 2.026-1.297 3.323-1.297s2.448.49 3.323 1.297c.807.875 1.297 2.026 1.297 3.323s-.49 2.448-1.297 3.323c-.875.807-2.026 1.297-3.323 1.297zm7.83-9.781c-.49 0-.875-.385-.875-.875s.385-.875.875-.875.875.385.875.875-.385.875-.875.875zm-4.262 1.781c-1.297 0-2.345 1.048-2.345 2.345s1.048 2.345 2.345 2.345 2.345-1.048 2.345-2.345-1.048-2.345-2.345-2.345z"/>
                 </svg>
                 <span className="text-black">Instagram</span>
               </a>
@@ -577,7 +641,12 @@ export default function MintPage() {
                   disabled={minting}
                   className="w-full py-4 rounded-xl bg-blue-600 text-white font-bold text-lg shadow active:scale-[.99] disabled:opacity-60"
                 >
-                  {minting ? 'Minting…' : `Mint ${mintQuantity}`}
+                  {minting ? (
+                    <span className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                      Minting…
+                    </span>
+                  ) : `Mint ${mintQuantity}`}
                 </button>
                 <div className="flex items-center justify-center gap-2">
                   <button
@@ -1009,5 +1078,6 @@ export default function MintPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }

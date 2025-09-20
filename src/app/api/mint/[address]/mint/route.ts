@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { SupabaseService } from '@/lib/supabase-service';
 import { metaplexCoreService } from '@/lib/metaplex-core';
 import { priceOracle } from '@/lib/price-oracle';
+import { envConfig } from '@/config/env';
+import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 export async function POST(
   request: NextRequest,
@@ -19,12 +21,11 @@ export async function POST(
       );
     }
 
-    // Find collection
-    let collection = await SupabaseService.getCollectionByCandyMachineId(address);
-    if (!collection) {
-      collection = await SupabaseService.getCollectionByMintAddress(address);
-    }
+    console.log(`Creating mint transaction for wallet ${wallet}, quantity: ${quantity}`);
 
+    // Get collection details
+    const collection = await SupabaseService.getCollectionByCandyMachineId(address) || 
+                      await SupabaseService.getCollectionByMintAddress(address);
     if (!collection) {
       return new Response(
         JSON.stringify({ success: false, error: 'Collection not found' }),
@@ -32,115 +33,117 @@ export async function POST(
       );
     }
 
-    // Get phase details
-    const phases = await SupabaseService.getMintPhasesByCollectionId(collection.id!);
-    const phase = phases?.find(p => p.id === phaseId);
-
-    if (!phase) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Mint phase not found' }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Validate phase timing
-    const now = new Date();
-    const startTime = new Date(phase.start_time);
-    const endTime = phase.end_time ? new Date(phase.end_time) : null;
-
-    if (startTime > now) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Mint phase has not started yet' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (endTime && endTime < now) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Mint phase has ended' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check remaining supply
-    const stats = await SupabaseService.getCollectionMintStats(collection.id!);
-    const remainingSupply = collection.total_supply - (stats.minted || 0);
-
-    if (quantity > remainingSupply) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Not enough NFTs remaining' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Get available NFTs from the collection that haven't been minted yet
+    // Get available NFTs
     const { items: availableItems } = await SupabaseService.getItemsByCollection(
       collection.id!, 
       1, 
       quantity,
-      { minted: false } // Only get unminted items
+      { minted: false }
     );
 
-    if (availableItems.length < quantity) {
+    if (!availableItems || availableItems.length < quantity) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Not enough unminted NFTs available' }),
+        JSON.stringify({ success: false, error: 'Not enough available NFTs' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Select sequential NFTs from available items (first available ones by item_index)
+    // Select sequential NFTs
     const selectedItems = availableItems
-      .filter(item => !item.is_minted && !item.owner_wallet) // Ensure unminted
-      .sort((a, b) => (a.item_index || 0) - (b.item_index || 0)) // Sort by item_index for sequential order
+      .filter(item => !item.is_minted)
+      .sort((a, b) => (a.item_index || 0) - (b.item_index || 0))
       .slice(0, quantity);
 
     console.log(`Sequential mint selection: Selected items ${selectedItems.map(i => i.item_index).join(', ')} for user ${wallet}`);
 
-    // Calculate platform fee
-    const platformFeeData = await priceOracle.calculatePlatformFee();
+    // Calculate costs
+    const mintPrice = selectedItems[0]?.price || 0; // Price per NFT
+    const totalMintCost = mintPrice * quantity;
     
-    // Create unsigned transaction for user to sign
+    // Calculate platform fee - try to get from oracle, fallback to fixed amount
+    let platformFee = 0.0125; // Default $1.25 in SOL
     try {
-      const mintTransaction = await metaplexCoreService.createMintTransaction({
-        collectionAddress: collection.collection_mint_address,
-        candyMachineId: collection.candy_machine_id,
-        buyerWallet: wallet,
-        items: selectedItems,
-        price: phase.price,
-        quantity,
-        platformFee: platformFeeData.feeInSOL
-      });
+      platformFee = await priceOracle.calculatePlatformFee();
+    } catch (error) {
+      console.error('Failed to fetch prices from oracle:', error);
+      // Use fallback value
+    }
+    
+    const totalCost = totalMintCost + platformFee;
 
-      // Return unsigned transaction for frontend to sign
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          transactionBase64: mintTransaction.transactionBase64,
-          selectedItems: selectedItems.map(item => ({
-            id: item.id,
-            name: item.name,
-            image_uri: item.image_uri,
-            attributes: item.attributes
-          })),
-          totalCost: (phase.price * quantity) + platformFeeData.feeInSOL,
-          nftCost: phase.price * quantity,
-          platformFee: platformFeeData.feeInSOL,
-          collectionId: collection.id,
-          phaseId: phase.id
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+    // Create payment transaction
+    const connection = new Connection(envConfig.solanaRpcUrl);
+    const transaction = new Transaction();
+    
+    // Add memo for clarity
+    const memoInstruction = {
+      keys: [],
+      programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
+      data: Buffer.from(`Mint ${quantity} NFT(s) from ${collection.name}`)
+    };
+    transaction.add(memoInstruction);
 
-    } catch (mintError) {
-      console.error('Failed to create mint transaction:', mintError);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Failed to create mint transaction. Please try again.' 
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+    // Add payment to creator (80% of mint price)
+    if (totalMintCost > 0) {
+      const creatorPayment = Math.floor(totalMintCost * 0.8 * LAMPORTS_PER_SOL);
+      console.log(`Adding creator payment: ${creatorPayment} lamports (${creatorPayment / LAMPORTS_PER_SOL} SOL)`);
+      
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: new PublicKey(wallet),
+          toPubkey: new PublicKey(collection.creator_wallet),
+          lamports: creatorPayment
+        })
       );
     }
+
+    // Add platform commission (20% of mint price + platform fee)
+    const platformCommission = Math.floor((totalMintCost * 0.2 + platformFee) * LAMPORTS_PER_SOL);
+    console.log(`Adding platform commission: ${platformCommission} lamports (${platformCommission / LAMPORTS_PER_SOL} SOL)`);
+    
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(wallet),
+        toPubkey: new PublicKey(envConfig.platformWallet),
+        lamports: platformCommission
+      })
+    );
+
+    // Set recent blockhash and fee payer
+    const { blockhash } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = new PublicKey(wallet);
+
+    // Serialize transaction for frontend to sign
+    const serializedTransaction = transaction.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false
+    });
+
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        transactionBase64: Buffer.from(serializedTransaction).toString('base64'),
+        collectionId: collection.id,
+        phaseId,
+        selectedItems: selectedItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          image_uri: item.image_uri,
+          metadata_uri: item.metadata_uri,
+          attributes: item.attributes,
+          item_index: item.item_index
+        })),
+        totalCost,
+        breakdown: {
+          mintPrice: totalMintCost,
+          platformFee,
+          creatorShare: totalMintCost * 0.8,
+          platformShare: totalMintCost * 0.2
+        }
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('Mint error:', error);

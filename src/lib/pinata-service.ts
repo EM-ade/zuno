@@ -131,19 +131,25 @@ export class PinataService {
         hasImage: !!data.image
       });
 
-      const response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.jwt}`,
-        },
-        body: JSON.stringify({
-          pinataContent: data,
-          pinataMetadata: {
-            name: 'metadata.json'
-          }
-        }),
-      });
+      let response;
+      try {
+        response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.jwt}`,
+          },
+          body: JSON.stringify({
+            pinataContent: data,
+            pinataMetadata: {
+              name: 'metadata.json'
+            }
+          }),
+        });
+      } catch (networkError) {
+        console.error('Network error during Pinata JSON upload:', networkError);
+        throw new Error(`Failed to connect to Pinata API. Please check your network connection and firewall settings. Details: ${networkError instanceof Error ? networkError.message : 'Unknown network error'}`);
+      }
 
       console.log(`Pinata JSON API response status: ${response.status} ${response.statusText}`);
 

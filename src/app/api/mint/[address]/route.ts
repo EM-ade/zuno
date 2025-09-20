@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { SupabaseService } from '@/lib/supabase-service';
+import { supabaseServer } from '@/lib/supabase-service';
 
 export async function GET(
   request: NextRequest,
@@ -16,9 +16,26 @@ export async function GET(
     }
 
     // Try to find collection by candy machine ID first, then by mint address
-    let collection = await SupabaseService.getCollectionByCandyMachineId(address);
-    if (!collection) {
-      collection = await SupabaseService.getCollectionByMintAddress(address);
+    let collection = null;
+    
+    // First try by candy machine ID
+    const { data: candyMachineCollection } = await supabaseServer
+      .from('collections')
+      .select('*')
+      .eq('candy_machine_id', address)
+      .single();
+      
+    if (candyMachineCollection) {
+      collection = candyMachineCollection;
+    } else {
+      // Try by collection mint address
+      const { data: mintCollection } = await supabaseServer
+        .from('collections')
+        .select('*')
+        .eq('collection_mint_address', address)
+        .single();
+        
+      collection = mintCollection;
     }
 
     if (!collection) {
@@ -28,18 +45,31 @@ export async function GET(
       );
     }
 
-    // Get additional data
-    const [phases, stats] = await Promise.all([
-      SupabaseService.getMintPhasesByCollectionId(collection.id!),
-      SupabaseService.getCollectionMintStats(collection.id!)
-    ]);
+    // Get phases if they exist
+    const { data: phases } = await supabaseServer
+      .from('mint_phases')
+      .select('*')
+      .eq('collection_id', collection.id)
+      .order('start_time', { ascending: true });
+
+    // Get minted count from items
+    const { count: mintedCount } = await supabaseServer
+      .from('items')
+      .select('*', { count: 'exact', head: true })
+      .eq('collection_address', collection.collection_mint_address)
+      .eq('minted', true);
+      
+    const { count: totalItems } = await supabaseServer
+      .from('items')
+      .select('*', { count: 'exact', head: true })
+      .eq('collection_address', collection.collection_mint_address);
 
     // Enhanced collection data for mint page
     const enhancedCollection = {
       ...collection,
       phases: phases || [],
-      minted_count: stats.minted || 0,
-      items_count: stats.total_sales || 0
+      minted_count: mintedCount || collection.minted_count || 0,
+      items_count: totalItems || collection.total_supply || 0
     };
 
     return new Response(

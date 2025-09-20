@@ -33,6 +33,7 @@ export interface ItemRecord {
   item_index?: number | null;
   owner_wallet?: string | null;
   mint_signature?: string | null;
+  is_minted?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -90,6 +91,20 @@ export class SupabaseService {
     if (error) {
       console.error('Error creating collection:', error);
       throw new Error(`Failed to create collection: ${error.message}`);
+    }
+    return data;
+  }
+
+  static async upsertCollection(collection: Omit<CollectionRecord, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabaseServer
+      .from('collections')
+      .upsert(collection, { onConflict: 'collection_mint_address' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error upserting collection:', error);
+      throw new Error(`Failed to upsert collection: ${error.message}`);
     }
     return data;
   }
@@ -236,18 +251,12 @@ export class SupabaseService {
   }
 
   static async updateItemMintStatus(itemId: string, minted: boolean, ownerWallet?: string, mintSignature?: string) {
-    const updateData: Partial<ItemRecord> = { 
-      updated_at: new Date().toISOString()
+    const updateData: Partial<ItemRecord> = {
+      is_minted: minted, // Use the new, definitive flag
+      owner_wallet: minted ? ownerWallet : null,
+      mint_signature: minted ? mintSignature : null,
+      updated_at: new Date().toISOString(),
     };
-    
-    // Update owner_wallet and mint_signature to track minted status
-    if (minted) {
-      updateData.owner_wallet = ownerWallet || null;
-      updateData.mint_signature = mintSignature || null;
-    } else {
-      updateData.owner_wallet = null;
-      updateData.mint_signature = null;
-    }
 
     const { data, error } = await supabaseServer
       .from('items')
@@ -275,14 +284,14 @@ export class SupabaseService {
       .select('*', { count: 'exact' })
       .eq('collection_id', collectionId);
 
-    // Filter by minted status using owner_wallet
+    // Filter by minted status using is_minted
     if (filters?.minted !== undefined) {
       if (filters.minted) {
-        // Get minted items (have owner_wallet)
-        query = query.not('owner_wallet', 'is', null);
+        // Get minted items (is_minted is true)
+        query = query.eq('is_minted', true);
       } else {
-        // Get unminted items (no owner_wallet)
-        query = query.is('owner_wallet', null);
+        // Get unminted items (is_minted is false)
+        query = query.eq('is_minted', false);
       }
     }
 

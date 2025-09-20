@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { SupabaseService, CollectionRecord } from '@/lib/supabase-service';
+import { supabaseServer } from '@/lib/supabase-service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,27 +8,38 @@ export async function GET(request: NextRequest) {
     const limit = Number(searchParams.get('limit') || '50');
     const offset = Number(searchParams.get('offset') || '0');
 
-    // Get collections based on status filter or all collections
-    let collections;
+    // Build query
+    let query = supabaseServer
+      .from('collections')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    // Apply status filter if provided
     if (status && status !== 'all') {
-      collections = await SupabaseService.getCollectionsByStatus(status as CollectionRecord['status']);
-    } else {
-      // Get all collections (you might want to add a method for this)
-      const [active, draft, completed] = await Promise.all([
-        SupabaseService.getCollectionsByStatus('active'),
-        SupabaseService.getCollectionsByStatus('draft'), 
-        SupabaseService.getCollectionsByStatus('completed')
-      ]);
-      collections = [...active, ...draft, ...completed];
+      query = query.eq('status', status);
+    }
+
+    // Get collections
+    const { data: collections, error } = await query;
+    
+    if (error) {
+      throw error;
     }
 
     // Enhance with marketplace data
     const enhancedCollections = await Promise.all(
-      collections.slice(offset, offset + limit).map(async (collection) => {
-        const [, mintStats] = await Promise.all([
-          SupabaseService.getItemsByCollection(collection.id!, 1, 1),
-          SupabaseService.getCollectionMintStats(collection.id!)
-        ]);
+      (collections || []).slice(offset, offset + limit).map(async (collection) => {
+        // Get minted count from items
+        const { count: mintedCount } = await supabaseServer
+          .from('items')
+          .select('*', { count: 'exact', head: true })
+          .eq('collection_address', collection.collection_mint_address)
+          .eq('minted', true);
+          
+        const { count: totalItems } = await supabaseServer
+          .from('items')
+          .select('*', { count: 'exact', head: true })
+          .eq('collection_address', collection.collection_mint_address);
 
         // Map database status to marketplace status
         let marketplaceStatus = collection.status;
@@ -43,11 +54,12 @@ export async function GET(request: NextRequest) {
           description: collection.description,
           image_uri: collection.image_uri,
           total_supply: collection.total_supply,
-          minted_count: mintStats.minted || 0,
-          floor_price: mintStats.floor_price || 0,
-          volume: mintStats.volume || 0,
+          minted_count: mintedCount || collection.minted_count || 0,
+          floor_price: collection.price || 0,
+          volume: 0, // Would need transaction data to calculate
           status: marketplaceStatus,
           candy_machine_id: collection.candy_machine_id,
+          collection_mint_address: collection.collection_mint_address,
           creator_wallet: collection.creator_wallet,
           created_at: collection.created_at
         };

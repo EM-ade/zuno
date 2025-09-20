@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import PageHeader from '@/components/PageHeader'
-import { Transaction, Connection } from '@solana/web3.js'
+import NFTUploadAdvanced from '@/components/NFTUploadAdvanced'
+import { toast, Toaster } from 'react-hot-toast'
 
 interface CollectionData {
   name: string
@@ -30,13 +31,15 @@ interface MintSettings {
   whitelistSpots?: number
 }
 
-type Step = 'collection' | 'mint-settings' | 'review' | 'deploy'
+type Step = 'collection' | 'mint-settings' | 'review' | 'creating' | 'upload-assets' | 'success'
 
 export default function CreateCollection() {
-  const { publicKey, signTransaction } = useWallet()
+  const { publicKey } = useWallet()
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState<Step>('collection')
   const [loading, setLoading] = useState(false)
+  const [collectionAddress, setCollectionAddress] = useState<string | null>(null)
+  const [candyMachineId, setCandyMachineId] = useState<string | null>(null)
   
   const [collectionData, setCollectionData] = useState<CollectionData>({
     name: '',
@@ -69,138 +72,126 @@ export default function CreateCollection() {
     }
   }
 
-  const handleDeploy = async () => {
-    if (!publicKey) return
+  // Create Enhanced Collection
+  const handleCreateCollection = async () => {
+    if (!publicKey) {
+      toast.error('Please connect your wallet to create a collection.')
+      return
+    }
     
     setLoading(true)
+    setCurrentStep('creating')
+    
     try {
-      // Convert image to base64
-      let imageData = ''
+      const formData = new FormData()
+      formData.append('name', collectionData.name)
+      formData.append('symbol', collectionData.symbol)
+      formData.append('description', collectionData.description)
+      formData.append('creatorWallet', publicKey.toString())
+      formData.append('price', mintSettings.mintPrice.toString())
+      formData.append('totalSupply', mintSettings.totalSupply.toString())
+      formData.append('royaltyPercentage', collectionData.royaltyPercentage.toString())
+      
       if (collectionData.image) {
-        const reader = new FileReader()
-        imageData = await new Promise((resolve) => {
-          reader.onload = () => resolve(reader.result as string)
-          reader.readAsDataURL(collectionData.image!)
+        formData.append('image', collectionData.image)
+      }
+      
+      // Add phases if configured
+      const phases = []
+      if (mintSettings.whitelistEnabled) {
+        phases.push({
+          name: 'Whitelist',
+          startDate: mintSettings.startDate || new Date().toISOString(),
+          endDate: mintSettings.endDate,
+          price: mintSettings.whitelistPrice || mintSettings.mintPrice,
+          allowList: []
         })
       }
-
-      const deployData = {
-        collectionName: collectionData.name,
-        symbol: collectionData.symbol,
-        description: collectionData.description,
-        totalSupply: mintSettings.totalSupply,
-        royaltyPercentage: collectionData.royaltyPercentage,
-        creatorWallet: publicKey.toString(),
-        imageData,
-        mintPrice: mintSettings.mintPrice,
-        isPublic: mintSettings.isPublic,
-        startDate: mintSettings.startDate,
+      phases.push({
+        name: 'Public',
+        startDate: mintSettings.startDate || new Date().toISOString(),
         endDate: mintSettings.endDate,
-        whitelistEnabled: mintSettings.whitelistEnabled,
-        whitelistPrice: mintSettings.whitelistPrice,
-        whitelistSpots: mintSettings.whitelistSpots,
-        useWalletSigning: true, // Enable wallet signing
-        metadata: {
-          website: collectionData.website,
-          twitter: collectionData.twitter,
-          discord: collectionData.discord
-        }
-      }
-
-      const response = await fetch('/api/creator/collections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(deployData)
+        price: mintSettings.mintPrice
       })
-
+      
+      if (phases.length > 0) {
+        formData.append('phases', JSON.stringify(phases))
+      }
+      
+      // Create collection using enhanced API
+      const response = await fetch('/api/enhanced/create-collection', {
+        method: 'POST',
+        body: formData
+      })
+      
       const result = await response.json()
       
-      if (result.success) {
-        // Check if wallet signature is required
-        if (result.requiresWalletSignature) {
-          console.log('Collection requires wallet signature...')
-          
-          // Deserialize the transaction
-          const transaction = Transaction.from(Buffer.from(result.transactionBase64, 'base64'))
-          
-          // Get connection
-          const connection = new Connection(
-            process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=ba9e35f3-579f-4071-8d87-4a59b8160bb3'
-          )
-          
-          // Get latest blockhash
-          const { blockhash } = await connection.getLatestBlockhash('finalized')
-          transaction.recentBlockhash = blockhash
-          transaction.feePayer = publicKey
-          
-          // Request wallet to sign the transaction
-          if (!signTransaction) {
-            throw new Error('Wallet does not support signing')
-          }
-          
-          console.log('Requesting wallet signature...')
-          const signedTransaction = await signTransaction(transaction)
-          
-          // Send the signed transaction
-          console.log('Sending signed transaction...')
-          const signature = await connection.sendRawTransaction(
-            signedTransaction.serialize(),
-            { skipPreflight: false, preflightCommitment: 'finalized' }
-          )
-          
-          // Wait for confirmation
-          console.log('Waiting for confirmation...')
-          await connection.confirmTransaction(signature, 'finalized')
-          
-          console.log('Transaction confirmed:', signature)
-          
-          // Finalize the collection creation in the database
-          const finalizeResponse = await fetch('/api/creator/collections/finalize', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              signature,
-              collectionMint: result.collectionMint,
-              candyMachineId: result.candyMachineId,
-              collectionData: result.collectionData,
-              phases: result.phases
-            })
-          })
-          
-          const finalizeResult = await finalizeResponse.json()
-          
-          if (finalizeResult.success) {
-            console.log('Collection created successfully!')
-            router.push(`/creator/collections/${finalizeResult.collectionId}`)
-          } else {
-            throw new Error(finalizeResult.error || 'Failed to finalize collection')
-          }
-        } else {
-          // Old flow without wallet signing
-          router.push(`/creator/collections/${result.collectionId}`)
-        }
-      } else {
+      if (!result.success) {
         throw new Error(result.error || 'Failed to create collection')
       }
+      
+      console.log('Collection created:', result.collection.mintAddress)
+      setCollectionAddress(result.collection.mintAddress)
+      setCandyMachineId(result.collection.candyMachineId)
+      
+      toast.success('Collection created successfully!')
+      setCurrentStep('upload-assets')
+      
     } catch (error) {
-      console.error('Deployment failed:', error)
-      alert('Failed to create collection. Please try again.')
+      console.error('Failed to create collection:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to create collection')
+      setCurrentStep('review')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleUploadSuccess = async (result: any) => {
+    toast.success(`Successfully uploaded ${result.uploadedCount} NFTs!`)
+    
+    // NOTE: Authority transfer disabled to prevent "Account does not exist" errors
+    // The server maintains update authority to manage NFT operations
+    // This is a common pattern for managed NFT platforms
+    
+    /* Commented out to prevent issues - can be re-enabled if needed
+    if (collectionAddress && publicKey) {
+      try {
+        const transferResponse = await fetch('/api/enhanced/transfer-authority', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collectionAddress,
+            creatorWallet: publicKey.toString()
+          })
+        })
+        
+        const transferResult = await transferResponse.json()
+        if (transferResult.success) {
+          toast.success('Collection ownership transferred to your wallet!')
+        }
+      } catch (error) {
+        console.error('Failed to transfer authority:', error)
+      }
+    }
+    */
+    
+    setCurrentStep('success')
   }
 
   const steps = [
     { key: 'collection', title: 'Collection Details', description: 'Basic information about your collection' },
     { key: 'mint-settings', title: 'Mint Settings', description: 'Configure pricing and supply' },
     { key: 'review', title: 'Review', description: 'Review and confirm details' },
-    { key: 'deploy', title: 'Deploy', description: 'Deploy your collection' }
+    { key: 'creating', title: 'Creating', description: 'Creating your collection on-chain' },
+    { key: 'upload-assets', title: 'Upload NFTs', description: 'Upload your NFT assets' },
+    { key: 'success', title: 'Success', description: 'Collection created successfully' }
   ]
 
   const currentStepIndex = steps.findIndex(step => step.key === currentStep)
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Toaster position="top-center" />
       <PageHeader title="Create Collection" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -218,12 +209,12 @@ export default function CreateCollection() {
                     {index + 1}
                   </div>
                   <div className="ml-3">
-                    <div className="text-sm font-medium text-gray-900">{step.title}</div>
-                    <div className="text-xs text-gray-500">{step.description}</div>
+                    <p className="text-sm font-medium text-gray-900">{step.title}</p>
+                    <p className="text-xs text-gray-500">{step.description}</p>
                   </div>
                 </div>
                 {index < steps.length - 1 && (
-                  <div className={`w-16 h-0.5 mx-4 ${
+                  <div className={`ml-4 w-16 h-0.5 ${
                     index < currentStepIndex ? 'bg-blue-600' : 'bg-gray-200'
                   }`} />
                 )}
@@ -233,370 +224,325 @@ export default function CreateCollection() {
         </div>
 
         {/* Step Content */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          {currentStep === 'collection' && (
-            <div className="space-y-6">
+        {currentStep === 'collection' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Collection Details</h2>
+            
+            <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-medium text-gray-900 mb-4">Collection Information</h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Collection Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={collectionData.name}
-                        onChange={(e) => setCollectionData(prev => ({ ...prev, name: e.target.value }))}
-                        placeholder="My Awesome Collection"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Symbol *
-                      </label>
-                      <input
-                        type="text"
-                        value={collectionData.symbol}
-                        onChange={(e) => setCollectionData(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
-                        placeholder="MAC"
-                        maxLength={10}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Description *
-                      </label>
-                      <textarea
-                        value={collectionData.description}
-                        onChange={(e) => setCollectionData(prev => ({ ...prev, description: e.target.value }))}
-                        placeholder="Describe your collection..."
-                        rows={4}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Royalty Percentage
-                      </label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="number"
-                          value={collectionData.royaltyPercentage}
-                          onChange={(e) => setCollectionData(prev => ({ ...prev, royaltyPercentage: Number(e.target.value) }))}
-                          min="0"
-                          max="10"
-                          step="0.1"
-                          className="w-20 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <span className="text-sm text-gray-500">%</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Collection Image *
-                    </label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                      {collectionData.imagePreview ? (
-                        <div className="relative">
-                          <Image
-                            src={collectionData.imagePreview}
-                            alt="Collection preview"
-                            width={200}
-                            height={200}
-                            className="mx-auto rounded-lg"
-                          />
-                          <button
-                            onClick={() => setCollectionData(prev => ({ ...prev, image: null, imagePreview: null }))}
-                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ) : (
-                        <div>
-                          <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <p className="text-gray-500 mb-2">Upload collection image</p>
-                          <p className="text-xs text-gray-400">PNG, JPG up to 10MB</p>
-                        </div>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                        id="collection-image"
-                      />
-                      <label
-                        htmlFor="collection-image"
-                        className="mt-4 inline-block bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-700"
-                      >
-                        Choose Image
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t pt-6">
-                  <h3 className="text-md font-medium text-gray-900 mb-4">Social Links (Optional)</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
-                      <input
-                        type="url"
-                        value={collectionData.website}
-                        onChange={(e) => setCollectionData(prev => ({ ...prev, website: e.target.value }))}
-                        placeholder="https://mywebsite.com"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Twitter</label>
-                      <input
-                        type="text"
-                        value={collectionData.twitter}
-                        onChange={(e) => setCollectionData(prev => ({ ...prev, twitter: e.target.value }))}
-                        placeholder="@username"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Discord</label>
-                      <input
-                        type="url"
-                        value={collectionData.discord}
-                        onChange={(e) => setCollectionData(prev => ({ ...prev, discord: e.target.value }))}
-                        placeholder="https://discord.gg/invite"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {currentStep === 'mint-settings' && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-medium text-gray-900">Mint Configuration</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Total Supply *
-                  </label>
-                  <input
-                    type="number"
-                    value={mintSettings.totalSupply}
-                    onChange={(e) => setMintSettings(prev => ({ ...prev, totalSupply: Number(e.target.value) }))}
-                    min="1"
-                    max="10000"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Maximum number of NFTs in this collection</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Mint Price (SOL) *
-                  </label>
-                  <input
-                    type="number"
-                    value={mintSettings.mintPrice}
-                    onChange={(e) => setMintSettings(prev => ({ ...prev, mintPrice: Number(e.target.value) }))}
-                    min="0"
-                    step="0.01"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Set to 0 for free minting (users only pay platform fee)</p>
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Collection Name *
+                </label>
+                <input
+                  type="text"
+                  value={collectionData.name}
+                  onChange={(e) => setCollectionData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="My Awesome Collection"
+                />
               </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="whitelist"
-                    checked={mintSettings.whitelistEnabled}
-                    onChange={(e) => setMintSettings(prev => ({ ...prev, whitelistEnabled: e.target.checked }))}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="whitelist" className="ml-2 text-sm font-medium text-gray-700">
-                    Enable Whitelist Phase
-                  </label>
-                </div>
-
-                {mintSettings.whitelistEnabled && (
-                  <div className="ml-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Whitelist Price (SOL)
-                      </label>
-                      <input
-                        type="number"
-                        value={mintSettings.whitelistPrice || ''}
-                        onChange={(e) => setMintSettings(prev => ({ ...prev, whitelistPrice: Number(e.target.value) }))}
-                        min="0"
-                        step="0.01"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Whitelist Spots
-                      </label>
-                      <input
-                        type="number"
-                        value={mintSettings.whitelistSpots || ''}
-                        onChange={(e) => setMintSettings(prev => ({ ...prev, whitelistSpots: Number(e.target.value) }))}
-                        min="1"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-                )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Symbol *
+                </label>
+                <input
+                  type="text"
+                  value={collectionData.symbol}
+                  onChange={(e) => setCollectionData(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="MAC"
+                  maxLength={10}
+                />
               </div>
-            </div>
-          )}
 
-          {currentStep === 'review' && (
-            <div className="space-y-6">
-              <h2 className="text-lg font-medium text-gray-900">Review Your Collection</h2>
-              
-              <div className="bg-gray-50 rounded-lg p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    {collectionData.imagePreview && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={collectionData.description}
+                  onChange={(e) => setCollectionData(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={4}
+                  placeholder="Describe your collection..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Collection Image
+                </label>
+                <div className="mt-1 flex items-center">
+                  {collectionData.imagePreview ? (
+                    <div className="relative w-32 h-32">
                       <Image
                         src={collectionData.imagePreview}
                         alt="Collection preview"
-                        width={200}
-                        height={200}
-                        className="rounded-lg mx-auto md:mx-0"
+                        fill
+                        className="object-cover rounded-lg"
                       />
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <span className="text-sm font-medium text-gray-500">Name:</span>
-                      <p className="text-lg font-semibold">{collectionData.name}</p>
                     </div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-500">Symbol:</span>
-                      <p>{collectionData.symbol}</p>
+                  ) : (
+                    <div className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                      <span className="text-gray-400">No image</span>
                     </div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-500">Description:</span>
-                      <p className="text-sm">{collectionData.description}</p>
-                    </div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-500">Royalty:</span>
-                      <p>{collectionData.royaltyPercentage}%</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <h3 className="font-medium text-gray-900 mb-3">Mint Settings</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">Supply:</span>
-                      <p className="font-medium">{mintSettings.totalSupply}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Price:</span>
-                      <p className="font-medium">
-                        {mintSettings.mintPrice === 0 ? (
-                          <span className="text-green-600 font-semibold">FREE</span>
-                        ) : (
-                          `${mintSettings.mintPrice} SOL`
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Whitelist:</span>
-                      <p className="font-medium">{mintSettings.whitelistEnabled ? 'Enabled' : 'Disabled'}</p>
-                    </div>
-                    {mintSettings.whitelistEnabled && (
-                      <div>
-                        <span className="text-gray-500">WL Price:</span>
-                        <p className="font-medium">{mintSettings.whitelistPrice} SOL</p>
-                      </div>
-                    )}
-                  </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="ml-4"
+                  />
                 </div>
               </div>
-            </div>
-          )}
 
-          {currentStep === 'deploy' && (
-            <div className="text-center space-y-6">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                </svg>
-              </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Ready to Deploy!</h2>
-                <p className="text-gray-600 mt-2">
-                  Your collection will be deployed to the Solana blockchain. This process may take a few minutes.
-                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Royalty Percentage
+                </label>
+                <input
+                  type="number"
+                  value={collectionData.royaltyPercentage}
+                  onChange={(e) => setCollectionData(prev => ({ ...prev, royaltyPercentage: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0"
+                  max="50"
+                  step="0.1"
+                />
               </div>
-              
-              <button
-                onClick={handleDeploy}
-                disabled={loading}
-                className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Deploying...' : 'Deploy Collection'}
-              </button>
             </div>
-          )}
 
-          {/* Navigation */}
-          <div className="flex justify-between pt-6 border-t border-gray-200">
-            <button
-              onClick={() => {
-                const currentIndex = steps.findIndex(step => step.key === currentStep)
-                if (currentIndex > 0) {
-                  setCurrentStep(steps[currentIndex - 1].key as Step)
-                }
-              }}
-              disabled={currentStepIndex === 0}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            
-            {currentStep !== 'deploy' && (
+            <div className="mt-6 flex justify-end">
               <button
-                onClick={() => {
-                  const currentIndex = steps.findIndex(step => step.key === currentStep)
-                  if (currentIndex < steps.length - 1) {
-                    setCurrentStep(steps[currentIndex + 1].key as Step)
-                  }
-                }}
-                disabled={
-                  (currentStep === 'collection' && (!collectionData.name || !collectionData.symbol || !collectionData.description)) ||
-                  (currentStep === 'mint-settings' && (!mintSettings.totalSupply || mintSettings.mintPrice < 0))
-                }
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setCurrentStep('mint-settings')}
+                disabled={!collectionData.name || !collectionData.symbol}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
               </button>
-            )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {currentStep === 'mint-settings' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Mint Settings</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Total Supply
+                </label>
+                <input
+                  type="number"
+                  value={mintSettings.totalSupply}
+                  onChange={(e) => setMintSettings(prev => ({ ...prev, totalSupply: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="1"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Mint Price (SOL)
+                </label>
+                <input
+                  type="number"
+                  value={mintSettings.mintPrice}
+                  onChange={(e) => setMintSettings(prev => ({ ...prev, mintPrice: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={mintSettings.whitelistEnabled}
+                    onChange={(e) => setMintSettings(prev => ({ ...prev, whitelistEnabled: e.target.checked }))}
+                    className="mr-2"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Enable Whitelist Phase</span>
+                </label>
+              </div>
+
+              {mintSettings.whitelistEnabled && (
+                <div className="ml-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Whitelist Price (SOL)
+                    </label>
+                    <input
+                      type="number"
+                      value={mintSettings.whitelistPrice}
+                      onChange={(e) => setMintSettings(prev => ({ ...prev, whitelistPrice: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-between">
+              <button
+                onClick={() => setCurrentStep('collection')}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setCurrentStep('review')}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+
+        {currentStep === 'review' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Review & Create</h2>
+            
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Collection Details</h3>
+                <dl className="grid grid-cols-2 gap-4">
+                  <div>
+                    <dt className="text-sm text-gray-500">Name</dt>
+                    <dd className="text-sm font-medium">{collectionData.name}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-gray-500">Symbol</dt>
+                    <dd className="text-sm font-medium">{collectionData.symbol}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-sm text-gray-500">Description</dt>
+                    <dd className="text-sm">{collectionData.description || 'No description'}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Mint Settings</h3>
+                <dl className="grid grid-cols-2 gap-4">
+                  <div>
+                    <dt className="text-sm text-gray-500">Total Supply</dt>
+                    <dd className="text-sm font-medium">{mintSettings.totalSupply}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-gray-500">Mint Price</dt>
+                    <dd className="text-sm font-medium">{mintSettings.mintPrice} SOL</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-gray-500">Royalty</dt>
+                    <dd className="text-sm font-medium">{collectionData.royaltyPercentage}%</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="text-sm font-semibold text-blue-900 mb-2">Platform Fees</h4>
+                <p className="text-sm text-blue-700">
+                  • 20% of mint price goes to platform<br />
+                  • $1.25 platform fee per mint (paid by buyer)<br />
+                  • You receive 80% of mint price
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-between">
+              <button
+                onClick={() => setCurrentStep('mint-settings')}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCreateCollection}
+                disabled={loading || !publicKey}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Creating...' : 'Create Collection'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {currentStep === 'creating' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <h2 className="text-2xl font-bold mt-4">Creating Your Collection</h2>
+              <p className="text-gray-600 mt-2">Please wait while we create your collection on-chain...</p>
+            </div>
+          </div>
+        )}
+
+        {currentStep === 'upload-assets' && collectionAddress && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Upload NFTs</h2>
+            
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800">
+                <strong>Collection Created!</strong><br />
+                Address: <code className="text-xs">{collectionAddress}</code>
+                {candyMachineId && (
+                  <>
+                    <br />
+                    Candy Machine: <code className="text-xs">{candyMachineId}</code>
+                  </>
+                )}
+              </p>
+            </div>
+
+            <NFTUploadAdvanced
+              collectionAddress={collectionAddress}
+              candyMachineAddress={candyMachineId || undefined}
+              onSuccess={handleUploadSuccess}
+            />
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setCurrentStep('success')}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                Skip for Now
+              </button>
+            </div>
+          </div>
+        )}
+
+        {currentStep === 'success' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🎉</div>
+              <h2 className="text-3xl font-bold mb-4">Collection Created Successfully!</h2>
+              <p className="text-gray-600 mb-8">
+                Your collection has been created on-chain and is ready for minting.
+              </p>
+              
+              {collectionAddress && (
+                <div className="space-y-4">
+                  <Link
+                    href={`/mint/${collectionAddress}`}
+                    className="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    View Collection
+                  </Link>
+                  <div className="text-sm text-gray-500">
+                    Collection Address: <code>{collectionAddress}</code>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

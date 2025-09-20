@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { SupabaseService } from '@/lib/supabase-service';
+import { supabaseServer } from '@/lib/supabase-service';
 
 export async function GET(
   request: NextRequest,
@@ -17,10 +17,27 @@ export async function GET(
       );
     }
 
-    // Find collection
-    let collection = await SupabaseService.getCollectionByCandyMachineId(address);
-    if (!collection) {
-      collection = await SupabaseService.getCollectionByMintAddress(address);
+    // Find collection by candy machine or mint address
+    let collection = null;
+    
+    // First try by candy machine ID
+    const { data: candyMachineCollection } = await supabaseServer
+      .from('collections')
+      .select('*')
+      .eq('candy_machine_id', address)
+      .single();
+      
+    if (candyMachineCollection) {
+      collection = candyMachineCollection;
+    } else {
+      // Try by collection mint address
+      const { data: mintCollection } = await supabaseServer
+        .from('collections')
+        .select('*')
+        .eq('collection_mint_address', address)
+        .single();
+        
+      collection = mintCollection;
     }
 
     if (!collection) {
@@ -31,15 +48,40 @@ export async function GET(
     }
 
     // Get random sample of items for preview
-    const { items } = await SupabaseService.getItemsByCollection(collection.id!, 1, limit);
+    // Try both collection_address and collection_id for compatibility
+    let items = null;
+    
+    if (collection.collection_mint_address) {
+      const { data } = await supabaseServer
+        .from('items')
+        .select('*')
+        .eq('collection_address', collection.collection_mint_address)
+        .limit(limit);
+      items = data;
+    }
+    
+    // If no items found by collection_address, try by collection_id
+    if ((!items || items.length === 0) && collection.id) {
+      const { data } = await supabaseServer
+        .from('items')
+        .select('*')
+        .eq('collection_id', collection.id)
+        .limit(limit);
+      items = data;
+    }
     
     // Transform for preview
-    const previews = items.map(item => ({
+    const previews = (items || []).map(item => ({
       id: item.id,
       name: item.name,
       image_uri: item.image_uri,
       attributes: item.attributes || []
     }));
+
+    console.log(`Found ${previews.length} preview items for collection ${address}`);
+    if (previews.length > 0) {
+      console.log('First preview:', previews[0]);
+    }
 
     return new Response(
       JSON.stringify({ success: true, previews }),
