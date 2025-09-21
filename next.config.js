@@ -1,3 +1,4 @@
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   // Enable React Strict Mode for better error detection
   reactStrictMode: true,
@@ -41,11 +42,20 @@ const nextConfig = {
       'lucide-react',
     ],
   },
-  // transpilePackages: [
-  //   'keccak256',
-  //   'buffer',
-  //   'ioredis',
-  // ],
+
+  // Webpack configuration for module resolution
+  webpack: (config, { isServer }) => {
+    config.resolve.alias['@/components'] = './src/components';
+    config.resolve.alias['@/types'] = './src/types';
+    config.resolve.alias['@/contexts'] = './src/contexts';
+    config.resolve.alias['@/lib'] = './src/lib';
+    return config;
+  },
+
+  // Ensure proper handling of module not found errors
+  typescript: {
+    ignoreBuildErrors: false
+  }
 };
 
 export default nextConfig;
