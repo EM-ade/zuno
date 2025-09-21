@@ -1,3 +1,5 @@
+'use client'
+
 /**
  * Enhanced Metaplex Core Service
  * Supports: Collections with pricing, phases, image uploads, and NFT management
@@ -8,7 +10,7 @@ import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import { 
   keypairIdentity, 
   generateSigner, 
-  publicKey,
+  publicKey, // UMI's publicKey function
   sol,
   dateTime,
   some,
@@ -16,14 +18,11 @@ import {
   transactionBuilder, // Import the transactionBuilder
   TransactionBuilder, // Import TransactionBuilder as a value
   type Umi,
-  type PublicKey,
+  type PublicKey, // UMI's PublicKey type
   type Signer,
-  type TransactionResult,
-  // type Signature // Removed as it's not directly exported in this manner
 } from '@metaplex-foundation/umi';
 import { MerkleTree } from 'merkletreejs';
 import { keccak256 } from 'js-sha3';
-// import { TransactionResult, Signature } from '@metaplex-foundation/umi'; // Remove this problematic import
 import { 
   createCollectionV1,
   createV1,
@@ -32,7 +31,8 @@ import {
   mplCore,
   ruleSet,
   type CollectionV1,
-  type AssetV1
+  type AssetV1,
+  updateCollectionV1
 } from '@metaplex-foundation/mpl-core';
 import { 
   create as createCandyMachine,
@@ -47,6 +47,7 @@ import { pinataService } from './pinata-service';
 import { envConfig } from '../config/env';
 import bs58 from 'bs58';
 import { format, parseISO } from 'date-fns';
+import { Connection, TransactionInstruction, TransactionMessage, VersionedTransaction, PublicKey as SolanaWeb3PublicKey } from '@solana/web3.js'; // Added and updated imports, renamed PublicKey to SolanaWeb3PublicKey
 
 // Phase configuration for minting
 export interface MintPhase {
@@ -145,23 +146,64 @@ export class MetaplexEnhancedService {
   ): Promise<any> { // Changed to any
     for (let i = 0; i < attempts; i++) {
       try {
-        // Step 1: Simulate transaction before sending
-        console.log(`Simulating transaction (attempt ${i + 1}/${attempts})...`);
-        const simulationResult = await (builderOrSigner instanceof TransactionBuilder ? builderOrSigner.simulate(this.umi) : this.umi.rpc.simulateTransaction(await (builderOrSigner as Signer).transaction(this.umi)));
-        
-        if (simulationResult.value.err) {
-          console.error(`Simulation failed on attempt ${i + 1}/${attempts}:`, simulationResult.value.err);
-          if (i === attempts - 1) {
-            throw new Error(`Transaction simulation failed after ${attempts} attempts: ${JSON.stringify(simulationResult.value.err)}`);
-          }
-          const delay = initialDelay * Math.pow(2, i);
-          console.log(`Retrying simulation in ${delay / 1000} seconds...`);
-          await this.sleep(delay);
-          continue;
-        }
-        console.log(`Simulation successful on attempt ${i + 1}/${attempts}.`);
+        // Step 1: Simulate transaction before sending (only for TransactionBuilder)
+        if (builderOrSigner instanceof TransactionBuilder) {
+          console.log(`Simulating transaction (attempt ${i + 1}/${attempts})...`);
+          const builtTransaction = await builderOrSigner.build(this.umi);
+          const connection = new Connection(envConfig.solanaRpcUrl); // Use web3.js Connection
 
-        // Step 2: Send and confirm if simulation passed
+          // Convert UMI Transaction to web3.js VersionedTransaction for simulation
+          let instructions: TransactionInstruction[] = [];
+          if ('items' in builtTransaction && Array.isArray(builtTransaction.items)) {
+            instructions = builtTransaction.items.map((ix: any) => new TransactionInstruction({
+              programId: new SolanaWeb3PublicKey(ix.programId.toString()),
+              keys: ix.keys.map((k: any) => ({
+                pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
+                isSigner: k.isSigner,
+                isWritable: k.isWritable
+              })),
+              data: Buffer.from(ix.data)
+            }));
+          } else if ('instructions' in builtTransaction && Array.isArray(builtTransaction.instructions)) {
+            instructions = builtTransaction.instructions.map((ix: any) => new TransactionInstruction({
+              programId: new SolanaWeb3PublicKey(ix.programId.toString()),
+              keys: ix.keys.map((k: any) => ({
+                pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
+                isSigner: k.isSigner,
+                isWritable: k.isWritable
+              })),
+              data: Buffer.from(ix.data)
+            }));
+          } else {
+            throw new Error('Unable to extract instructions from UMI transaction for simulation.');
+          }
+
+          const { blockhash } = await connection.getLatestBlockhash('finalized');
+          const messageV0 = new TransactionMessage({
+            payerKey: new SolanaWeb3PublicKey(this.umi.identity.publicKey.toString()),
+            recentBlockhash: blockhash,
+            instructions,
+          }).compileToV0Message();
+          const versionedTx = new VersionedTransaction(messageV0);
+
+          const simulationResult = await connection.simulateTransaction(versionedTx);
+          
+          if (simulationResult.value.err) {
+            console.error(`Simulation failed on attempt ${i + 1}/${attempts}:`, simulationResult.value.err);
+            if (i === attempts - 1) {
+              throw new Error(`Transaction simulation failed after ${attempts} attempts: ${JSON.stringify(simulationResult.value.err)}`);
+            }
+            const delay = initialDelay * Math.pow(2, i);
+            console.log(`Retrying simulation in ${delay / 1000} seconds...`);
+            await this.sleep(delay);
+            continue;
+          }
+          console.log(`Simulation successful on attempt ${i + 1}/${attempts}.`);
+        } else {
+          console.log(`Bypassing simulation for Signer type. Attempt ${i + 1}/${attempts}.`);
+        }
+
+        // Step 2: Send and confirm if simulation passed (or skipped)
         console.log(`Sending and confirming transaction (attempt ${i + 1}/${attempts})...`);
         return await fn(builderOrSigner);
 
@@ -315,8 +357,8 @@ export class MetaplexEnhancedService {
     
     // Find the earliest phase for start date
     const sortedPhases = [...phases].sort((a, b) => {
-      const dateA = typeof a.startDate === 'string' ? parseISO(a.startDate) : a.startDate;
-      const dateB = typeof b.startDate === 'string' ? parseISO(b.startDate) : b.startDate;
+      const dateA = parseISO(a.start_time);
+      const dateB = parseISO(b.start_time);
       return dateA.getTime() - dateB.getTime();
     });
     
@@ -324,10 +366,8 @@ export class MetaplexEnhancedService {
     const lastPhase = sortedPhases[sortedPhases.length - 1];
     
     // Set start date from first phase
-    if (firstPhase.startDate) {
-      const startDate = typeof firstPhase.startDate === 'string' 
-        ? parseISO(firstPhase.startDate) 
-        : firstPhase.startDate;
+    if (firstPhase.start_time) {
+      const startDate = parseISO(firstPhase.start_time);
       
       guards.startDate = some({
         date: dateTime(startDate)
@@ -335,10 +375,8 @@ export class MetaplexEnhancedService {
     }
     
     // Set end date from last phase if available
-    if (lastPhase.endDate) {
-      const endDate = typeof lastPhase.endDate === 'string'
-        ? parseISO(lastPhase.endDate)
-        : lastPhase.endDate;
+    if (lastPhase.end_time) {
+      const endDate = parseISO(lastPhase.end_time);
         
       guards.endDate = some({
         date: dateTime(endDate)
@@ -392,6 +430,7 @@ export class MetaplexEnhancedService {
       console.log(`Uploading ${nfts.length} NFTs to collection ${collectionAddress}`);
       
       const results: UploadedNFTResult[] = []; // Explicitly type results
+      const errors: Array<{ name: string; error: string }> = []; // Explicitly type errors
       const CHUNK_SIZE = 10; // Process 10 NFTs concurrently
 
       for (let i = 0; i < nfts.length; i += CHUNK_SIZE) {
@@ -513,7 +552,7 @@ export class MetaplexEnhancedService {
           } catch (batchError) {
             console.error(`Error in batch NFT creation:`, batchError);
             // If a batch fails, mark all NFTs in that batch as failed
-            chunk.forEach(nft => errors.push({
+            txChunk.forEach((nft: UploadedNFTResult) => errors.push({
               name: nft.name,
               error: batchError instanceof Error ? batchError.message : 'Unknown error'
             }));
@@ -546,19 +585,20 @@ export class MetaplexEnhancedService {
     try {
       console.log(`Creating mint transaction for ${quantity} NFTs from candy machine ${candyMachineAddress}`);
       
-      const { Connection, Transaction, SystemProgram, PublicKey: SolanaPublicKey, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
-      const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com');
+      const { Connection: Web3Connection, Transaction: Web3Transaction, SystemProgram, PublicKey: SolanaWeb3PublicKey, LAMPORTS_PER_SOL } = await import('@solana/web3.js'); // Renamed Connection and Transaction to avoid conflict
+      const connection = new Web3Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com');
       
       // For now, create a simple payment transaction
       // The actual candy machine minting will be handled separately
-      const transaction = new Transaction();
+      // This is a placeholder for the actual Metaplex Candy Machine mint instruction
+      const transaction = new Web3Transaction(); // Use Web3Transaction
       
       // Add platform fee (temporary solution until proper candy machine integration)
       const platformFee = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL fee
       transaction.add(
         SystemProgram.transfer({
-          fromPubkey: new SolanaPublicKey(buyerWallet),
-          toPubkey: new SolanaPublicKey(process.env.NEXT_PUBLIC_PLATFORM_WALLET || buyerWallet),
+          fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
+          toPubkey: new SolanaWeb3PublicKey(process.env.NEXT_PUBLIC_PLATFORM_WALLET || buyerWallet),
           lamports: Math.floor(platformFee * quantity)
         })
       );
@@ -566,7 +606,7 @@ export class MetaplexEnhancedService {
       // Get recent blockhash
       const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
-      transaction.feePayer = new SolanaPublicKey(buyerWallet);
+      transaction.feePayer = new SolanaWeb3PublicKey(buyerWallet);
       
       // Serialize for client signing
       const serializedTransaction = transaction.serialize({
@@ -715,8 +755,6 @@ export class MetaplexEnhancedService {
   ) {
     try {
       console.log(`Transferring update authority of ${collectionAddress} to ${newAuthority}`);
-      
-      const { updateCollectionV1 } = await import('@metaplex-foundation/mpl-core');
       
       const builder = await updateCollectionV1(this.umi, {
         collection: publicKey(collectionAddress),

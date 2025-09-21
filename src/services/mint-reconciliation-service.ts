@@ -7,6 +7,7 @@ interface ConfirmMintAtomicResult {
   success: boolean;
   minted_count: number;
   minted_nfts: Array<{ id: string; name: string; image: string; address: string }>;
+  message?: string;
 }
 
 // Platform fee: $1.25 in SOL (needed for re-calculating total_paid if re-inserting mint_transaction)
@@ -237,11 +238,11 @@ export async function runMintReconciliation() {
           }
         ).single();
 
-        if (rpcError || !rpcResult || !rpcResult.success) {
-          console.error(`Reconciliation failed for ${idempotency_key} via RPC:`, rpcError?.message || rpcResult?.message || 'Unknown RPC error');
+        if (rpcError || !rpcResult || typeof rpcResult !== 'object' || !(rpcResult as ConfirmMintAtomicResult).success) {
+          console.error(`Reconciliation failed for ${idempotency_key} via RPC:`, rpcError?.message || (rpcResult && typeof rpcResult === 'object' ? (rpcResult as ConfirmMintAtomicResult)?.message : 'Unknown RPC error'));
           // RPC handles marking as failed internally. No further action needed here.
         } else {
-          console.log(`Reconciliation successful for ${idempotency_key}. Minted ${rpcResult.minted_count} NFTs.`);
+          console.log(`Reconciliation successful for ${idempotency_key}. Minted ${(rpcResult as ConfirmMintAtomicResult).minted_count} NFTs.`);
         }
 
       } catch (err) {

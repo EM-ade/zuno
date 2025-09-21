@@ -3,8 +3,8 @@ import { SupabaseService } from '@/lib/supabase-service';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const wallet = searchParams.get('wallet');
+    // Extract wallet from query parameters in a more static-friendly way
+    const wallet = request.nextUrl.searchParams.get('wallet');
 
     if (!wallet) {
       return new Response(
