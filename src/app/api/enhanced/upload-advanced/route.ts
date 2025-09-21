@@ -10,7 +10,7 @@ interface ProcessedNFT {
   imageUri?: string;
   attributes: NFTAttribute[];
 }
-//not
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let parsedNFTs: ParsedNFTItem[] = [];
+    let parsedNFTs: ParsedNFT[] = [];
     const processedNFTs: ProcessedNFT[] = [];
 
     // Handle different upload types
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         }
         
         const jsonContent = await jsonFile.text();
-        parsedNFTs = nftParser.parseJSON(jsonContent);
+        parsedNFTs = NFTParser.parseJSON(jsonContent);
         
         // Check for accompanying images
         const imageFiles = formData.getAll('images') as File[];
@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
           // Match images to NFTs by index or name
           parsedNFTs.forEach((nft, index) => {
             const matchingImage = imageFiles.find(img => 
-              nftParser['getBaseName'](img.name) === nft.name ||
-              nftParser['getBaseName'](img.name) === String(index + 1)
+              NFTParser['getBaseName'](img.name) === nft.name ||
+              NFTParser['getBaseName'](img.name) === String(index + 1)
             ) || imageFiles[index];
             
             if (matchingImage) {
@@ -72,15 +72,15 @@ export async function POST(request: NextRequest) {
         }
         
         const csvContent = await csvFile.text();
-        parsedNFTs = nftParser.parseCSV(csvContent);
+        parsedNFTs = NFTParser.parseCSV(csvContent);
         
         // Check for accompanying images
         const imageFiles = formData.getAll('images') as File[];
         if (imageFiles.length > 0) {
           parsedNFTs.forEach((nft, index) => {
             const matchingImage = imageFiles.find(img => 
-              nftParser['getBaseName'](img.name) === nft.name ||
-              nftParser['getBaseName'](img.name) === String(index + 1)
+              NFTParser['getBaseName'](img.name) === nft.name ||
+              NFTParser['getBaseName'](img.name) === String(index + 1)
             ) || imageFiles[index];
             
             if (matchingImage) {
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         });
         
         // Parse folder contents
-        const folderNFTs = nftParser.matchFilesInFolder(allFiles);
+        const folderNFTs = NFTParser.matchFilesInFolder(allFiles);
         console.log(`Parsed ${folderNFTs.length} NFTs from folder`);
         
         // Process matched files
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
             // Parse the JSON file content
             const jsonFile = nft.properties.jsonFile as File;
             const jsonContent = await jsonFile.text();
-            const [parsedData] = nftParser.parseJSON(jsonContent);
+            const [parsedData] = NFTParser.parseJSON(jsonContent);
             
             // Merge parsed data with image
             nft.name = parsedData.name || nft.name;
@@ -160,13 +160,13 @@ export async function POST(request: NextRequest) {
         if (traitsJson) {
           try {
             const traits = JSON.parse(traitsJson);
-            defaultAttributes = nftParser['normalizeAttributes'](traits);
+            defaultAttributes = NFTParser['normalizeAttributes'](traits);
           } catch (error) {
             console.warn('Failed to parse traits:', error);
           }
         }
         
-        parsedNFTs = nftParser.parseNumberedFolder(imageFiles, defaultAttributes);
+        parsedNFTs = NFTParser.parseNumberedFolder(imageFiles, defaultAttributes);
         break;
       }
 
