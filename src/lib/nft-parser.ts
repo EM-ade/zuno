@@ -1,6 +1,6 @@
 import { parse } from 'csv-parse';
 
-interface ParsedNFTItem {
+export interface ParsedNFTItem {
   name: string;
   description?: string;
   image_uri: string;
@@ -9,6 +9,11 @@ interface ParsedNFTItem {
   external_url?: string;
   properties?: Record<string, unknown>;
   creators?: Array<{ address: string; share: number }>;
+}
+
+export interface NFTAttribute {
+  trait_type: string;
+  value: string;
 }
 
 interface ParseResult {
