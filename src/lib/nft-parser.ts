@@ -3,7 +3,7 @@
  * Handles parsing of various NFT metadata formats (JSON, CSV, folders)
  */
 
-import { parse } from 'csv-parse/sync';
+import { parse } from 'csv-parse';
 
 export interface NFTAttribute {
   trait_type: string;
