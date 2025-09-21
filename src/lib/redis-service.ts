@@ -17,11 +17,9 @@ if (process.env.NODE_ENV === 'production') {
   // from being created on hot reloads.
   if (!global.redisClient) {
     if (!process.env.REDIS_URL) {
-      console.warn('REDIS_URL is not defined. Using default Redis connection for development.');
-      global.redisClient = new Redis(); // Connect to default localhost:6379
-    } else {
-      global.redisClient = new Redis(process.env.REDIS_URL);
+      throw new Error('REDIS_URL is not defined in development environment. Please add it to your .env.local file.'); // Changed to throw error
     }
+    global.redisClient = new Redis(process.env.REDIS_URL);
     
     global.redisClient.on('connect', () => console.log('Redis Development Client Connected!'));
     global.redisClient.on('error', (err) => console.error('Redis Development Client Error:', err));

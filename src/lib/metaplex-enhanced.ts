@@ -53,8 +53,10 @@ export interface MintPhase {
   id?: string; // Add id
   name: string;
   phase_type: 'og' | 'whitelist' | 'public' | 'custom'; // Add phase_type
-  startDate: Date | string;
+  startDate?: Date | string; // Make optional
   endDate?: Date | string;
+  start_time: string; // Add this property
+  end_time?: string; // Add this property
   price: number; // in SOL
   mint_limit?: number; // Add mint_limit
   allowed_wallets?: string[]; // Renamed from allowList

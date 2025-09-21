@@ -84,8 +84,8 @@ export async function POST(request: NextRequest) {
         const phaseRecords = phases.map((phase: Phase) => ({
           collection_id: collection.id,
           name: phase.name,
-          start_time: phase.startDate, // Changed from start_time
-          end_time: phase.endDate || null, // Changed from end_time
+          start_time: phase.start_time, // Use phase.start_time
+          end_time: phase.end_time || null, // Use phase.end_time
           price: phase.price || price,
           mint_limit: phase.mint_limit || null, // New column for mint_phases
           phase_type: phase.phase_type, // New column for mint_phases (enum)

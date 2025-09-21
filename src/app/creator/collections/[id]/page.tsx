@@ -9,6 +9,7 @@ import OptimizedImage from '@/components/OptimizedImage'
 import PageHeader from '@/components/PageHeader'
 import { lazy, Suspense } from 'react'; // Import lazy and Suspense
 const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced')); // Lazy load NFTUploadAdvanced
+import { NFTUploadServiceResult } from '@/lib/metaplex-enhanced'; // Add this import
 
 interface Collection {
   id: string
@@ -21,6 +22,7 @@ interface Collection {
   status: 'draft' | 'active' | 'live' | 'completed' | 'revealed' | 'sold_out' | 'archived'
   candy_machine_id: string
   creator_wallet: string
+  collection_mint_address: string // Add this line
 }
 
 interface NFTItem {
@@ -93,8 +95,8 @@ export default function CollectionManager() {
   // Removed all individual NFT upload functions (addUploadItem, updateUploadItem, removeUploadItem, handleImageUpload, addAttribute, updateAttribute, removeAttribute, handleBulkUpload)
   // These functionalities are now handled by NFTUploadAdvanced
 
-  const handleUploadComplete = (results: { uploaded: number }) => {
-    alert(`Successfully uploaded ${results.uploaded} NFTs!`);
+  const handleUploadComplete = (result: NFTUploadServiceResult) => {
+    alert(`Successfully uploaded ${result.uploadedCount} NFTs!`);
     loadItems(); // Refresh items list
     setActiveTab('items'); // Switch to items tab
   };
@@ -381,7 +383,7 @@ export default function CollectionManager() {
                   <LazyNFTUploadAdvanced
                     collectionAddress={collection.collection_mint_address}
                     candyMachineAddress={collection.candy_machine_id}
-                    onUploadComplete={handleUploadComplete}
+                    onSuccess={handleUploadComplete} // Changed from onUploadComplete
                   />
                 </Suspense>
               </div>

@@ -1,4 +1,5 @@
 'use client'
+
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -10,7 +11,9 @@ import { toast, Toaster } from 'react-hot-toast'
 import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
 import { NFTUploadServiceResult } from '@/lib/metaplex-enhanced'; // Corrected import path for NFTUploadServiceResult
 
+
 const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced')); // Lazy load NFTUploadAdvanced
+
 
 interface CollectionData {
   name: string
@@ -24,12 +27,15 @@ interface CollectionData {
   discord?: string
 }
 
+
 interface MintSettings {
   totalSupply: number
   phases: Phase[]
 }
 
+
 type Step = 'collection' | 'mint-settings' | 'review' | 'creating' | 'upload-assets' | 'success'
+
 
 export default function CreateCollection() {
   const { publicKey } = useWalletConnection(); // Use custom hook
@@ -51,6 +57,7 @@ export default function CreateCollection() {
     discord: ''
   })
 
+
   // Helper to get a default public phase
   const getDefaultPublicPhase = (): Phase => ({
     name: 'Public Sale',
@@ -59,10 +66,12 @@ export default function CreateCollection() {
     start_time: new Date().toISOString() // Ensure valid ISO string
   });
 
+
   const [mintSettings, setMintSettings] = useState<MintSettings>({
     totalSupply: 1000,
     phases: []
   })
+
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -75,6 +84,7 @@ export default function CreateCollection() {
       reader.readAsDataURL(file)
     }
   }
+
 
   // Create Enhanced Collection
   const handleCreateCollection = async () => {
@@ -140,6 +150,7 @@ export default function CreateCollection() {
     }
   }
 
+
   const handleUploadSuccess = async (result: NFTUploadServiceResult) => {
     toast.success(`Successfully uploaded ${result.uploadedCount} NFTs!`)
     
@@ -172,6 +183,7 @@ export default function CreateCollection() {
     setCurrentStep('success')
   }
 
+
   const steps = [
     { key: 'collection', title: 'Collection Details', description: 'Basic information about your collection' },
     { key: 'mint-settings', title: 'Mint Settings', description: 'Configure pricing and supply' },
@@ -181,7 +193,9 @@ export default function CreateCollection() {
     { key: 'success', title: 'Success', description: 'Collection created successfully' }
   ]
 
+
   const currentStepIndex = steps.findIndex(step => step.key === currentStep)
+
 
   return (
     <div className="min-h-screen bg-gray-50">

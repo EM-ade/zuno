@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react'; // Added useEff
 import { Upload, FileJson, FileText, Folder, Image, Plus, Trash2, Loader2, CheckCircle, AlertCircle, X, Info } from 'lucide-react';
 import { toast } from 'react-hot-toast'; // Added toast import
 import OptimizedImage from '@/components/OptimizedImage';
-import { NFTUploadConfig } from '@/lib/metaplex-enhanced';
+import { NFTUploadConfig, NFTUploadServiceResult } from '@/lib/metaplex-enhanced';
 import { pinataService } from '@/lib/pinata-service'; // Corrected pinataService import
 import { Buffer } from 'buffer'; // Import Buffer
 
@@ -42,13 +42,13 @@ interface PreviewItem {
 interface UploadProps {
   collectionAddress: string;
   candyMachineAddress?: string;
-  onUploadComplete: (result: { uploaded: number }) => void; // Changed to onUploadComplete
+  onSuccess: (result: NFTUploadServiceResult) => void; // Use NFTUploadServiceResult from metaplex-enhanced
 }
 
 export default function NFTUploadAdvanced({
   collectionAddress,
   candyMachineAddress,
-  onUploadComplete // Changed to onUploadComplete
+  onSuccess // Changed from onUploadComplete
 }: UploadProps) {
   const [uploadType, setUploadType] = useState<'json' | 'csv' | 'folder' | 'images'>('images');
   const [isUploading, setIsUploading] = useState(false); // Declared isUploading once
@@ -108,27 +108,27 @@ export default function NFTUploadAdvanced({
   const generatePreview = useCallback(async () => {
     setPreview([]);
     if (uploadType === 'images' && imageFiles.length > 0) {
-      const newPreview = await Promise.all(imageFiles.map(async (file: File) => ({
+      const newPreview: PreviewItem[] = await Promise.all(imageFiles.map(async (file: File) => ({
         url: URL.createObjectURL(file),
         name: file.name,
-        type: 'image',
+        type: 'image', // Explicitly set type to 'image'
       })));
       setPreview(newPreview);
     } else if (uploadType === 'json' && jsonFile.length > 0) {
-      const newPreview = await Promise.all(jsonFile.map(async (file: File) => ({
+      const newPreview: PreviewItem[] = await Promise.all(jsonFile.map(async (file: File) => ({
         url: URL.createObjectURL(file),
         name: file.name,
-        type: 'json',
+        type: 'json', // Explicitly set type to 'json'
       })));
       setPreview(newPreview);
     } else if (uploadType === 'csv' && csvFile) {
       // For CSV, we might just show a summary or the first few lines
-      setPreview([{ url: '#', name: csvFile.name, type: 'csv' }]);
+      setPreview([{ url: '#', name: csvFile.name, type: 'csv' }]); // Explicitly set type to 'csv'
     } else if (uploadType === 'folder' && folderFiles.length > 0) {
-      const newPreview = await Promise.all(folderFiles.map(async (file: File) => ({
+      const newPreview: PreviewItem[] = await Promise.all(folderFiles.map(async (file: File) => ({
         url: URL.createObjectURL(file),
         name: file.name,
-        type: 'folder-item',
+        type: 'folder-item', // Explicitly set type to 'folder-item'
       })));
       setPreview(newPreview);
     }
@@ -310,7 +310,7 @@ export default function NFTUploadAdvanced({
       }
 
       setUploadSuccess(`Successfully uploaded ${result.uploadedCount} NFTs!`);
-      onUploadComplete({ uploaded: result.uploadedCount }); // Call onUploadComplete
+      onSuccess(result); // Call onSuccess with the full result object
       // Clear form after successful upload
       setImageFiles([]);
       setJsonFile([]);
@@ -337,7 +337,7 @@ export default function NFTUploadAdvanced({
     } finally {
       setIsUploading(false);
     }
-  }, [uploadType, imageFiles, jsonFile, csvFile, folderFiles, collectionAddress, candyMachineAddress, onUploadComplete, baseName, generateMetadata, defaultDescription, defaultAttributes]);
+  }, [uploadType, imageFiles, jsonFile, csvFile, folderFiles, collectionAddress, candyMachineAddress, onSuccess, baseName, generateMetadata, defaultDescription, defaultAttributes]);
 
   return (
     <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-purple-500/20 text-white">
@@ -523,7 +523,6 @@ export default function NFTUploadAdvanced({
           <div className="relative border-2 border-dashed border-gray-700 rounded-lg p-6 text-center">
             <input
               type="file"
-              // @ts-expect-error: webkitdirectory is a non-standard property for folder uploads
               webkitdirectory="true"
               directory="true"
               multiple

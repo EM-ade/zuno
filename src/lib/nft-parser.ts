@@ -49,17 +49,24 @@ export class NFTParser {
    */
   static parseCSV(csvContent: string): ParsedNFT[] {
     try {
-      const records = parse(csvContent, {
+      let records: Record<string, unknown>[] = [];
+      parse(csvContent, {
         columns: true,
         skip_empty_lines: true,
         trim: true
+      }, (err, output) => {
+        if (err) {
+          console.error('CSV parsing error:', err);
+          throw new Error('Invalid CSV format');
+        }
+        records = output as Record<string, unknown>[]; // Explicitly cast output
       });
 
       return records.map((record: Record<string, unknown>, index: number) => {
         // Extract special columns
-        const name = record.name || record.Name || `NFT #${index + 1}`;
-        const description = record.description || record.Description || '';
-        const image = record.image || record.Image || record.image_url || '';
+        const name = (record.name as string || record.Name as string || `NFT #${index + 1}`);
+        const description = (record.description as string || record.Description as string || '');
+        const image = (record.image as string || record.Image as string || record.image_url as string || '');
         
         // All other columns become attributes
         const attributes: NFTAttribute[] = [];
@@ -174,13 +181,14 @@ export class NFTParser {
     if (Array.isArray(attrs)) {
       return attrs.map(attr => {
         if (typeof attr === 'object' && attr !== null) {
+          const attributeValue = (attr as { value: unknown }).value;
           return {
             trait_type: (attr as { trait_type?: string; traitType?: string; name?: string }).trait_type || (attr as { trait_type?: string; traitType?: string; name?: string }).traitType || (attr as { trait_type?: string; traitType?: string; name?: string }).name || 'Unknown',
-            value: (attr as { value: unknown }).value !== undefined ? (attr as { value: unknown }).value : '',
+            value: this.parseValue(attributeValue !== undefined ? String(attributeValue) : ''), // Use parseValue
             display_type: (attr as { display_type?: string; displayType?: string }).display_type || (attr as { display_type?: string; displayType?: string }).displayType
           };
         }
-        return { trait_type: 'Property', value: attr as string };
+        return { trait_type: 'Property', value: this.parseValue(String(attr)) }; // Use parseValue
       });
     }
     

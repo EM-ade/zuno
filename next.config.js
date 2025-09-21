@@ -20,6 +20,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'shdw-drive.genesysgo.io',
       },
+      {
+        protocol: 'https',
+        hostname: 'crimson-peaceful-platypus-428.mypinata.cloud',
+      },
     ],
   },
 
