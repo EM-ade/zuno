@@ -3,7 +3,8 @@ import { keypairIdentity, generateSigner, transactionBuilder, some, sol, publicK
 import { createCollectionV1, createV1, mplCore } from '@metaplex-foundation/mpl-core';
 import { create as createCandyMachine, mplCandyMachine, GuardSet } from '@metaplex-foundation/mpl-core-candy-machine';
 import { pinataService } from './pinata-service';
-import { envConfig, convertUsdToSol } from '../config/env';
+import { envConfig } from '../config/env';
+import { PriceOracleService } from './price-oracle';
 import bs58 from 'bs58';
 import { MerkleTree } from 'merkletreejs';
 import keccak256 from 'keccak256';
@@ -39,6 +40,7 @@ export interface CreatedCollection {
 
 export class MetaplexCoreService {
   private umi: ReturnType<typeof createUmi>;
+  private priceOracleService: PriceOracleService;
 
   constructor() {
     this.umi = createUmi(envConfig.solanaRpcUrl)
@@ -48,6 +50,7 @@ export class MetaplexCoreService {
     const privateKey = bs58.decode(envConfig.serverWalletPrivateKey);
     const keypair = this.umi.eddsa.createKeypairFromSecretKey(privateKey);
     this.umi.use(keypairIdentity(keypair));
+    this.priceOracleService = new PriceOracleService();
   }
 
   private createMerkleTree(walletAddresses: string[]): { root: Buffer; tree: MerkleTree } {
@@ -707,7 +710,7 @@ export class MetaplexCoreService {
       const transaction = new Transaction();
   
       // Use provided platform fee or calculate from $1.25 USD
-      const platformFeeSol = params.platformFee || await convertUsdToSol(1.25);
+      const platformFeeSol = params.platformFee || await this.priceOracleService.usdtToSol(1.25);
       const platformFeeLamports = Math.round(platformFeeSol * LAMPORTS_PER_SOL);
   
       transaction.add(
@@ -809,6 +812,8 @@ export class MetaplexCoreService {
     userWallet: string;
     amount: number;
     price: number;
+    platformFee: number; // Add platformFee parameter
+    creatorPayment: number; // Add creatorPayment parameter
     selectedItems?: Array<{
       id: string;
       name: string;
@@ -817,14 +822,15 @@ export class MetaplexCoreService {
     }>;
   }): Promise<{ success: boolean; signature?: string; error?: string; mintIds?: string[] }> {
     try {
-      const { candyMachineId, collectionMintAddress, userWallet, amount, price, selectedItems } = params;
+      const { candyMachineId, collectionMintAddress, userWallet, amount, price, platformFee, creatorPayment, selectedItems } = params; // Destructure new params
 
       console.log('Building mint transaction with platform fee collection:', {
         candyMachineId,
         userWallet,
         amount,
         price,
-        platformFee: envConfig.platformFeeSol
+        platformFee,
+        creatorPayment,
       });
 
       // Get collection details to find creator wallet
@@ -843,20 +849,21 @@ export class MetaplexCoreService {
       const transaction = new Transaction();
 
       // Add platform fee transfer - send platform fee to Zuno treasury
-      const platformFeeLamports = Math.round(envConfig.platformFeeSol * LAMPORTS_PER_SOL);
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(userWallet),
-          toPubkey: new PublicKey(platformWallet),
-          lamports: platformFeeLamports,
-        })
-      );
+      const platformFeeLamports = Math.round(platformFee * LAMPORTS_PER_SOL);
+      if (platformFeeLamports > 0) {
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: new PublicKey(userWallet),
+            toPubkey: new PublicKey(platformWallet),
+            lamports: platformFeeLamports,
+          })
+        );
+      }
 
-      // Add creator payment transfer - send mint price to creator (only if price > 0)
-      const totalPrice = price * amount;
-      if (totalPrice > 0) {
-        const creatorPaymentLamports = Math.round(totalPrice * LAMPORTS_PER_SOL);
-        console.log(`Adding creator payment: ${creatorPaymentLamports} lamports (${totalPrice} SOL)`);
+      // Add creator payment transfer - send creator's share to creator
+      const creatorPaymentLamports = Math.round(creatorPayment * LAMPORTS_PER_SOL);
+      if (creatorPaymentLamports > 0) {
+        console.log(`Adding creator payment: ${creatorPaymentLamports} lamports (${creatorPayment} SOL)`);
         transaction.add(
           SystemProgram.transfer({
             fromPubkey: new PublicKey(userWallet),
@@ -865,7 +872,7 @@ export class MetaplexCoreService {
           })
         );
       } else {
-        console.log('Free mint detected - no creator payment required');
+        console.log('Free mint detected or no creator payment required after commission');
       }
 
       // Create actual NFTs using Metaplex Core (separate UMI transaction)
@@ -921,6 +928,7 @@ export class MetaplexCoreService {
           collection: publicKey(collectionMintAddress),
           name: nftMetadata.name,
           uri: metadataUri,
+          owner: publicKey(userWallet),
         });
 
         umiTransaction = umiTransaction.add(createNftInstruction);
@@ -957,9 +965,9 @@ export class MetaplexCoreService {
         signature: completeSignature,
         mintCount: amount,
         mintIds,
-        totalPaid: price * amount + envConfig.platformFeeSol,
-        platformFee: envConfig.platformFeeSol,
-        creatorPayment: price * amount
+        totalPaid: price * amount + platformFee + creatorPayment,
+        platformFee,
+        creatorPayment
       });
 
       return {

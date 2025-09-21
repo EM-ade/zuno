@@ -34,13 +34,10 @@ export default function NavBar() {
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center space-x-6 lg:space-x-8">
           <Link href="/marketplace" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
-            Marketplace
-          </Link>
-          <Link href="/explore" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
             Explore
           </Link>
-          <Link href="/creator/create" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
-            Create Collection
+          <Link href="/creator" className="text-[#0077E6] hover:text-gray-200 transition-colors font-medium text-sm lg:text-base">
+            Create
           </Link>
         </div>
 
@@ -117,21 +114,14 @@ export default function NavBar() {
               onClick={() => setMobileMenuOpen(false)}
               className="block text-gray-900 hover:text-blue-600 font-medium py-2"
             >
-              Marketplace
-            </Link>
-            <Link
-              href="/explore"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block text-gray-900 hover:text-blue-600 font-medium py-2"
-            >
               Explore
             </Link>
             <Link
-              href="/creator/create"
+              href="/creator"
               onClick={() => setMobileMenuOpen(false)}
               className="block text-gray-900 hover:text-blue-600 font-medium py-2"
             >
-              Create Collection
+              Create
             </Link>
             <div className="border-t border-gray-200 pt-3">
               {isConnected && publicKey ? (

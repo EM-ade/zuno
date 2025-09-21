@@ -36,6 +36,7 @@
     "formdata-node": "^6.0.3",
     "framer-motion": "^12.23.16",
     "ioredis": "^5.7.0",
+    "@upstash/redis": "^1.33.0",
     "keccak256": "^1.0.6",
     "lru-cache": "^11.2.1",
     "lucide-react": "^0.544.0",

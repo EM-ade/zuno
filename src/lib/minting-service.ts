@@ -1,4 +1,4 @@
-import { MetaplexCoreService } from './metaplex-core';
+import { MetaplexCoreService } from './metaplex-core-backup';
 import { SupabaseService } from './supabase-service';
 
 export interface MintTransactionData {
@@ -54,16 +54,19 @@ export class MintingService {
         return { success: false, error: 'Collection is sold out' };
       }
 
-      // Calculate total cost with platform fee
-      const platformFee = 0.01; // 0.01 SOL platform fee
-      const totalCost = (activePhase.price * amount) + platformFee;
+      // Calculate total cost with platform fee and 20% creator profit share
+      const nftPrice = activePhase.price * amount;
+      const platformCommission = nftPrice * 0.20; // 20% of NFT price as platform commission
+      const totalCost = nftPrice + platformCommission; // Total amount buyer pays
+      const creatorProfit = nftPrice - platformCommission; // Creator's profit after commission
 
       console.log('Minting parameters:', {
         collection: collection.name,
         userWallet,
         amount,
         pricePerNFT: activePhase.price,
-        platformFee,
+        platformCommission,
+        creatorProfit,
         totalCost,
         phaseType: activePhase.phase_type
       });
@@ -74,7 +77,9 @@ export class MintingService {
         collectionMintAddress,
         userWallet,
         amount,
-        price: activePhase.price
+        price: activePhase.price, // This is the original price set by creator
+        platformFee: platformCommission, // Pass the calculated platform commission
+        creatorPayment: creatorProfit // Pass the creator's profit
       });
 
       if (!mintResult.success) {
@@ -87,8 +92,8 @@ export class MintingService {
         user_wallet: userWallet,
         phase_id: activePhase.id,
         signature: mintResult.signature!,
-        amount_paid: activePhase.price * amount,
-        platform_fee: platformFee,
+        amount_paid: nftPrice, // The amount that actually goes to the creator + platform
+        platform_fee: platformCommission, // Store the calculated platform commission
       };
 
       await SupabaseService.createMintTransaction(transactionData);
@@ -197,8 +202,8 @@ export class MintingService {
       const activePhase = await SupabaseService.getActiveMintPhase(collection.id!);
       if (!activePhase) return null;
 
-      const platformFee = 0.01; // Fixed platform fee
       const nftCost = activePhase.price * amount;
+      const platformFee = nftCost * 0.20; // 20% platform fee
       const totalCost = nftCost + platformFee;
 
       return { totalCost, nftCost, platformFee };

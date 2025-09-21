@@ -4,6 +4,8 @@
  */
 
 import { LRUCache } from 'lru-cache';
+import { Redis } from '@upstash/redis';
+import { envConfig } from '@/config/env'; // Assuming envConfig is where REDIS_URL is accessed
 
 // Cache configuration
 interface CacheConfig {
@@ -11,11 +13,9 @@ interface CacheConfig {
   ttl: number; // Time to live in milliseconds
 }
 
-// Cache entry interface
+// Cache entry interface (simplified as Redis handles TTL)
 interface CacheEntry<T> {
   data: T;
-  timestamp: number;
-  ttl: number;
 }
 
 // Different cache configurations for different data types
@@ -49,12 +49,17 @@ const CACHE_CONFIGS = {
 
 class CacheService {
   private caches: Map<string, LRUCache<string, CacheEntry<unknown>>>;
+  private redis: Redis; // Add Redis instance
   private static instance: CacheService;
 
   private constructor() {
     this.caches = new Map();
+    this.redis = new Redis({
+      url: envConfig.redisUrl, // Use envConfig.redisUrl
+      token: envConfig.redisToken,
+    });
     
-    // Initialize caches for each type
+    // Initialize in-memory LRU caches for each type
     Object.entries(CACHE_CONFIGS).forEach(([key, config]) => {
       this.caches.set(key, new LRUCache<string, CacheEntry<unknown>>({
         max: config.max,
@@ -76,64 +81,114 @@ class CacheService {
   /**
    * Get data from cache
    */
-  get<T>(cacheType: keyof typeof CACHE_CONFIGS, key: string): T | null {
-    const cache = this.caches.get(cacheType);
-    if (!cache) return null;
-
-    const entry = cache.get(key);
-    if (!entry) return null;
-
-    // Check if entry is still valid
-    const now = Date.now();
-    if (now - entry.timestamp > entry.ttl) {
-      cache.delete(key);
-      return null;
+  async get<T>(cacheType: keyof typeof CACHE_CONFIGS, key: string): Promise<T | null> {
+    // 1. Try to get from in-memory LRU cache
+    const lruCache = this.caches.get(cacheType);
+    if (lruCache) {
+      const lruEntry = lruCache.get(key);
+      if (lruEntry) {
+        return lruEntry.data as T;
+      }
     }
 
-    return entry.data as T;
+    // 2. If not in LRU, try to get from Redis
+    try {
+      const redisKey = `${cacheType}:${key}`;
+      const redisData = await this.redis.get<string>(redisKey);
+      if (redisData) {
+        const data = JSON.parse(redisData) as T;
+        // Store in LRU cache for quicker access next time
+        lruCache?.set(key, { data });
+        return data;
+      }
+    } catch (error) {
+      console.error(`Error fetching from Redis for key ${cacheType}:${key}:`, error);
+    }
+
+    return null;
   }
 
   /**
    * Set data in cache
    */
-  set<T>(
+  async set<T>(
     cacheType: keyof typeof CACHE_CONFIGS,
     key: string,
     data: T,
     customTtl?: number
-  ): void {
-    const cache = this.caches.get(cacheType);
-    if (!cache) return;
-
+  ): Promise<void> {
     const config = CACHE_CONFIGS[cacheType];
-    const ttl = customTtl || config.ttl;
+    const ttlSeconds = Math.floor((customTtl || config.ttl) / 1000); // Redis TTL is in seconds
 
-    cache.set(key, {
-      data,
-      timestamp: Date.now(),
-      ttl,
-    });
+    // 1. Set in in-memory LRU cache
+    const lruCache = this.caches.get(cacheType);
+    if (lruCache) {
+      lruCache.set(key, { data });
+    }
+
+    // 2. Set in Redis
+    try {
+      const redisKey = `${cacheType}:${key}`;
+      await this.redis.set(redisKey, JSON.stringify(data), {
+        ex: ttlSeconds, // Set expiration in seconds
+      });
+    } catch (error) {
+      console.error(`Error setting in Redis for key ${cacheType}:${key}:`, error);
+    }
   }
 
   /**
    * Delete specific entry from cache
    */
-  delete(cacheType: keyof typeof CACHE_CONFIGS, key: string): boolean {
-    const cache = this.caches.get(cacheType);
-    if (!cache) return false;
-    return cache.delete(key);
+  async delete(cacheType: keyof typeof CACHE_CONFIGS, key: string): Promise<boolean> {
+    let deleted = false;
+    
+    // 1. Delete from in-memory LRU cache
+    const lruCache = this.caches.get(cacheType);
+    if (lruCache) {
+      deleted = lruCache.delete(key);
+    }
+
+    // 2. Delete from Redis
+    try {
+      const redisKey = `${cacheType}:${key}`;
+      await this.redis.del(redisKey);
+      deleted = true; // Assume deleted from Redis if no error
+    } catch (error) {
+      console.error(`Error deleting from Redis for key ${cacheType}:${key}:`, error);
+    }
+
+    return deleted;
   }
 
   /**
    * Clear entire cache type
    */
-  clear(cacheType?: keyof typeof CACHE_CONFIGS): void {
+  async clear(cacheType?: keyof typeof CACHE_CONFIGS): Promise<void> {
     if (cacheType) {
-      const cache = this.caches.get(cacheType);
-      if (cache) cache.clear();
+      const lruCache = this.caches.get(cacheType);
+      if (lruCache) lruCache.clear();
+
+      // Clear Redis keys for this cache type
+      try {
+        const redisKeyPattern = `${cacheType}:*`;
+        const keys = await this.redis.keys(redisKeyPattern);
+        if (keys.length > 0) {
+          await this.redis.del(...keys);
+        }
+      } catch (error) {
+        console.error(`Error clearing Redis cache for type ${cacheType}:`, error);
+      }
     } else {
-      // Clear all caches
+      // Clear all in-memory caches
       this.caches.forEach(cache => cache.clear());
+
+      // Clear all Redis keys (use with caution in production!)
+      try {
+        await this.redis.flushdb(); // This clears the entire database
+      } catch (error) {
+        console.error('Error flushing Redis database:', error);
+      }
     }
   }
 
@@ -146,8 +201,8 @@ class CacheService {
     fetchCallback: () => Promise<T>,
     customTtl?: number
   ): Promise<T> {
-    // Try to get from cache first
-    const cached = this.get<T>(cacheType, key);
+    // Try to get from cache first (will check LRU then Redis)
+    const cached = await this.get<T>(cacheType, key);
     if (cached !== null) {
       return cached;
     }
@@ -156,16 +211,18 @@ class CacheService {
     try {
       const data = await fetchCallback();
       
-      // Store in cache
-      this.set(cacheType, key, data, customTtl);
+      // Store in cache (will set in LRU and Redis)
+      await this.set(cacheType, key, data, customTtl);
       
       return data;
     } catch (error) {
       // On error, try to return stale cache if available
-      const staleCache = this.caches.get(cacheType)?.get(key);
-      if (staleCache) {
-        console.warn(`Returning stale cache for ${key} due to error:`, error);
-        return staleCache.data as T;
+      // Note: With Redis, stale cache logic might need re-evaluation for consistency
+      const lruCache = this.caches.get(cacheType);
+      const staleLruEntry = lruCache?.get(key);
+      if (staleLruEntry) {
+        console.warn(`Returning stale LRU cache for ${key} due to error:`, error);
+        return staleLruEntry.data as T;
       }
       throw error;
     }
@@ -174,20 +231,40 @@ class CacheService {
   /**
    * Batch get multiple keys
    */
-  batchGet<T>(
+  async batchGet<T>(
     cacheType: keyof typeof CACHE_CONFIGS,
     keys: string[]
-  ): Map<string, T> {
+  ): Promise<Map<string, T>> {
     const result = new Map<string, T>();
-    const cache = this.caches.get(cacheType);
-    if (!cache) return result;
+    const lruCache = this.caches.get(cacheType);
+    const redisKeys: string[] = [];
 
+    // 1. Try to get from in-memory LRU cache
     keys.forEach(key => {
-      const value = this.get<T>(cacheType, key);
-      if (value !== null) {
-        result.set(key, value);
+      const lruEntry = lruCache?.get(key);
+      if (lruEntry) {
+        result.set(key, lruEntry.data as T);
+      } else {
+        redisKeys.push(`${cacheType}:${key}`);
       }
     });
+
+    // 2. Fetch missing keys from Redis
+    if (redisKeys.length > 0) {
+      try {
+        const redisValues = await this.redis.mget<string[]>(...redisKeys);
+        redisValues.forEach((redisData, index) => {
+          if (redisData) {
+            const originalKey = keys[index]; // Get the original key from the `keys` array
+            const data = JSON.parse(redisData) as T;
+            result.set(originalKey, data);
+            lruCache?.set(originalKey, { data }); // Populate LRU cache
+          }
+        });
+      } catch (error) {
+        console.error(`Error batch fetching from Redis for cache type ${cacheType}:`, error);
+      }
+    }
 
     return result;
   }
@@ -195,14 +272,34 @@ class CacheService {
   /**
    * Batch set multiple entries
    */
-  batchSet<T>(
+  async batchSet<T>(
     cacheType: keyof typeof CACHE_CONFIGS,
     entries: Array<{ key: string; data: T }>,
     customTtl?: number
-  ): void {
+  ): Promise<void> {
+    const config = CACHE_CONFIGS[cacheType];
+    const ttlSeconds = Math.floor((customTtl || config.ttl) / 1000);
+    const lruCache = this.caches.get(cacheType);
+    
+    const pipeline = this.redis.pipeline();
+
     entries.forEach(({ key, data }) => {
-      this.set(cacheType, key, data, customTtl);
+      // 1. Set in in-memory LRU cache
+      if (lruCache) {
+        lruCache.set(key, { data });
+      }
+
+      // 2. Add to Redis pipeline
+      const redisKey = `${cacheType}:${key}`;
+      pipeline.set(redisKey, JSON.stringify(data), { ex: ttlSeconds });
     });
+
+    // Execute Redis pipeline
+    try {
+      await pipeline.exec();
+    } catch (error) {
+      console.error(`Error batch setting in Redis for cache type ${cacheType}:`, error);
+    }
   }
 
   /**
@@ -235,17 +332,36 @@ class CacheService {
   /**
    * Invalidate cache entries by pattern
    */
-  invalidatePattern(cacheType: keyof typeof CACHE_CONFIGS, pattern: RegExp): number {
-    const cache = this.caches.get(cacheType);
-    if (!cache) return 0;
-
+  async invalidatePattern(cacheType: keyof typeof CACHE_CONFIGS, pattern: RegExp): Promise<number> {
     let count = 0;
-    for (const key of cache.keys()) {
-      if (pattern.test(key)) {
-        cache.delete(key);
-        count++;
+    const lruCache = this.caches.get(cacheType);
+
+    // 1. Invalidate from in-memory LRU cache
+    if (lruCache) {
+      for (const key of lruCache.keys()) {
+        if (pattern.test(key)) {
+          lruCache.delete(key);
+          count++;
+        }
       }
     }
+
+    // 2. Invalidate from Redis
+    try {
+      const redisPattern = `${cacheType}:${pattern.source}`;
+      const keys = await this.redis.keys(redisPattern);
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        // Note: Redis del returns number of keys deleted, but we already have `count` from LRU
+        // For consistency, we'll just return the LRU count + Redis matched keys for a more accurate total.
+        // Or, we could just return the Redis count, as it's the source of truth for persistence.
+        // For now, let's just count from Redis to be sure.
+        count = keys.length; // Overwrite count with Redis-based count for robustness.
+      }
+    } catch (error) {
+      console.error(`Error invalidating pattern in Redis for type ${cacheType}:`, error);
+    }
+
     return count;
   }
 }

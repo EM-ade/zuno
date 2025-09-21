@@ -2,6 +2,14 @@ import { NextRequest } from 'next/server';
 import { SupabaseService } from '@/lib/supabase-service';
 import { pinataService } from '@/lib/pinata-service';
 import { metaplexCoreService } from '@/lib/metaplex-core';
+import { PriceOracleService } from '@/lib/price-oracle'; // Import PriceOracleService
+import { Buffer } from 'buffer'; // Ensure Buffer is imported
+
+// Initialize PriceOracleService
+const priceOracleService = new PriceOracleService();
+
+// Define a transaction fee in USD
+const TRANSACTION_FEE_USD = 1.25; // $1.25
 
 // GET - Fetch creator's collections
 export async function GET(request: NextRequest) {
@@ -105,7 +113,7 @@ export async function POST(request: NextRequest) {
       console.log('Adding public phase with price:', mintPrice);
       mintPhases.push({
         name: 'Public',
-        price: mintPrice,
+        price: mintPrice + (await priceOracleService.usdtToSol(TRANSACTION_FEE_USD)),
         startTime: startDate || new Date().toISOString(),
         endTime: endDate || null,
         allowList: undefined,
@@ -116,7 +124,7 @@ export async function POST(request: NextRequest) {
       console.log('Adding whitelist phase with price:', whitelistPrice);
       mintPhases.push({
         name: 'WL',
-        price: whitelistPrice,
+        price: whitelistPrice + (await priceOracleService.usdtToSol(TRANSACTION_FEE_USD)),
         startTime: startDate || new Date().toISOString(),
         endTime: endDate || null,
         allowList: [],
@@ -195,7 +203,7 @@ export async function POST(request: NextRequest) {
       phases.push({
         collection_id: collection.id!,
         name: 'Whitelist',
-        price: whitelistPrice,
+        price: whitelistPrice + (await priceOracleService.usdtToSol(TRANSACTION_FEE_USD)),
         start_time: startDate || new Date().toISOString(),
         end_time: null,
         mint_limit: whitelistSpots,
@@ -209,7 +217,7 @@ export async function POST(request: NextRequest) {
       phases.push({
         collection_id: collection.id!,
         name: 'Public',
-        price: mintPrice,
+        price: mintPrice + (await priceOracleService.usdtToSol(TRANSACTION_FEE_USD)),
         start_time: startDate || new Date().toISOString(),
         end_time: endDate || null,
         mint_limit: null,

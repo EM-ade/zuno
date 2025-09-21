@@ -51,16 +51,23 @@ export default function PageHeader({
               <span className="text-sm text-gray-500">{title}</span>
               {showCreateButton && (
                 <Link
-                  href={createButtonHref}
+                  href="/creator"
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                 >
-                  {createButtonText}
+                  Create
                 </Link>
               )}
-              {isConnected && publicKey && (
+              {isConnected && publicKey ? (
                 <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg">
                   {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
                 </div>
+              ) : (
+                <button 
+                  onClick={handleConnect} 
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  Connect Wallet
+                </button>
               )}
             </div>
           </div>
@@ -113,13 +120,6 @@ export default function PageHeader({
                   onClick={() => setMobileNavOpen(false)} 
                   className="block text-gray-900 hover:text-blue-600 font-medium py-2"
                 >
-                  Marketplace
-                </Link>
-                <Link 
-                  href="/explore" 
-                  onClick={() => setMobileNavOpen(false)} 
-                  className="block text-gray-900 hover:text-blue-600 font-medium py-2"
-                >
                   Explore
                 </Link>
                 <Link 
@@ -131,11 +131,11 @@ export default function PageHeader({
                 </Link>
                 {showCreateButton && (
                   <Link 
-                    href={createButtonHref} 
+                    href="/creator" 
                     onClick={() => setMobileNavOpen(false)} 
                     className="block text-blue-600 hover:text-blue-800 font-medium py-2 border-t border-gray-200 pt-3"
                   >
-                    {createButtonText}
+                    Create
                   </Link>
                 )}
                 <div className="border-t border-gray-200 pt-3">

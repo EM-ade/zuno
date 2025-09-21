@@ -1,0 +1,46 @@
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  // Enable Turbopack for faster development
+  turbopack: true,
+
+  // Enable React Strict Mode for better error detection
+  reactStrictMode: true,
+
+  // Optimize images
+  images: {
+    // Use Next.js Image Optimization API
+    unoptimized: false,
+    // Define allowed image domains for optimization
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'arweave.net',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'shdw-drive.genesysgo.io',
+      },
+    ],
+  },
+
+  // Enable server components optimization
+  serverExternalPackages: [],
+
+  // Enable experimental features for better performance
+  experimental: {
+    // Enable optimized package imports
+    optimizePackageImports: [
+      '@solana/web3.js',
+      '@metaplex-foundation/umi',
+      '@metaplex-foundation/mpl-core',
+      'lucide-react',
+    ],
+  },
+};
+
+export default nextConfig;
