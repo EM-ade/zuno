@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
         status,
         created_at,
         updated_at,
-        mint_phases(start_time, end_time) // Fetch phase data to determine status/timeleft
+        mint_phases(start_time, end_time)
       `,
         { count: 'exact' }
       );
