@@ -1,4 +1,3 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   // Enable React Strict Mode for better error detection
   reactStrictMode: true,
@@ -29,20 +28,20 @@ const nextConfig = {
 
   // Enable experimental features for better performance
   experimental: {
-    esmExternals: false,
+    // esmExternals: false,
     // Enable optimized package imports
-    // optimizePackageImports: [
-    //   '@solana/web3.js',
-    //   '@metaplex-foundation/umi',
-    //   '@metaplex-foundation/mpl-core',
-    //   'lucide-react',
-    // ],
+    optimizePackageImports: [
+      '@solana/web3.js',
+      '@metaplex-foundation/umi',
+      '@metaplex-foundation/mpl-core',
+      'lucide-react',
+    ],
   },
-  transpilePackages: [
-    'keccak256',
-    'buffer',
-    'ioredis',
-  ],
+  // transpilePackages: [
+  //   'keccak256',
+  //   'buffer',
+  //   'ioredis',
+  // ],
 };
 
 export default nextConfig;

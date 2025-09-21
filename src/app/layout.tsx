@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { GeistSans, GeistMono } from "geist/font";
+import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "./providers";
 import AutoActivationChecker from "@/components/AutoActivationChecker";
 import PageTransition from "@/components/PageTransition"; // Import the new component
 import "./globals.css";
 
-const geistSans = GeistSans({
+const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-const geistMono = GeistMono({
+const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
