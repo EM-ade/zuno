@@ -47,7 +47,7 @@
     "lru-cache": "11.2.1",
     "lucide-react": "^0.268.0",
     "merkletreejs": "^0.3.10",
-    "next": "^14.0.0",
+    "next": "^14.2.32",
     "next-themes": "^0.2.1",
     "pino": "^8.16.0",
     "pino-pretty": "^10.2.0",
@@ -62,7 +62,6 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.1.13",
     "@types/bs58": "^5.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -71,7 +70,6 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
     "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17",
     "typescript": "^5",
     "vitest": "^1.6.0"
   },
