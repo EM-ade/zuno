@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { metaplexEnhancedService, NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced';
-import { nftParser, type ParsedNFTItem, type NFTAttribute } from '@/lib/nft-parser';
+import { NFTParser, type ParsedNFT, type NFTAttribute } from '@/lib/nft-parser';
 import { supabaseServer } from '@/lib/supabase-service';
 
 interface ProcessedNFT {
