@@ -28,8 +28,6 @@ const nextConfig = {
     ],
   },
 
-  // Enable server components optimization
-  serverExternalPackages: [],
 
   // Enable experimental features for better performance
   experimental: {
@@ -64,11 +62,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false
   },
-
-  // Specify Node.js engine version
-  engines: {
-    node: '>=18.0.0'
-  }
 };
 
 module.exports = nextConfig;
