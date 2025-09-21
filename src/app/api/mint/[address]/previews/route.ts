@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-service';
+import { redis } from '@/lib/redis-service'; // Import Redis
 
 // Resolve IPFS URLs to a gateway URL
 const PINATA_GATEWAY = process.env.NEXT_PUBLIC_PINATA_GATEWAY || 'https://crimson-peaceful-platypus-428.mypinata.cloud';
+const CACHE_TTL = 300; // Cache TTL in seconds for NFT previews
 
 function resolveIpfsUrl(ipfsUri: string | null, nftName: string): string | null {
   if (!ipfsUri) return null;
@@ -37,63 +39,90 @@ export async function GET(
       );
     }
 
-    // Find collection by either candy machine or mint address
-    const { data: collection, error: collectionError } = await supabaseServer
-      .from('collections')
-      .select('id, name, image_uri, collection_mint_address')
-      .or(`candy_machine_id.eq.${address},collection_mint_address.eq.${address}`)
-      .single();
+    const cacheKey = `mint_previews:${address}:${limit}`;
 
-    if (collectionError) {
-      console.error('Error fetching collection for previews:', collectionError.message);
+    try {
+      // Try to fetch from Redis cache
+      const cachedData = await redis.get(cacheKey);
+      if (cachedData) {
+        console.log(`Cache Hit for key: ${cacheKey}`);
+        return new Response(cachedData, { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      console.log(`Cache Miss for key: ${cacheKey}. Fetching from Supabase.`);
+
+      // Find collection by either candy machine or mint address
+      const { data: collection, error: collectionError } = await supabaseServer
+        .from('collections')
+        .select('id, name, image_uri, collection_mint_address')
+        .or(`candy_machine_id.eq.${address},collection_mint_address.eq.${address}`)
+        .single();
+
+      if (collectionError) {
+        console.error('Error fetching collection for previews:', collectionError.message);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Collection not found' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Fetch associated items for the carousel preview
+      const { data: items, error: itemsError } = await supabaseServer
+        .from('items')
+        .select('id, name, image_uri, attributes')
+        .eq('collection_id', collection.id)
+        .not('image_uri', 'is', null)
+        .limit(limit);
+
+      if (itemsError) {
+        console.error('Error fetching items for preview:', itemsError.message);
+        // Don't fail here; we can still fall back to the collection image
+      }
+
+      // Transform items into the preview format
+      const previews = (items || []).map(item => ({
+        id: item.id,
+        name: item.name,
+        image_uri: resolveIpfsUrl(item.image_uri, item.name), // Pass item.name
+        attributes: item.attributes || [],
+      }));
+
+      // **THE FIX:** If no item previews were found, use the main collection image as a fallback.
+      if (previews.length === 0 && collection.image_uri) {
+        previews.push({
+          id: collection.id,
+          name: collection.name || 'Collection Preview',
+          image_uri: resolveIpfsUrl(collection.image_uri, collection.name || 'Collection Preview'), // Pass collection.name
+          attributes: [],
+        });
+      }
+
+      const responseData = JSON.stringify({ success: true, previews });
+
+      // Store the result in Redis cache with an expiration time
+      await redis.setex(cacheKey, CACHE_TTL, responseData);
+      console.log(`Data cached for key: ${cacheKey} with TTL: ${CACHE_TTL}s`);
+
       return new Response(
-        JSON.stringify({ success: false, error: 'Collection not found' }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } }
+        responseData,
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+
+    } catch (error) {
+      console.error('Unexpected error in previews route:', error);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown server error',
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
-
-    // Fetch associated items for the carousel preview
-    const { data: items, error: itemsError } = await supabaseServer
-      .from('items')
-      .select('id, name, image_uri, attributes')
-      .eq('collection_id', collection.id)
-      .not('image_uri', 'is', null)
-      .limit(limit);
-
-    if (itemsError) {
-      console.error('Error fetching items for preview:', itemsError.message);
-      // Don't fail here; we can still fall back to the collection image
-    }
-
-    // Transform items into the preview format
-    const previews = (items || []).map(item => ({
-      id: item.id,
-      name: item.name,
-      image_uri: resolveIpfsUrl(item.image_uri, item.name), // Pass item.name
-      attributes: item.attributes || [],
-    }));
-
-    // **THE FIX:** If no item previews were found, use the main collection image as a fallback.
-    if (previews.length === 0 && collection.image_uri) {
-      previews.push({
-        id: collection.id,
-        name: collection.name || 'Collection Preview',
-        image_uri: resolveIpfsUrl(collection.image_uri, collection.name || 'Collection Preview'), // Pass collection.name
-        attributes: [],
-      });
-    }
-
-    return new Response(
-      JSON.stringify({ success: true, previews }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error) {
-    console.error('Unexpected error in previews route:', error);
+  } catch (outerError) {
+    console.error('Unhandled error in GET /api/mint/[address]/previews:', outerError);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown server error',
+        error: outerError instanceof Error ? outerError.message : 'Unknown server error in GET function',
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );

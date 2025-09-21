@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import Image, { ImageProps } from 'next/image'
+import Image, { ImageProps, StaticImageData } from 'next/image'
 
 interface OptimizedImageProps extends ImageProps {
   placeholderSrc?: string // Optional prop for a custom placeholder
@@ -18,33 +18,39 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
   placeholderSrc = '/placeholder.svg', // Use local SVG as default placeholder
   ...props
 }) => {
-  const [imageSrc, setImageSrc] = useState(placeholderSrc)
+  const [imageSrc, setImageSrc] = useState<string>(placeholderSrc); // Change type to string
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
 
   useEffect(() => {
-    if (!src || src === placeholderSrc) {
-      setIsLoading(false)
-      return
+    if (!src) {
+      setIsLoading(false);
+      return;
     }
 
-    const img = new window.Image()
+    const resolvedSrc = typeof src === 'string' ? src : (src as StaticImageData).src; // Resolve src to string
+    if (resolvedSrc === placeholderSrc) {
+      setIsLoading(false);
+      return;
+    }
+
+    const img = new window.Image();
     img.onload = () => {
-      setImageSrc(src)
-      setIsLoading(false)
-      setHasError(false)
-    }
+      setImageSrc(resolvedSrc); // Use resolvedSrc
+      setIsLoading(false);
+      setHasError(false);
+    };
     img.onerror = () => {
-      setHasError(true)
-      setIsLoading(false)
-    }
-    img.src = src
-  }, [src, placeholderSrc])
+      setHasError(true);
+      setIsLoading(false);
+    };
+    img.src = resolvedSrc; // Use the resolved string src
+  }, [src, placeholderSrc]);
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
       <Image
-        src={imageSrc}
+        src={imageSrc} // Image component can take a string here
         alt={alt}
         width={width}
         height={height}

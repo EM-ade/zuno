@@ -169,6 +169,7 @@ export async function PUT(request: NextRequest) {
       success: boolean;
       minted_count: number;
       minted_nfts: MintedNFTDetails[];
+      message?: string; // Add optional message property
     }
 
     // Call the atomic Supabase RPC function to confirm the mint and update all related tables
@@ -186,28 +187,48 @@ export async function PUT(request: NextRequest) {
       }
     ).single();
 
-    if (rpcError || !rpcResult?.success) {
-      console.error('Error from confirm_mint_atomic RPC:', rpcError?.message || rpcResult?.message || 'Unknown RPC error');
+    if (rpcError) {
+      console.error('Error from confirm_mint_atomic RPC:', rpcError.message || 'Unknown RPC error');
       // The RPC already handles internal transaction failures and updates mint_requests table
       // So, just return the appropriate error response.
       return NextResponse.json(
-        { success: false, error: 'Failed to complete mint atomically', details: rpcError?.message || rpcResult?.message || 'Unknown RPC error' },
+        { success: false, error: 'Failed to complete mint atomically', details: rpcError.message || 'Unknown RPC error' },
         { status: 500 }
       );
     }
 
+    // At this point, rpcError is null. Now check rpcResult.
+    if (!rpcResult) {
+      console.error('Error from confirm_mint_atomic RPC: No result returned.');
+      return NextResponse.json(
+        { success: false, error: 'Failed to complete mint atomically', details: 'RPC returned no result' },
+        { status: 500 }
+      );
+    }
+
+    // Now TypeScript knows rpcResult is ConfirmMintAtomicResult and not null
+    if (!(rpcResult as ConfirmMintAtomicResult).success) {
+      console.error('Error from confirm_mint_atomic RPC (RPC returned !success):', (rpcResult as ConfirmMintAtomicResult).message || 'Unknown RPC error');
+      return NextResponse.json(
+        { success: false, error: 'Failed to complete mint atomically', details: (rpcResult as ConfirmMintAtomicResult).message || 'Unknown RPC error' },
+        { status: 500 }
+      );
+    }
+
+    const confirmedResult = rpcResult as ConfirmMintAtomicResult; // Explicitly assert type
+
     const responsePayload = {
       success: true,
-      minted: rpcResult.minted_count,
-      nfts: rpcResult.minted_nfts.map((nft: MintedNFTDetails) => ({
+      minted: confirmedResult.minted_count,
+      nfts: confirmedResult.minted_nfts.map((nft: MintedNFTDetails) => ({
         name: nft.name,
         address: nft.address, // RPC returns actual NFT address if available, or transaction signature
         image: nft.image // RPC returns image_uri as 'image'
       })),
-      partialSuccess: rpcResult.minted_count < nftIds.length,
-      message: rpcResult.minted_count === nftIds.length 
+      partialSuccess: confirmedResult.minted_count < nftIds.length,
+      message: confirmedResult.minted_count === nftIds.length 
         ? 'All NFTs minted successfully' 
-        : `${rpcResult.minted_count} of ${nftIds.length} NFTs minted successfully`
+        : `${confirmedResult.minted_count} of ${nftIds.length} NFTs minted successfully`
     };
 
     // The RPC already marked the request as completed

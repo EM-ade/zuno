@@ -51,7 +51,7 @@ interface NFTPreview {
 export default function MintPage() {
   const params = useParams()
   const collectionAddress = params.address as string
-  const { publicKey, isConnected, connect, disconnect, isConnecting, error, wallet } = useWalletConnection(); // Destructure wallet for sendTransaction
+  const { publicKey, isConnected, connect, disconnect, isConnecting, error, sendTransaction } = useWalletConnection(); // Destructure sendTransaction
   const { connection } = useConnection()
   const { setVisible } = useWalletModal()
 
@@ -202,7 +202,7 @@ export default function MintPage() {
         // This part would ideally be removed or moved to be triggered by polling
         // For now, it's a fallback if the backend unexpectedly returns transaction here
         setMintRequestStatus('sending_tx');
-        if (!wallet || !wallet.sendTransaction) {
+        if (!publicKey || !sendTransaction) { // Check publicKey instead of wallet
           console.error('Wallet not connected or sendTransaction is not available.');
           throw new Error('Wallet not connected or sendTransaction is not available.');
         }
@@ -214,7 +214,7 @@ export default function MintPage() {
           transaction.feePayer = publicKey; 
         }
 
-        const signature = await wallet.sendTransaction(transaction, connection)
+        const signature = await sendTransaction(transaction, connection) // Use sendTransaction directly
         console.log('Transaction sent, signature:', signature);
         setMintRequestStatus('confirming_tx');
         await connection.confirmTransaction(signature, 'confirmed')
@@ -322,14 +322,14 @@ export default function MintPage() {
 
   // Effect to handle sending transaction once it's ready
   useEffect(() => {
-    if (mintRequestStatus === 'transaction_ready' && serializedTransaction && publicKey && wallet && wallet.sendTransaction && collection) {
+    if (mintRequestStatus === 'transaction_ready' && serializedTransaction && publicKey && collection) {
       // This branch is now only responsible for sending the transaction
       // It should be triggered by the user clicking the Mint button after 'transaction_ready' status
       // For now, let's assume the handleMint function itself will trigger the sending.
       // We will adjust the button logic to call a new function for sending the tx.
       console.log('Transaction is ready, waiting for user to send.');
     }
-  }, [mintRequestStatus, serializedTransaction, publicKey, wallet, collection]);
+  }, [mintRequestStatus, serializedTransaction, publicKey, collection]);
 
   const mintProgress = collection ? (collection.minted_count / collection.total_supply) * 100 : 0
   const remainingSupply = collection ? collection.total_supply - collection.minted_count : 0
@@ -508,8 +508,8 @@ export default function MintPage() {
                       <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-black">{collection.candy_machine_id.slice(0, 8)}...{collection.candy_machine_id.slice(-8)}</code>
                       <button onClick={() => navigator.clipboard.writeText(collection.candy_machine_id!)} className="text-blue-600 hover:text-blue-800 text-sm" title="Copy address">📋</button>
                       <a href={`https://explorer.solana.com/address/${collection.candy_machine_id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-sm" title="View on Solana Explorer">🔍</a>
-                    </div>
                   </div>
+                </div>
                 )}
               </div>
               <div className="flex flex-wrap gap-3 mb-6">

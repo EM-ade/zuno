@@ -14,7 +14,7 @@ export interface EnvConfig {
   supabaseUrl: string;
   supabaseAnonKey: string;
   redisUrl: string;
-  redisToken: string;
+  // redisToken: string; // Removed
 }
 
 function getEnvVar(key: string, defaultValue?: string): string {
@@ -48,8 +48,8 @@ export const envConfig: EnvConfig = {
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
 
   // Redis configuration
-  redisUrl: process.env.UPSTASH_REDIS_REST_URL || '',
-  redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || '',
+  redisUrl: process.env.REDIS_URL || '', // Use REDIS_URL
+  // redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || '', // Removed
 };
 
 // Function to get current SOL price in USD
@@ -91,6 +91,6 @@ if (!envConfig.redisUrl) {
   console.warn('REDIS_URL environment variable is missing');
 }
 
-if (!envConfig.redisToken) {
-  console.warn('REDIS_TOKEN environment variable is missing');
-}
+// if (!envConfig.redisToken) {
+//   console.warn('REDIS_TOKEN environment variable is missing');
+// } // Removed

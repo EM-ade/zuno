@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import React, { lazy, Suspense } from 'react'; // Import lazy and Suspense
+import React, { lazy, Suspense } from 'react';
 import { FileText, Download, Info } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced'; // Import interfaces
+import { NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced';
 
-const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced')); // Lazy load NFTUploadAdvanced
+const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced'));
 
-export default function UploadNFTsPage() {
+function UploadNFTsPageContent() {
   const searchParams = useSearchParams();
   const [collectionAddress, setCollectionAddress] = useState('');
   const [candyMachineAddress, setCandyMachineAddress] = useState('');
@@ -122,7 +122,7 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
 
             {/* Upload Component */}
             {collectionAddress && (
-              <Suspense fallback={<div>Loading NFT Uploader...</div>}> {/* Add Suspense fallback */}
+              <Suspense fallback={<div>Loading NFT Uploader...</div>}>
                 <LazyNFTUploadAdvanced
                   collectionAddress={collectionAddress}
                   candyMachineAddress={candyMachineAddress || undefined}
@@ -229,5 +229,13 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
         </div>
       </div>
     </div>
+  );
+}
+
+export default function UploadNFTsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <UploadNFTsPageContent />
+    </Suspense>
   );
 }

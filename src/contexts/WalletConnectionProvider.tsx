@@ -13,6 +13,7 @@ import {
   SolflareWalletAdapter,
 } from '@solana/wallet-adapter-wallets';
 import { clusterApiUrl, PublicKey } from '@solana/web3.js';
+import type { WalletContextState } from '@solana/wallet-adapter-react'; // Import WalletContextState
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -24,6 +25,7 @@ interface WalletConnectionContextState {
   error: string | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
+  sendTransaction: WalletContextState['sendTransaction']; // Add sendTransaction
 }
 
 const WalletConnectionContext = createContext<WalletConnectionContextState | undefined>(
@@ -102,6 +104,7 @@ function useWalletConnectionManager() {
     error,
     connect,
     disconnect,
+    sendTransaction: wallet.sendTransaction, // Return sendTransaction
   };
 }
 
