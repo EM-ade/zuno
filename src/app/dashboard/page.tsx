@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import ImageWithFallback from '@/components/ImageWithFallback';
-import BulkNFTUpload from '@/components/BulkNFTUpload';
+import React, { lazy, Suspense } from 'react'; // Import lazy and Suspense
+
+// const LazyBulkNFTUpload = lazy(() => import('@/components/BulkNFTUpload')); // Removed lazy load for BulkNFTUpload
+const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced')); // Lazy load NFTUploadAdvanced
 
 type Section = 'create' | 'exhibition' | 'projects' | 'analytics';
 
@@ -23,6 +26,7 @@ interface UiCollection {
   phases?: Array<{ name: string; price: number; start_time: string; end_time: string | null }>;
   mintCount?: number;
   progress?: number;
+  collection_mint_address?: string; // Added for Bulk Upload
 }
 
 export default function Dashboard() {
@@ -59,10 +63,10 @@ export default function Dashboard() {
   const [exhibitionBanner, setExhibitionBanner] = useState<string>('');
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
 
-  const { publicKey, disconnect } = useWallet();
+  const { publicKey, disconnect, connect } = useWalletConnection(); // Use custom hook
   const { setVisible } = useWalletModal();
 
-  const handleConnectWallet = () => setVisible(true);
+  const handleConnectWallet = connect; // Use the connect function from the custom hook
   const handleDisconnect = () => disconnect();
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -842,10 +846,13 @@ export default function Dashboard() {
               </button>
             </div>
             <div className="p-6">
-              <BulkNFTUpload
-                collectionAddress={selectedCollection.candy_machine_id}
-                onUploadComplete={handleBulkUploadComplete}
-              />
+              <Suspense fallback={<div>Loading NFT Uploader...</div>}> {/* Updated Suspense fallback */}
+                <LazyNFTUploadAdvanced
+                  collectionAddress={selectedCollection.collection_mint_address} // Pass collection_mint_address
+                  candyMachineAddress={selectedCollection.candy_machine_id} // Pass candy_machine_id
+                  onUploadComplete={handleBulkUploadComplete}
+                />
+              </Suspense>
             </div>
           </div>
         </div>

@@ -17,7 +17,7 @@ export interface ParsedNFT {
   image?: string;
   imageFile?: File;
   attributes: NFTAttribute[];
-  properties?: Record<string, any>;
+  properties?: Record<string, unknown>;
 }
 
 export class NFTParser {
@@ -55,7 +55,7 @@ export class NFTParser {
         trim: true
       });
 
-      return records.map((record: any, index: number) => {
+      return records.map((record: Record<string, unknown>, index: number) => {
         // Extract special columns
         const name = record.name || record.Name || `NFT #${index + 1}`;
         const description = record.description || record.Description || '';
@@ -95,13 +95,17 @@ export class NFTParser {
     const jsonFiles = files.filter(f => f.name.endsWith('.json'));
     const results: ParsedNFT[] = [];
 
-    // Try to match by filename (e.g., 1.png with 1.json)
+    console.log(`matchFilesInFolder: Found ${imageFiles.length} images and ${jsonFiles.length} JSON files`);
+    console.log('Image files:', imageFiles.map(f => f.name));
+    console.log('JSON files:', jsonFiles.map(f => f.name));
+
+    // IMPORTANT: Only create NFTs from images, JSON is just for metadata
     for (const imageFile of imageFiles) {
       const baseName = this.getBaseName(imageFile.name);
       const matchingJson = jsonFiles.find(j => this.getBaseName(j.name) === baseName);
-      
+
       if (matchingJson) {
-        // We'll parse the JSON content when processing
+        // Image with matching JSON metadata
         results.push({
           name: baseName,
           description: '',
@@ -110,7 +114,7 @@ export class NFTParser {
           properties: { jsonFile: matchingJson }
         });
       } else {
-        // Image without metadata
+        // Image without metadata - create with default metadata
         results.push({
           name: baseName,
           description: `NFT ${baseName}`,
@@ -120,18 +124,8 @@ export class NFTParser {
       }
     }
 
-    // Add any JSON files without matching images
-    for (const jsonFile of jsonFiles) {
-      const baseName = this.getBaseName(jsonFile.name);
-      if (!imageFiles.some(img => this.getBaseName(img.name) === baseName)) {
-        results.push({
-          name: baseName,
-          description: '',
-          attributes: [],
-          properties: { jsonFile, noImage: true }
-        });
-      }
-    }
+    // DO NOT create NFTs from JSON files without images
+    // JSON files are only for metadata, not standalone NFTs
 
     return results.sort((a, b) => {
       // Sort by numeric value if names are numbers
@@ -173,25 +167,25 @@ export class NFTParser {
   /**
    * Normalize various attribute formats to standard format
    */
-  private static normalizeAttributes(attrs: any): NFTAttribute[] {
+  private static normalizeAttributes(attrs: unknown): NFTAttribute[] {
     if (!attrs) return [];
     
     // Handle array of attributes
     if (Array.isArray(attrs)) {
       return attrs.map(attr => {
-        if (typeof attr === 'object') {
+        if (typeof attr === 'object' && attr !== null) {
           return {
-            trait_type: attr.trait_type || attr.traitType || attr.name || 'Unknown',
-            value: attr.value !== undefined ? attr.value : '',
-            display_type: attr.display_type || attr.displayType
+            trait_type: (attr as { trait_type?: string; traitType?: string; name?: string }).trait_type || (attr as { trait_type?: string; traitType?: string; name?: string }).traitType || (attr as { trait_type?: string; traitType?: string; name?: string }).name || 'Unknown',
+            value: (attr as { value: unknown }).value !== undefined ? (attr as { value: unknown }).value : '',
+            display_type: (attr as { display_type?: string; displayType?: string }).display_type || (attr as { display_type?: string; displayType?: string }).displayType
           };
         }
-        return { trait_type: 'Property', value: attr };
+        return { trait_type: 'Property', value: attr as string };
       });
     }
     
     // Handle object format (key-value pairs)
-    if (typeof attrs === 'object') {
+    if (typeof attrs === 'object' && attrs !== null) {
       return Object.entries(attrs).map(([key, value]) => ({
         trait_type: this.formatTraitType(key),
         value: value as string | number

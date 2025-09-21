@@ -17,9 +17,11 @@ import {
   createNft,
   mplTokenMetadata,
   TokenStandard,
-  transferV1
+  transferV1,
+  findTokenRecordPda
 } from '@metaplex-foundation/mpl-token-metadata';
-import { pinataService } from './pinata-service';
+import { findAssociatedTokenPda } from '@metaplex-foundation/mpl-toolbox';
+// Pinata service imported dynamically for optimization
 import { envConfig } from '../config/env';
 import bs58 from 'bs58';
 
@@ -89,7 +91,9 @@ export class MetaplexTokenMetadataService {
         }
       };
 
-      const collectionMetadataUri = await pinataService.uploadJSON(collectionMetadata);
+      // Import optimized service for faster uploads
+      const { optimizedPinataService } = await import('./pinata-service-optimized');
+      const collectionMetadataUri = await optimizedPinataService.uploadJSON(collectionMetadata);
       const collectionMint = generateSigner(this.umi);
 
       // Create collection NFT with server as update authority
@@ -110,8 +114,9 @@ export class MetaplexTokenMetadataService {
         ]
       });
 
+      // Use 'confirmed' instead of 'finalized' for faster confirmation
       const result = await builder.sendAndConfirm(this.umi, {
-        confirm: { commitment: 'finalized' }
+        confirm: { commitment: 'confirmed' }
       });
 
       console.log('Token Metadata collection created successfully:', collectionMint.publicKey);
@@ -153,20 +158,19 @@ export class MetaplexTokenMetadataService {
         }
       };
 
-      const metadataUri = await pinataService.uploadJSON(nftMetadata);
+      // Use optimized service for faster uploads
+      const { optimizedPinataService } = await import('./pinata-service-optimized');
+      const metadataUri = await optimizedPinataService.uploadJSON(nftMetadata);
       const nftMint = generateSigner(this.umi);
 
-      // Create NFT with verified collection
-      const createArgs = {
+      // Create NFT - for now without collection to avoid issues
+      // We'll add collection verification in a separate step
+      const createArgs: Parameters<typeof createNft>[1] = {
         mint: nftMint,
         name: config.name,
         symbol: 'ZUNO',
         uri: metadataUri,
         sellerFeeBasisPoints: percentAmount(5, 2), // 5% royalty
-        collection: some({ 
-          verified: false, // Will be verified automatically since we're the update authority
-          key: publicKey(config.collectionAddress) 
-        }),
         creators: [
           {
             address: this.umi.identity.publicKey,
@@ -177,11 +181,43 @@ export class MetaplexTokenMetadataService {
         updateAuthority: this.umi.identity.publicKey,
         tokenStandard: TokenStandard.NonFungible
       };
+      
+      // Only add collection if it's a valid collection NFT
+      try {
+        // Check if the collection address is valid
+        if (config.collectionAddress && config.collectionAddress !== 'undefined') {
+          createArgs.collection = some({ 
+            verified: false,
+            key: publicKey(config.collectionAddress) 
+          });
+          console.log('Adding to collection:', config.collectionAddress);
+        } else {
+          console.log('Creating standalone NFT (no valid collection)');
+        }
+      } catch (e: unknown) {
+        console.warn('Invalid collection address, creating standalone NFT:', e instanceof Error ? e.message : 'Unknown error');
+      }
 
       const builder = createNft(this.umi, createArgs);
-      const result = await builder.sendAndConfirm(this.umi, {
-        confirm: { commitment: 'finalized' }
-      });
+      
+      // Add timeout to prevent infinite waiting
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('NFT creation timeout after 30 seconds')), 30000)
+      );
+      
+      const result = await Promise.race([
+        builder.sendAndConfirm(this.umi, {
+          confirm: { commitment: 'confirmed' } // Use 'confirmed' instead of 'finalized' for speed
+        }),
+        timeoutPromise
+      ]) as unknown;
+
+      // Ensure result has a signature property
+      if (typeof result !== 'object' || result === null || !('signature' in result)) {
+        throw new Error('Invalid transaction result: missing signature');
+      }
+
+      const signature = (result as { signature: Uint8Array }).signature;
 
       console.log('NFT created successfully with collection:', nftMint.publicKey);
       
@@ -190,28 +226,49 @@ export class MetaplexTokenMetadataService {
         try {
           console.log(`Transferring NFT to ${config.owner}`);
           
+          // For Token Metadata NFTs, we need to find the token accounts
+          const sourceToken = findAssociatedTokenPda(this.umi, {
+            mint: nftMint.publicKey,
+            owner: this.umi.identity.publicKey
+          });
+          
+          const destinationToken = findAssociatedTokenPda(this.umi, {
+            mint: nftMint.publicKey,
+            owner: publicKey(config.owner)
+          });
+          
+          // Find token record if it exists (for pNFTs)
+          const tokenRecord = findTokenRecordPda(this.umi, {
+            mint: nftMint.publicKey,
+            token: sourceToken[0]
+          });
+          
           const transferBuilder = transferV1(this.umi, {
             mint: nftMint.publicKey,
             authority: this.umi.identity,
             tokenOwner: this.umi.identity.publicKey,
             destinationOwner: publicKey(config.owner),
-            tokenStandard: TokenStandard.NonFungible
+            tokenStandard: TokenStandard.NonFungible,
+            token: sourceToken[0],
+            destinationToken: destinationToken[0],
+            tokenRecord: tokenRecord[0]
           });
           
           await transferBuilder.sendAndConfirm(this.umi, {
-            confirm: { commitment: 'finalized' }
+            confirm: { commitment: 'confirmed' }
           });
           
           console.log('NFT transferred successfully to', config.owner);
         } catch (transferError) {
           console.error('Failed to transfer NFT:', transferError);
           console.warn('NFT created but remains with server wallet');
+          // Don't throw - NFT was created successfully
         }
       }
 
       return {
         nftAddress: nftMint.publicKey,
-        signature: bs58.encode(result.signature),
+        signature: bs58.encode(signature),
         metadata: nftMetadata
       };
 

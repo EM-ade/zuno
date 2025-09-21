@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     console.log('Configured mint phases:', mintPhases);
 
     // Upload NFT assets if provided
-    let uploadedAssets = [];
+    const uploadedAssets = [];
     if (nftAssets && nftAssets.length > 0) {
       console.log(`Uploading ${nftAssets.length} NFT assets...`);
       

@@ -56,13 +56,13 @@ export async function GET(
     const { count: mintedCount } = await supabaseServer
       .from('items')
       .select('*', { count: 'exact', head: true })
-      .eq('collection_address', collection.collection_mint_address)
-      .eq('minted', true);
+      .eq('collection_id', collection.id)
+      .not('owner_wallet', 'is', null);
       
     const { count: totalItems } = await supabaseServer
       .from('items')
       .select('*', { count: 'exact', head: true })
-      .eq('collection_address', collection.collection_mint_address);
+      .eq('collection_id', collection.id);
 
     // Enhanced collection data for mint page
     const enhancedCollection = {

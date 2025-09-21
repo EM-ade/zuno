@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { pinataService } from '@/lib/pinata-service';
+import { optimizedPinataService } from '@/lib/pinata-service-optimized';
 import { SupabaseService } from '@/lib/supabase-service';
 import { magicEdenService, MagicEdenNFTData } from '@/lib/magic-eden-service';
 
@@ -53,11 +53,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     console.log('File separation:', {
+      totalFiles: files.length,
       imageFiles: imageFiles.length,
       metadataFiles: metadataFiles.length,
       imageNames: imageFiles.map(f => f.name),
       metadataNames: metadataFiles.map(f => f.name)
     });
+    
+    // IMPORTANT: Only process image files to create NFTs
+    // Metadata files are just helpers, not separate NFTs
+    console.log(`\n=== Creating ${imageFiles.length} NFTs from ${imageFiles.length} images ===`);
 
     // Get collection data for proper NFT naming
     const collection = await SupabaseService.getCollectionById(id);
@@ -88,57 +93,76 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       console.log(`\n--- Processing image ${i + 1}/${imageFiles.length}: ${imageFile.name} ---`);
       
       try {
+        // Get full path if available (for nested folders)
+        const imageFileWithPath = imageFile as File & { webkitRelativePath?: string };
+        const imagePath = imageFileWithPath.webkitRelativePath || imageFile.name;
+        
         // Get base name for matching with metadata
-        const baseName = imageFile.name.replace(/\.[^/.]+$/, '');
+        const imageBaseName = imageFile.name.replace(/\.[^/.]+$/, '');
         
-        // Clean up the name by removing folder paths and unwanted prefixes
-        let cleanBaseName = baseName;
+        // Extract number from image filename (e.g., "1.png" -> "1", "nft_6.png" -> "6")
+        const imageNumber = imageBaseName.match(/\d+/)?.[0];
         
-        // Remove folder path if present (e.g., "images/nft_6" -> "nft_6")
-        if (cleanBaseName.includes('/')) {
-          cleanBaseName = cleanBaseName.split('/').pop() || cleanBaseName;
-        }
-        
-        // Remove leading numbers and underscores (e.g., "6_nft" -> "nft")
-        cleanBaseName = cleanBaseName.replace(/^\d+_?/, '');
-        
-        // If cleanBaseName is empty after cleaning, use original baseName
-        if (!cleanBaseName) {
-          cleanBaseName = baseName;
-        }
-        
-        // Find matching metadata file with improved matching logic
+        // Find matching metadata file - check multiple strategies
         const metadataFile = metadataFiles.find(f => {
+          const metaFileWithPath = f as File & { webkitRelativePath?: string };
+          const metaPath = metaFileWithPath.webkitRelativePath || f.name;
           const metaBaseName = f.name.replace(/\.json$/, '');
-          const matches = [
-            metaBaseName === baseName,
-            metaBaseName === cleanBaseName,
-            metaBaseName === `${baseName}_metadata`,
-            metaBaseName === `${cleanBaseName}_metadata`,
-            f.name === `${baseName}.json`,
-            f.name === `${cleanBaseName}.json`,
-            // Also try matching by index number (e.g., "6.json" matches "nft_6.png")
-            metaBaseName === baseName.match(/\d+$/)?.[0],
-            // Try matching without prefixes (e.g., "6.json" matches "image_6.png")
-            baseName.endsWith(metaBaseName),
-            cleanBaseName.endsWith(metaBaseName)
-          ];
           
-          console.log(`Metadata matching for ${f.name}:`, {
-            metaBaseName,
-            baseName,
-            cleanBaseName,
-            matches: matches.map((match, i) => ({ condition: i, result: match })).filter(m => m.result)
-          });
+          // Extract number from metadata filename
+          const metaNumber = metaBaseName.match(/\d+/)?.[0];
           
-          return matches.some(match => match);
+          // Strategy 1: Same folder structure (images/1.png matches metadata/1.json)
+          const sameFolderStructure = () => {
+            const imageDir = imagePath.substring(0, imagePath.lastIndexOf('/'));
+            const metaDir = metaPath.substring(0, metaPath.lastIndexOf('/'));
+            const imageName = imagePath.substring(imagePath.lastIndexOf('/') + 1).replace(/\.[^/.]+$/, '');
+            const metaName = metaPath.substring(metaPath.lastIndexOf('/') + 1).replace(/\.json$/, '');
+            
+            // Check if they're in parallel folders (e.g., images/1.png and metadata/1.json)
+            if (imageDir !== metaDir && imageName === metaName) {
+              return true;
+            }
+            
+            // Check if they're in the same folder
+            if (imageDir === metaDir && imageName === metaName) {
+              return true;
+            }
+            
+            return false;
+          };
+          
+          // Strategy 2: Number matching across any folders
+          const numberMatch = imageNumber && metaNumber && imageNumber === metaNumber;
+          
+          // Strategy 3: Exact name match (ignoring folders)
+          const exactNameMatch = metaBaseName === imageBaseName;
+          
+          // Strategy 4: Base name match
+          const baseMatch = f.name === `${imageBaseName}.json`;
+          
+          // Try all strategies
+          if (sameFolderStructure() || numberMatch || exactNameMatch || baseMatch) {
+            console.log(`Found metadata match: ${imagePath} -> ${metaPath}`, {
+              sameFolderStructure: sameFolderStructure(),
+              numberMatch,
+              exactNameMatch,
+              baseMatch,
+              imageNumber,
+              metaNumber
+            });
+            return true;
+          }
+          
+          return false;
         });
 
-        console.log('Name processing and metadata matching:', {
-          originalFileName: imageFile.name,
-          baseName,
-          cleanBaseName,
-          metadataFile: metadataFile?.name || 'not found'
+        console.log('Metadata matching result:', {
+          imagePath: imagePath,
+          imageBaseName,
+          imageNumber,
+          metadataFile: metadataFile?.name || 'not found',
+          metadataPath: metadataFile ? (metadataFile as File & { webkitRelativePath?: string }).webkitRelativePath || metadataFile.name : 'not found'
         });
 
         // Upload image
@@ -147,7 +171,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const buffer = Buffer.from(arrayBuffer);
         
         // Create a clean filename for upload
-        const safeName = `${baseName.replace(/[^a-zA-Z0-9_-]/g, '_')}.${imageFile.type.split('/')[1] || 'png'}`;
+        const safeName = `${imageBaseName.replace(/[^a-zA-Z0-9_-]/g, '_')}.${imageFile.type.split('/')[1] || 'png'}`;
         
         console.log('Uploading image to Pinata...', { 
           originalName: imageFile.name,
@@ -156,14 +180,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           bufferSize: buffer.length 
         });
         
-        const imageUri = await pinataService.uploadFile(buffer, safeName, imageFile.type);
+        const imageUri = await optimizedPinataService.uploadFile(buffer, safeName, imageFile.type);
         console.log('Image uploaded successfully:', imageUri);
 
         // Process metadata if available
         let metadataUri: string | undefined = undefined;
         let attributes: Array<{ trait_type: string; value: string | number }> = [];
-        let nftName = cleanBaseName || baseName; // Default fallback name
-        let description = `${cleanBaseName || baseName} from the collection`;
+        let nftName = imageBaseName; // Default fallback name
+        let description = `${imageBaseName} from the collection`;
 
         if (metadataFile) {
           try {
@@ -241,14 +265,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             }
             
             console.log('Uploading metadata to Pinata...', { name: nftName });
-            metadataUri = await pinataService.uploadJSON(updatedMetadata);
+            metadataUri = await optimizedPinataService.uploadJSON(updatedMetadata);
             console.log('Metadata uploaded successfully:', metadataUri);
             
           } catch (metadataError) {
             console.error('Failed to process metadata file:', metadataError);
             // Continue with default metadata - reset to fallback values
-            nftName = cleanBaseName || baseName;
-            description = `${cleanBaseName || baseName} from the collection`;
+            nftName = imageBaseName;
+            description = `${imageBaseName} from the collection`;
             attributes = [];
           }
         } else {
@@ -266,14 +290,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           };
           
           console.log('Uploading basic metadata to Pinata...', { name: nftName });
-          metadataUri = await pinataService.uploadJSON(basicMetadata);
+          metadataUri = await optimizedPinataService.uploadJSON(basicMetadata);
           console.log('Basic metadata uploaded successfully:', metadataUri);
         }
 
-        console.log('Final NFT naming:', {
+        console.log('Final NFT data:', {
           originalFileName: imageFile.name,
-          baseName: baseName,
-          cleanBaseName: cleanBaseName,
+          imageBaseName: imageBaseName,
           finalName: nftName,
           description: description,
           hasMetadata: !!metadataFile,
@@ -299,6 +322,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Save items to database
     console.log('\n--- Saving items to database ---');
+    console.log(`Total NFTs to save: ${uploaded.length} (should match image count: ${imageFiles.length})`);
+    
+    if (uploaded.length !== imageFiles.length) {
+      console.warn(`WARNING: NFT count mismatch! Images: ${imageFiles.length}, Created: ${uploaded.length}`);
+    }
+    
     const itemsPayload = uploaded.map((u) => ({
       collection_id: id,
       name: u.name,
@@ -334,12 +363,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     console.log('=== Folder Upload Completed Successfully ===');
+    console.log(`Final count: ${items.length} NFTs created from ${imageFiles.length} images`);
+    
     return new Response(
       JSON.stringify({ 
         success: true, 
         count: items.length, 
         items,
-        message: `Successfully uploaded ${items.length} NFTs with images and metadata`
+        message: `Successfully created ${items.length} NFTs from ${imageFiles.length} images (${metadataFiles.length} metadata files matched)`,
+        details: {
+          totalFilesReceived: files.length,
+          imagesProcessed: imageFiles.length,
+          metadataMatched: metadataFiles.length,
+          nftsCreated: items.length
+        }
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );

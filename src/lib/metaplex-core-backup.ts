@@ -324,14 +324,14 @@ export class MetaplexCoreService {
       const instructions: TransactionInstruction[] = [];
       
       // Access the instructions from the built transaction
-      const transactionInstructions = (builtTransaction as any).instructions || [];
+      const transactionInstructions = (builtTransaction as UMITransactionResult).instructions || [];
       
       // Convert UMI instructions to web3.js instructions
       for (const ix of transactionInstructions) {
         instructions.push(
           new TransactionInstruction({
             programId: new PublicKey(ix.programId),
-            keys: ix.keys.map((k: any) => ({
+            keys: ix.keys.map((k: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
               pubkey: new PublicKey(k.pubkey),
               isSigner: k.isSigner,
               isWritable: k.isWritable
@@ -378,7 +378,7 @@ export class MetaplexCoreService {
     totalSupply: number;
     phases: MintPhase[];
     creatorWallet: string;
-    nftAssets?: Array<{ imageUri: string; metadata: any }>;
+    nftAssets?: Array<{ imageUri: string; metadata: unknown }>;
   }): Promise<{
     transactionBase64: string;
     candyMachineId: string;

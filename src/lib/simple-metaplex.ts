@@ -68,7 +68,7 @@ export class SimpleMetaplexService {
   async createCollection(config: SimpleCollectionConfig): Promise<{
     collectionAddress: string;
     signature: string;
-    metadata: any;
+    metadata: unknown;
   }> {
     try {
       console.log('Creating collection:', config.name);
@@ -148,7 +148,7 @@ export class SimpleMetaplexService {
   async createNFT(config: SimpleNFTConfig): Promise<{
     nftAddress: string;
     signature: string;
-    metadata: any;
+    metadata: unknown;
   }> {
     try {
       console.log('Creating NFT:', config.name);
@@ -187,7 +187,7 @@ export class SimpleMetaplexService {
       const metadataUri = `data:application/json;base64,${Buffer.from(JSON.stringify(metadata)).toString('base64')}`;
 
       // Create the NFT
-      const createArgs: any = {
+      const createArgs: Parameters<typeof createV1>[1] = {
         asset: assetSigner,
         collection: collection.publicKey,
         name: config.name,
@@ -266,7 +266,7 @@ export class SimpleMetaplexService {
   ): Promise<Array<{
     nftAddress: string;
     signature: string;
-    metadata: any;
+    metadata: unknown;
   }>> {
     const results = [];
 

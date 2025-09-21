@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "./providers";
 import AutoActivationChecker from "@/components/AutoActivationChecker";
+import PageTransition from "@/components/PageTransition"; // Import the new component
 import "./globals.css";
 
 const geistSans = Geist({
@@ -34,7 +35,7 @@ export default function RootLayout({
           {/* Site wrapper card to match mock: white panel with rounded corners */}
           <div className="m-4 md:m-6 lg:m-8 lg:mx-14">
             <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
-              {children}
+              <PageTransition>{children}</PageTransition> {/* Wrap children with PageTransition */}
             </div>
           </div>
         </Providers>

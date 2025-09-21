@@ -1,10 +1,20 @@
 'use client'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 import OptimizedImage from '@/components/OptimizedImage'
 import PageHeader from '@/components/PageHeader'
+import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
+
+interface Phase {
+  id: string
+  name: string
+  phase_type: string
+  price: number
+  start_time: string
+  end_time?: string
+  mint_limit?: number
+}
 
 interface Collection {
   id: string
@@ -21,13 +31,15 @@ interface Collection {
   collection_mint_address?: string
   creator_wallet: string
   created_at?: string
+  phases?: Phase[]
+  computed_status?: 'live' | 'upcoming' | 'ended'
 }
 
 type SortBy = 'trending' | 'volume' | 'floor_price' | 'created'
 type FilterStatus = 'all' | 'live' | 'upcoming' | 'sold_out'
 
 export default function Marketplace() {
-  const { publicKey, connected, disconnect } = useWallet()
+  const { publicKey, isConnected, connect, disconnect } = useWalletConnection(); // Use custom hook
   const { setVisible } = useWalletModal()
   const [collections, setCollections] = useState<Collection[]>([])
   const [filteredCollections, setFilteredCollections] = useState<Collection[]>([])
@@ -48,12 +60,48 @@ export default function Marketplace() {
   const loadCollections = async () => {
     try {
       setLoading(true)
+      
+      // Fetch collections from marketplace endpoint
       const response = await fetch('/api/marketplace/collections')
       const data = await response.json()
       
-      if (data.success) {
-        setCollections(data.collections)
-      }
+      console.log('Marketplace data:', data)
+      
+      // Compute status based on phases
+      const collectionsWithStatus = data.collections.map((collection: Collection) => {
+        const now = new Date()
+        let computedStatus: 'live' | 'upcoming' | 'ended' = 'upcoming'
+        
+        // Check if sold out
+        if (collection.minted_count >= collection.total_supply) {
+          computedStatus = 'ended'
+        }
+        // Check phases
+        else if (collection.phases && collection.phases.length > 0) {
+          const activePhase = collection.phases.find((phase: Phase) => {
+            const startTime = new Date(phase.start_time)
+            const endTime = phase.end_time ? new Date(phase.end_time) : null
+            return now >= startTime && (!endTime || now <= endTime)
+          })
+          
+          if (activePhase) {
+            computedStatus = 'live'
+          } else {
+            const futurePhase = collection.phases.find((phase: Phase) => 
+              new Date(phase.start_time) > now
+            )
+            computedStatus = futurePhase ? 'upcoming' : 'ended'
+          }
+        }
+        // No phases means it's draft/upcoming
+        else {
+          computedStatus = 'upcoming'
+        }
+        
+        return { ...collection, computed_status: computedStatus }
+      })
+      
+      setCollections(collectionsWithStatus)
     } catch (error) {
       console.error('Failed to load collections:', error)
     } finally {
@@ -64,16 +112,16 @@ export default function Marketplace() {
   const applyFiltersAndSort = () => {
     let filtered = [...collections]
 
-    // Apply status filter
+    // Apply status filter based on computed status
     if (filterStatus !== 'all') {
       filtered = filtered.filter(collection => {
         switch (filterStatus) {
           case 'live':
-            return collection.status === 'live'
+            return collection.computed_status === 'live'
           case 'upcoming':
-            return collection.status === 'draft'
+            return collection.computed_status === 'upcoming'
           case 'sold_out':
-            return collection.status === 'sold_out'
+            return collection.computed_status === 'ended'
           default:
             return true
         }

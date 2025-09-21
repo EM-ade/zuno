@@ -3,15 +3,18 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import NFTUploadAdvanced from '@/components/NFTUploadAdvanced';
+import React, { lazy, Suspense } from 'react'; // Import lazy and Suspense
 import { FileText, Download, Info } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced'; // Import interfaces
+
+const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced')); // Lazy load NFTUploadAdvanced
 
 export default function UploadNFTsPage() {
   const searchParams = useSearchParams();
   const [collectionAddress, setCollectionAddress] = useState('');
   const [candyMachineAddress, setCandyMachineAddress] = useState('');
-  const [uploadResults, setUploadResults] = useState<any>(null);
+  const [uploadResults, setUploadResults] = useState<NFTUploadServiceResult | null>(null);
 
   useEffect(() => {
     // Get collection address from URL params if available
@@ -22,7 +25,7 @@ export default function UploadNFTsPage() {
     if (candyMachine) setCandyMachineAddress(candyMachine);
   }, [searchParams]);
 
-  const handleUploadSuccess = (result: any) => {
+  const handleUploadSuccess = (result: NFTUploadServiceResult) => {
     setUploadResults(result);
     toast.success('NFTs uploaded successfully!');
   };
@@ -119,11 +122,13 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
 
             {/* Upload Component */}
             {collectionAddress && (
-              <NFTUploadAdvanced
-                collectionAddress={collectionAddress}
-                candyMachineAddress={candyMachineAddress || undefined}
-                onSuccess={handleUploadSuccess}
-              />
+              <Suspense fallback={<div>Loading NFT Uploader...</div>}> {/* Add Suspense fallback */}
+                <LazyNFTUploadAdvanced
+                  collectionAddress={collectionAddress}
+                  candyMachineAddress={candyMachineAddress || undefined}
+                  onSuccess={handleUploadSuccess}
+                />
+              </Suspense>
             )}
 
             {/* Upload Results */}
@@ -132,12 +137,12 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
                 <h3 className="text-lg font-semibold mb-4 text-green-400">Upload Successful!</h3>
                 <p className="mb-2">Uploaded {uploadResults.uploadedCount} NFTs</p>
                 <div className="max-h-48 overflow-y-auto">
-                  {uploadResults.nfts.slice(0, 10).map((nft: any, index: number) => (
+                  {uploadResults.nfts.slice(0, 10).map((nft: UploadedNFTResult, index: number) => (
                     <div key={index} className="text-sm py-1 border-b border-green-500/20">
                       <span className="font-medium">{nft.name}</span>
                       {nft.nftAddress && (
                         <span className="ml-2 text-xs text-gray-400">
-                          {nft.nftAddress.slice(0, 8)}...
+                          {nft.nftAddress.toString().slice(0, 8)}...
                         </span>
                       )}
                     </div>

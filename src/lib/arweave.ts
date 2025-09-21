@@ -50,7 +50,7 @@ export class ArweaveService {
       if (!this.wallet) {
         await this.initializeWallet();
       }
-
+    
       // Create transaction
       const transaction = await this.arweave.createTransaction({
         data: file,

@@ -57,12 +57,15 @@ export default function FeaturedMint() {
   const loadFeaturedContent = async () => {
     try {
       // Use marketplace API for consistency in status handling
-      const collectionsResponse = await fetch('/api/marketplace/collections?limit=50')
-      
+      const [collectionsResponse, nftsResponse] = await Promise.all([
+        fetch('/api/marketplace/collections?limit=50'),
+        fetch('/api/nfts/random?limit=4'),
+      ]);
+
       if (collectionsResponse.ok) {
-        const data = await collectionsResponse.json()
-        const collections = data.collections || []
-        
+        const data = await collectionsResponse.json();
+        const collections = data.collections || [];
+
         // Process and sort collections for trending
         const processedCollections = (collections as RawCollectionData[])
           .map((c: RawCollectionData): Collection => ({
@@ -77,31 +80,29 @@ export default function FeaturedMint() {
             volume: c.volume || 0,
             status: c.status, // Already mapped by marketplace API
             candy_machine_id: c.candy_machine_id,
-            creator_wallet: c.creator_wallet
+            creator_wallet: c.creator_wallet,
           }))
           .sort((a: Collection, b: Collection) => {
             // Improved sorting: prioritize collections with activity
-            const aScore = (a.minted_count || 0) * 2 + (a.volume || 0) * 0.1 + (a.total_supply || 0) * 0.01
-            const bScore = (b.minted_count || 0) * 2 + (b.volume || 0) * 0.1 + (b.total_supply || 0) * 0.01
-            return bScore - aScore
+            const aScore = (a.minted_count || 0) * 2 + (a.volume || 0) * 0.1 + (a.total_supply || 0) * 0.01;
+            const bScore = (b.minted_count || 0) * 2 + (b.volume || 0) * 0.1 + (b.total_supply || 0) * 0.01;
+            return bScore - aScore;
           })
-          .slice(0, 12) // Increased limit to show more collections
-        
-        console.log('Featured collections loaded:', processedCollections.length, 'collections')
+          .slice(0, 12); // Increased limit to show more collections
+
+        console.log('Featured collections loaded:', processedCollections.length, 'collections');
         console.log('Collections by status:', {
           live: processedCollections.filter((c: Collection) => c.status === 'live').length,
           upcoming: processedCollections.filter((c: Collection) => c.status === 'upcoming').length,
-          sold_out: processedCollections.filter((c: Collection) => c.status === 'sold_out' || c.status === 'sold out').length
-        })
-        setFeaturedCollections(processedCollections)
+          sold_out: processedCollections.filter((c: Collection) => c.status === 'sold_out' || c.status === 'sold out').length,
+        });
+        setFeaturedCollections(processedCollections);
       }
 
-      // Load random NFTs for explore section from all collections
-      const nftsResponse = await fetch('/api/nfts/random?limit=4')
       if (nftsResponse.ok) {
-        const data = await nftsResponse.json()
-        const nfts = data.nfts || data
-        setExploreNFTs(nfts)
+        const data = await nftsResponse.json();
+        const nfts = data.nfts || data;
+        setExploreNFTs(nfts);
       }
     } catch (error) {
       console.error('Error loading featured content:', error)
@@ -213,6 +214,7 @@ export default function FeaturedMint() {
                             width={200}
                             height={128}
                             className="w-full h-full object-cover"
+                            priority={true} // Set priority to true for featured collections
                           />
                         ) : (
                           <div className="text-white text-2xl sm:text-4xl">🎨</div>
@@ -315,6 +317,7 @@ export default function FeaturedMint() {
                               width={80}
                               height={80}
                               className="w-full h-full object-cover"
+                              priority={true} // Set priority to true for explore NFTs
                             />
                           ) : (
                             <span className="text-2xl sm:text-3xl">🎨</span>

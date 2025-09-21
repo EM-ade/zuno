@@ -64,7 +64,7 @@ export default function EnhancedCreateCollection() {
     setPhases([...phases, newPhase]);
   };
 
-  const updatePhase = (index: number, field: keyof MintPhase, value: any) => {
+  const updatePhase = (index: number, field: keyof MintPhase, value: MintPhase[typeof field]) => {
     const updatedPhases = [...phases];
     updatedPhases[index] = { ...updatedPhases[index], [field]: value };
     setPhases(updatedPhases);

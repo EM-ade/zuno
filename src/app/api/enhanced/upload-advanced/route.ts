@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { metaplexEnhancedService } from '@/lib/metaplex-enhanced';
+import { metaplexEnhancedService, NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced';
 import { NFTParser, type ParsedNFT, type NFTAttribute } from '@/lib/nft-parser';
 import { supabaseServer } from '@/lib/supabase-service';
 
@@ -110,8 +110,15 @@ export async function POST(request: NextRequest) {
           );
         }
         
+        // Log the files being processed
+        console.log(`Processing ${allFiles.length} files from folder upload:`);
+        allFiles.forEach((f, i) => {
+          console.log(`  File ${i}: ${f.name} (${f.type}, ${f.size} bytes)`);
+        });
+        
         // Parse folder contents
         const folderNFTs = NFTParser.matchFilesInFolder(allFiles);
+        console.log(`Parsed ${folderNFTs.length} NFTs from folder`);
         
         // Process matched files
         for (const nft of folderNFTs) {
@@ -189,7 +196,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload NFTs using the enhanced service
-    const result = await metaplexEnhancedService.uploadNFTsToCollection(
+    const result: NFTUploadServiceResult = await metaplexEnhancedService.uploadNFTsToCollection(
       collectionAddress,
       candyMachineAddress,
       processedNFTs
@@ -205,14 +212,14 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (collection) {
-        const nftRecords = result.nfts.map((nft: any, index: number) => ({
+        const nftRecords = result.nfts.map((nft: UploadedNFTResult, index: number) => ({
           collection_id: collection.id,
           collection_address: collectionAddress,
           name: nft.name,
           description: processedNFTs[index]?.description || '',
           metadata_uri: nft.metadataUri,
           image_uri: nft.imageUri,
-          nft_address: nft.nftAddress || null,
+          nft_address: nft.nftAddress?.toString() || null,
           item_index: nft.index !== undefined ? nft.index : index,
           attributes: processedNFTs[index]?.attributes || [],
           minted: false
@@ -242,7 +249,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `Successfully uploaded ${result.uploadedCount} NFTs`,
       uploadedCount: result.uploadedCount,
-      nfts: result.nfts.map((nft: any, index: number) => ({
+      nfts: result.nfts.map((nft: UploadedNFTResult, index: number) => ({
         ...nft,
         attributes: processedNFTs[index]?.attributes
       }))

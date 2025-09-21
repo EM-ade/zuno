@@ -44,11 +44,12 @@ export interface MintPhaseRecord {
   name: string;
   price: number;
   start_time: string;
-  end_time: string | null;
-  mint_limit: number | null;
-  phase_type: 'whitelist' | 'public';
-  merkle_root: string | null;
-  allow_list: string[] | null;
+  end_time?: string | null; // Changed to optional
+  mint_limit?: number | null; // Changed to optional
+  phase_type: 'og' | 'whitelist' | 'public' | 'custom'; // Now an enum in DB, matching client type
+  allowed_wallets?: string[] | null; // New column, matching client type
+  created_at?: string; // Add created_at
+  // Removed: whitelist_only and merkle_root (if no longer used)
 }
 
 export interface MintTransactionRecord {
@@ -169,9 +170,15 @@ export class SupabaseService {
   }
 
   static async getCollectionsByCreator(creatorWallet: string) {
+    // Fetch collections and related stats (minted_count, items_count, floor_price, volume) in a single query
+    // using Supabase table joins and PostgREST features.
     const { data, error } = await supabase
       .from('collections')
-      .select('*')
+      .select(`
+        *,
+        items(count),
+        mint_transactions(count)
+      `)
       .eq('creator_wallet', creatorWallet)
       .order('created_at', { ascending: false });
 
@@ -180,36 +187,60 @@ export class SupabaseService {
       throw new Error(`Failed to fetch creator collections: ${error.message}`);
     }
 
-    return data || [];
+    // Process the data to flatten the counts
+    const collectionsWithStats = data?.map(collection => {
+      const itemsCount = (collection.items as { count: number }[])?.length || 0; // Count from joined items
+      const mintedCount = (collection.mint_transactions as { count: number }[])?.length || 0; // Count from joined mint_transactions
+      
+      // For floor_price and volume, if they are not stored directly on collections table,
+      // you might need a materialized view or trigger to pre-calculate, or fetch separately if truly needed.
+      // For now, we will default them to 0 as they are not directly available via simple join on counts.
+      const floor_price = 0; // Placeholder, needs actual calculation
+      const volume = 0;      // Placeholder, needs actual calculation
+
+      return {
+        ...collection,
+        items_count: itemsCount,
+        minted_count: mintedCount,
+        floor_price: collection.floor_price || floor_price, // Use existing if present, else default
+        volume: collection.volume || volume,         // Use existing if present, else default
+      };
+    });
+
+    return collectionsWithStats || [];
   }
 
   static async getCollectionMintStats(collectionId: string) {
-    // Get actual count of minted items
-    const { count: mintedCount, error: mintedError } = await supabase
-      .from('items')
-      .select('*', { count: 'exact', head: true })
-      .eq('collection_id', collectionId)
-      .not('owner_wallet', 'is', null);
+    // This function will now be simplified or removed as its data is integrated into getCollectionsByCreator
+    // For now, let's keep it as a placeholder or to retrieve other stats if needed.
+    const { data: collection, error: collectionError } = await supabase
+      .from('collections')
+      .select('total_supply')
+      .eq('id', collectionId)
+      .single();
 
-    if (mintedError) {
-      console.error('Error counting minted items:', mintedError);
+    if (collectionError) {
+      console.error('Error fetching collection supply:', collectionError);
+      throw new Error(`Failed to fetch collection supply: ${collectionError.message}`);
     }
 
-    // Get total items count
-    const { count: totalCount, error: totalError } = await supabase
-      .from('items')
-      .select('*', { count: 'exact', head: true })
+    // Fetch minted count directly (no longer relying on separate items count for all items)
+    const { count: mintedCount, error: mintedError } = await supabase
+      .from('mint_transactions')
+      .select('id', { count: 'exact' })
       .eq('collection_id', collectionId);
 
-    if (totalError) {
-      console.error('Error counting total items:', totalError);
+    if (mintedError) {
+      console.error('Error counting minted items for stats:', mintedError);
     }
-
+    
+    // NOTE: floor_price and volume are more complex and typically require dedicated views or aggregated tables.
+    // For now, these are placeholders.
     return {
       minted: mintedCount || 0,
-      total: totalCount || 0,
-      floor_price: 0,
-      volume: 0,
+      total_supply: collection?.total_supply || 0,
+      floor_price: 0, // Placeholder
+      volume: 0,      // Placeholder
       total_sales: mintedCount || 0
     };
   }

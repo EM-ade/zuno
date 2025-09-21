@@ -1,37 +1,33 @@
 'use client'
 import { useState, useEffect } from 'react'
-import Image from 'next/image'
+import Image, { ImageProps } from 'next/image'
 
-interface OptimizedImageProps {
-  src: string
-  alt: string
-  width?: number
-  height?: number
-  className?: string
-  priority?: boolean
-  placeholder?: string
+interface OptimizedImageProps extends ImageProps {
+  placeholderSrc?: string // Optional prop for a custom placeholder
 }
 
-export default function OptimizedImage({
+const OptimizedImage: React.FC<OptimizedImageProps> = ({
   src,
   alt,
   width = 300,
   height = 300,
   className = '',
   priority = false,
-  placeholder = 'https://via.placeholder.com/300x300/e2e8f0/64748b?text=Loading...'
-}: OptimizedImageProps) {
-  const [imageSrc, setImageSrc] = useState(placeholder)
+  quality = 75,
+  sizes = '100vw',
+  placeholderSrc = '/placeholder.svg', // Use local SVG as default placeholder
+  ...props
+}) => {
+  const [imageSrc, setImageSrc] = useState(placeholderSrc)
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
 
   useEffect(() => {
-    if (!src || src === placeholder) {
+    if (!src || src === placeholderSrc) {
       setIsLoading(false)
       return
     }
 
-    // Preload the image
     const img = new window.Image()
     img.onload = () => {
       setImageSrc(src)
@@ -41,10 +37,9 @@ export default function OptimizedImage({
     img.onerror = () => {
       setHasError(true)
       setIsLoading(false)
-      // Keep placeholder image on error
     }
     img.src = src
-  }, [src, placeholder])
+  }, [src, placeholderSrc])
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
@@ -62,14 +57,15 @@ export default function OptimizedImage({
           width: '100%',
           height: '100%',
         }}
+        {...props}
       />
-      
+
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
         </div>
       )}
-      
+
       {hasError && (
         <div className="absolute top-2 right-2">
           <div className="bg-red-500 text-white text-xs px-2 py-1 rounded">
@@ -80,3 +76,5 @@ export default function OptimizedImage({
     </div>
   )
 }
+
+export default OptimizedImage

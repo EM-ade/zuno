@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { metaplexEnhancedService } from '@/lib/metaplex-enhanced';
 import { supabaseServer } from '@/lib/supabase-service';
+import { Phase } from '@/types'; // Import the Phase interface
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
     
     // Parse phases if provided
     const phasesJson = formData.get('phases') as string | null;
-    const phases = phasesJson ? JSON.parse(phasesJson) : undefined;
+    const phases: Phase[] | undefined = phasesJson ? JSON.parse(phasesJson) : undefined;
     
     // Validate required fields
     if (!name || !symbol || !description || !creatorWallet) {
@@ -73,29 +74,30 @@ export async function POST(request: NextRequest) {
     
     if (dbError) {
       console.error('Database error saving collection:', dbError);
-      // Still return success since collection is on-chain
-      console.log('Collection created on-chain but not saved to DB:', result.collectionMint);
+      // Instead of logging and continuing, throw an error to be caught by the outer catch block
+      throw new Error(`Collection created on-chain (${result.collectionMint}) but failed to save to database: ${dbError.message}`);
     } else {
       console.log('Collection saved to database:', collection?.id);
       
-      // If phases were provided, save them too
-      if (phases && phases.length > 0 && collection?.id) {
-        for (const phase of phases) {
-          const { error: phaseError } = await supabaseServer
-            .from('mint_phases')
-            .insert({
-              collection_id: collection.id,
-              name: phase.name,
-              start_time: phase.startDate || new Date().toISOString(),
-              end_time: phase.endDate || null,
-              price: phase.price || price,
-              mint_limit: phase.mintLimit || null,
-              whitelist_only: phase.name.toLowerCase().includes('whitelist')
-            });
-            
-          if (phaseError) {
-            console.error('Error saving phase:', phaseError);
-          }
+      // Save phases if provided
+      if (phases && phases.length > 0 && collection) {
+        const phaseRecords = phases.map((phase: Phase) => ({
+          collection_id: collection.id,
+          name: phase.name,
+          start_time: phase.start_time, // Matches public.mint_phases schema
+          end_time: phase.end_time || null, // Matches public.mint_phases schema
+          price: phase.price || price,
+          mint_limit: phase.mint_limit || null, // New column for mint_phases
+          phase_type: phase.phase_type, // New column for mint_phases (enum)
+          allowed_wallets: phase.allowed_wallets || null, // New column for mint_phases (TEXT[])
+        }));
+
+        const { error: phaseError } = await supabaseServer
+          .from('mint_phases') // Changed from 'phases' to 'mint_phases'
+          .insert(phaseRecords);
+
+        if (phaseError) {
+          console.error('Error saving phases:', phaseError);
         }
       }
     }

@@ -150,7 +150,14 @@ export class SimplifiedMetaplexCore {
         const assetSigner = generateSigner(this.umi);
 
         // Create NFT in collection
-        const createArgs: any = {
+        interface CreateV1Args {
+          asset: Parameters<typeof createV1>[1]['asset'];
+          collection: Parameters<typeof createV1>[1]['collection'];
+          name: Parameters<typeof createV1>[1]['name'];
+          uri: Parameters<typeof createV1>[1]['uri'];
+          owner?: Parameters<typeof createV1>[1]['owner'];
+        }
+        const createArgs: CreateV1Args = {
           asset: assetSigner,
           collection: publicKey(collectionAddress),
           name: nft.name,

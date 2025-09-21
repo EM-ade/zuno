@@ -207,7 +207,11 @@ export class MetaplexCoreService {
           console.log(`Transferring NFT to ${config.owner}`);
           
           // Build transfer args - include collection if NFT is part of one
-          const transferArgs: any = {
+          const transferArgs: {
+            asset: Parameters<typeof transferV1>[1]['asset'];
+            newOwner: Parameters<typeof transferV1>[1]['newOwner'];
+            collection?: Parameters<typeof transferV1>[1]['collection'];
+          } = {
             asset: assetSigner.publicKey,
             newOwner: publicKey(config.owner),
           };

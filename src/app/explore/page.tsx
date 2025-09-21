@@ -6,6 +6,8 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import OptimizedImage from '@/components/OptimizedImage';
 import PageHeader from '@/components/PageHeader';
+import { memo } from 'react'; // Import memo from react
+import { resolveImageUrl } from '@/utils/resolveImageUrl'; // Import resolveImageUrl
 
 type StatusTab = 'live' | 'upcoming' | 'ended';
 type DbStatus = 'active' | 'draft' | 'completed';
@@ -46,18 +48,6 @@ const tabToDb: Record<StatusTab, DbStatus> = {
 };
 
 const pageSize = 24;
-
-const PINATA_GATEWAY = (process.env.NEXT_PUBLIC_PINATA_GATEWAY as string) || 'turquoise-cheerful-angelfish-408.mypinata.cloud';
-
-function resolveImageUrl(u?: string) {
-  if (!u) return '';
-  if (u.startsWith('http')) return u;
-  if (u.startsWith('ipfs://')) {
-    const cid = u.replace('ipfs://', '').replace(/^ipfs\//, '');
-    return `https://${PINATA_GATEWAY}/ipfs/${cid}`;
-  }
-  return u;
-}
 
 export default function ExplorePage() {
   const [tab, setTab] = useState<StatusTab>('live');
@@ -228,7 +218,7 @@ export default function ExplorePage() {
             <h2 className="text-xl font-bold text-black/80 mb-3">Launchpads</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
               {featured.map((c: UiCollection) => (
-                <CollectionCard key={c.id} item={c} />
+                <CollectionCard key={c.id} item={c} priority={true} />
               ))}
             </div>
           </>
@@ -310,7 +300,13 @@ function firstPhaseStart(phases?: Phase[]): string {
   }
 }
 
-function CollectionCard({ item, compact = false }: { item: UiCollection; compact?: boolean }) {
+interface CollectionCardProps {
+  item: UiCollection;
+  compact?: boolean;
+  priority?: boolean;
+}
+
+function CollectionCardInternal({ item, compact = false, priority = false }: CollectionCardProps) {
   const progress = Math.max(0, Math.min(100, Math.round(item.progress || 0)));
 
   return (
@@ -319,12 +315,12 @@ function CollectionCard({ item, compact = false }: { item: UiCollection; compact
         <div className="aspect-square w-full bg-white flex items-center justify-center overflow-hidden">
           {item.image_uri ? (
             <OptimizedImage
-              src={item.image_uri}
+              src={resolveImageUrl(item.image_uri)}
               alt={item.name}
               width={600}
               height={600}
               className="w-full h-full object-cover rounded-t-2xl"
-              priority={false}
+              priority={priority}
             />
           ) : (
             <div className="text-6xl text-black/20">🎴</div>
@@ -389,3 +385,5 @@ function CollectionCard({ item, compact = false }: { item: UiCollection; compact
     </div>
   );
 }
+
+const CollectionCard = memo(CollectionCardInternal);

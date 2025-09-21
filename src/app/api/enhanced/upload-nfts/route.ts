@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { metaplexEnhancedService } from '@/lib/metaplex-enhanced';
+import { metaplexEnhancedService, NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced';
 import { supabaseServer } from '@/lib/supabase-service';
 
 export async function POST(request: NextRequest) {
@@ -19,7 +19,13 @@ export async function POST(request: NextRequest) {
     
     // Parse NFTs data
     const nftsJson = formData.get('nfts') as string;
-    const nftsData = JSON.parse(nftsJson || '[]');
+    // Ensure nftsData is an array of objects that match NFTUploadConfig if possible
+    const nftsData: Array<{
+      name: string;
+      description: string;
+      imageUri?: string;
+      attributes?: Array<{ trait_type: string; value: string | number }>;
+    }> = JSON.parse(nftsJson || '[]');
     
     // Process each NFT with its image
     const nfts = [];
@@ -44,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Upload NFTs to the collection
-    const result = await metaplexEnhancedService.uploadNFTsToCollection(
+    const result: NFTUploadServiceResult = await metaplexEnhancedService.uploadNFTsToCollection(
       collectionAddress,
       candyMachineAddress,
       nfts
@@ -52,14 +58,14 @@ export async function POST(request: NextRequest) {
     
     // Save NFT records to database
     if (result.success && result.nfts.length > 0) {
-      const nftRecords = result.nfts.map((nft: any, index: number) => ({
+      const nftRecords = result.nfts.map((nft: UploadedNFTResult, index: number) => ({
         collection_address: collectionAddress,
         name: nft.name,
         metadata_uri: nft.metadataUri,
         image_uri: nft.imageUri,
-        nft_address: nft.nftAddress || null,
+        nft_address: nft.nftAddress?.toString() || null, // Convert PublicKey to string
         item_index: nft.index !== undefined ? nft.index : index,
-        attributes: nftsData[index].attributes || {},
+        attributes: nft.attributes || [], // Use attributes from UploadedNFTResult
         minted: false
       }));
       
@@ -93,7 +99,12 @@ export async function POST(request: NextRequest) {
 // Batch upload endpoint for multiple NFTs at once
 export async function PUT(request: NextRequest) {
   try {
-    const data = await request.json();
+    const data: { collectionAddress: string; candyMachineAddress: string | null; nfts: Array<{
+      name: string;
+      description: string;
+      imageUri: string;
+      attributes?: Array<{ trait_type: string; value: string | number }>;
+    }> } = await request.json();
     const { collectionAddress, candyMachineAddress, nfts } = data;
     
     if (!collectionAddress || !nfts || !Array.isArray(nfts)) {
@@ -104,7 +115,7 @@ export async function PUT(request: NextRequest) {
     }
     
     // Process NFTs without file uploads (assumes URIs are provided)
-    const result = await metaplexEnhancedService.uploadNFTsToCollection(
+    const result: NFTUploadServiceResult = await metaplexEnhancedService.uploadNFTsToCollection(
       collectionAddress,
       candyMachineAddress,
       nfts
@@ -112,14 +123,14 @@ export async function PUT(request: NextRequest) {
     
     // Save to database
     if (result.success && result.nfts.length > 0) {
-      const nftRecords = result.nfts.map((nft: any, index: number) => ({
+      const nftRecords = result.nfts.map((nft: UploadedNFTResult, index: number) => ({
         collection_address: collectionAddress,
         name: nft.name,
         metadata_uri: nft.metadataUri,
         image_uri: nft.imageUri,
-        nft_address: nft.nftAddress || null,
+        nft_address: nft.nftAddress?.toString() || null, // Convert PublicKey to string
         item_index: nft.index !== undefined ? nft.index : index,
-        attributes: nfts[index].attributes || {},
+        attributes: nft.attributes || [], // Use attributes from UploadedNFTResult
         minted: false
       }));
       

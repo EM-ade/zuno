@@ -1,5 +1,5 @@
-import { NextRequest } from 'next/server';
-import { SupabaseService, CollectionRecord } from '@/lib/supabase-service';
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseServer } from '@/lib/supabase-service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,47 +27,64 @@ export async function GET(request: NextRequest) {
       statusFilter = 'approved'; // Default to approved collections
     }
 
-    let collections: CollectionRecord[];
+    // Build query
+    let query = supabaseServer
+      .from('collections')
+      .select('*');
     
+    // Apply status filter (all collections in your DB are 'active')
+    if (statusFilter === 'approved' || statusFilter === 'active') {
+      query = query.eq('status', 'active');
+    } else if (statusFilter) {
+      query = query.eq('status', statusFilter);
+    }
+    
+    // Apply creator filter
+    if (creator) {
+      query = query.eq('creator_wallet', creator);
+    }
+    
+    // Execute query
+    const { data: collections, error } = await query;
+    
+    if (error) {
+      throw error;
+    }
+    
+    // Apply search filter in memory if needed
+    let filteredCollections = collections || [];
     if (search) {
-      // Search across name, symbol, and description
-      collections = await SupabaseService.getCollectionsByStatus(statusFilter as CollectionRecord['status']);
-      collections = collections.filter(collection =>
+      filteredCollections = filteredCollections.filter(collection =>
         collection.name.toLowerCase().includes(search.toLowerCase()) ||
         collection.symbol.toLowerCase().includes(search.toLowerCase()) ||
         (collection.description && collection.description.toLowerCase().includes(search.toLowerCase()))
       );
-    } else if (creator) {
-      // Get collections by specific creator
-      collections = await SupabaseService.getCollectionsByStatus(statusFilter as CollectionRecord['status']);
-      collections = collections.filter(collection =>
-        collection.creator_wallet === creator
-      );
-    } else {
-      // Get collections by status
-      collections = await SupabaseService.getCollectionsByStatus(statusFilter as CollectionRecord['status']);
     }
 
     // Apply pagination
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
-    const paginatedCollections = collections.slice(startIndex, endIndex);
-    const totalPages = Math.ceil(collections.length / limit);
+    const paginatedCollections = filteredCollections.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(filteredCollections.length / limit);
 
-    // For each collection, get the mint phases
-    const collectionsWithPhases = await Promise.all(
-      paginatedCollections.map(async (collection) => {
-        const phases = await SupabaseService.getMintPhasesByCollectionId(collection.id!);
-        const mintCount = await SupabaseService.getMintCountByCollection(collection.id!);
-        
-        return {
-          ...collection,
-          phases,
-          mintCount,
-          progress: Math.min(100, (mintCount / collection.total_supply) * 100)
-        };
-      })
-    );
+    // For each collection, get the mint phases (optional - can skip for performance)
+    const collectionsWithPhases = paginatedCollections.map(collection => {
+      const mintCount = collection.minted_count || 0;
+      const progress = collection.total_supply > 0 
+        ? Math.min(100, (mintCount / collection.total_supply) * 100)
+        : 0;
+      
+      return {
+        ...collection,
+        phases: [], // Phases can be fetched separately if needed
+        mintCount,
+        progress,
+        // Add display fields
+        displayPrice: `${collection.price} SOL`,
+        displaySupply: `${mintCount}/${collection.total_supply}`,
+        isSoldOut: mintCount >= collection.total_supply
+      };
+    });
 
     return new Response(
       JSON.stringify({

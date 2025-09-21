@@ -275,13 +275,13 @@ INSERT INTO collections (
 ) VALUES (
     'SampleCollection123456789',
     'CandyMachine123456789',
-    'Sample Collection',
-    'SAMPLE',
-    'This is a test collection for development',
-    'https://via.placeholder.com/500',
-    'CreatorWallet123456789',
-    0.5,
-    100,
+    'Zuno Genesis Collection',
+    'ZUNO',
+    'The first ever Zuno collection with exclusive benefits.',
+    '/placeholder.svg',
+    'creator_wallet_address',
+    0.1,
+    10000,
     'active'
 ) ON CONFLICT (collection_mint_address) DO NOTHING;
 
@@ -296,9 +296,9 @@ BEGIN
         -- Insert sample items
         INSERT INTO items (collection_id, collection_address, name, description, image_uri, item_index, minted)
         VALUES 
-            (collection_uuid, 'SampleCollection123456789', 'Sample NFT #1', 'First NFT', 'https://via.placeholder.com/500', 0, false),
-            (collection_uuid, 'SampleCollection123456789', 'Sample NFT #2', 'Second NFT', 'https://via.placeholder.com/500', 1, false),
-            (collection_uuid, 'SampleCollection123456789', 'Sample NFT #3', 'Third NFT', 'https://via.placeholder.com/500', 2, false)
+            (collection_uuid, 'SampleCollection123456789', 'Sample NFT #1', 'First NFT', '/placeholder.svg', 0, false),
+            (collection_uuid, 'SampleCollection123456789', 'Sample NFT #2', 'Second NFT', '/placeholder.svg', 1, false),
+            (collection_uuid, 'SampleCollection123456789', 'Sample NFT #3', 'Third NFT', '/placeholder.svg', 2, false)
         ON CONFLICT DO NOTHING;
         
         -- Insert a sample phase

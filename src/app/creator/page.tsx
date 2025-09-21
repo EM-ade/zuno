@@ -5,6 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 import OptimizedImage from '@/components/OptimizedImage'
 import PageHeader from '@/components/PageHeader'
+import { memo } from 'react'; // Import memo
 
 interface TopCollection {
   name: string
@@ -118,16 +119,19 @@ export default function CreatorDashboard() {
 
   useEffect(() => {
     if (publicKey) {
-      loadCollections()
-      loadAnalytics()
+      // Execute loadCollections on initial render
+      loadCollections().catch(error => console.error('Error loading initial creator collections:', error));
     } else {
       setLoading(false)
     }
-  }, [publicKey, loadCollections, loadAnalytics])
+  }, [publicKey, loadCollections]); // Removed loadAnalytics from dependency array here
 
   useEffect(() => {
     if (publicKey && (activeTab === 'analytics' || activeTab === 'earnings')) {
       loadAnalytics()
+    } else if (activeTab === 'collections') {
+      // If switching back to collections, ensure loading is handled by loadCollections's setLoading
+      // No explicit action needed here as loadCollections already sets loading state
     }
   }, [activeTab, publicKey, loadAnalytics])
 
@@ -485,7 +489,11 @@ export default function CreatorDashboard() {
   )
 }
 
-function CollectionCard({ collection }: { collection: Collection }) {
+interface CollectionCardProps { 
+  collection: Collection 
+}
+
+const CollectionCard = memo(function CollectionCard({ collection }: CollectionCardProps) { // Wrap with memo
   const [updatingStatus, setUpdatingStatus] = useState(false)
   
   const getStatusColor = (status: string) => {
@@ -618,4 +626,4 @@ function CollectionCard({ collection }: { collection: Collection }) {
       </div>
     </div>
   )
-}
+})

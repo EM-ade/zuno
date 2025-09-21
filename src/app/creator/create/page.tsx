@@ -1,12 +1,16 @@
 'use client'
 import { useState } from 'react'
-import { useWallet } from '@solana/wallet-adapter-react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import PageHeader from '@/components/PageHeader'
-import NFTUploadAdvanced from '@/components/NFTUploadAdvanced'
+import React, { lazy, Suspense } from 'react'; // Import lazy and Suspense
+import PhaseManager from '@/components/PhaseManager'
+import { Phase } from '@/types'; // Import Phase from central types file
 import { toast, Toaster } from 'react-hot-toast'
+import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
+import { NFTUploadServiceResult } from '@/lib/metaplex-enhanced'; // Corrected import path for NFTUploadServiceResult
+
+const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced')); // Lazy load NFTUploadAdvanced
 
 interface CollectionData {
   name: string
@@ -22,20 +26,14 @@ interface CollectionData {
 
 interface MintSettings {
   totalSupply: number
-  mintPrice: number
-  isPublic: boolean
-  startDate?: string
-  endDate?: string
-  whitelistEnabled: boolean
-  whitelistPrice?: number
-  whitelistSpots?: number
+  phases: Phase[]
 }
 
 type Step = 'collection' | 'mint-settings' | 'review' | 'creating' | 'upload-assets' | 'success'
 
 export default function CreateCollection() {
-  const { publicKey } = useWallet()
-  const router = useRouter()
+  const { publicKey } = useWalletConnection(); // Use custom hook
+  // const router = useRouter() // Removed unused import
   const [currentStep, setCurrentStep] = useState<Step>('collection')
   const [loading, setLoading] = useState(false)
   const [collectionAddress, setCollectionAddress] = useState<string | null>(null)
@@ -53,11 +51,17 @@ export default function CreateCollection() {
     discord: ''
   })
 
+  // Helper to get a default public phase
+  const getDefaultPublicPhase = (): Phase => ({
+    name: 'Public Sale',
+    phase_type: 'public',
+    price: 0.1,
+    start_time: new Date().toISOString() // Ensure valid ISO string
+  });
+
   const [mintSettings, setMintSettings] = useState<MintSettings>({
     totalSupply: 1000,
-    mintPrice: 0.1,
-    isPublic: true,
-    whitelistEnabled: false
+    phases: []
   })
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,7 +92,6 @@ export default function CreateCollection() {
       formData.append('symbol', collectionData.symbol)
       formData.append('description', collectionData.description)
       formData.append('creatorWallet', publicKey.toString())
-      formData.append('price', mintSettings.mintPrice.toString())
       formData.append('totalSupply', mintSettings.totalSupply.toString())
       formData.append('royaltyPercentage', collectionData.royaltyPercentage.toString())
       
@@ -96,26 +99,17 @@ export default function CreateCollection() {
         formData.append('image', collectionData.image)
       }
       
-      // Add phases if configured
-      const phases = []
-      if (mintSettings.whitelistEnabled) {
-        phases.push({
-          name: 'Whitelist',
-          startDate: mintSettings.startDate || new Date().toISOString(),
-          endDate: mintSettings.endDate,
-          price: mintSettings.whitelistPrice || mintSettings.mintPrice,
-          allowList: []
-        })
-      }
-      phases.push({
-        name: 'Public',
-        startDate: mintSettings.startDate || new Date().toISOString(),
-        endDate: mintSettings.endDate,
-        price: mintSettings.mintPrice
-      })
-      
-      if (phases.length > 0) {
-        formData.append('phases', JSON.stringify(phases))
+      // Add phases from PhaseManager
+      if (mintSettings.phases.length > 0) {
+        // Use the first phase's price as the default price
+        const defaultPrice = mintSettings.phases[0]?.price || 0.1
+        formData.append('price', defaultPrice.toString())
+        formData.append('phases', JSON.stringify(mintSettings.phases))
+      } else {
+        // Fallback to default public phase using the helper function
+        const defaultPhase = getDefaultPublicPhase();
+        formData.append('price', defaultPhase.price.toString());
+        formData.append('phases', JSON.stringify([defaultPhase]));
       }
       
       // Create collection using enhanced API
@@ -146,7 +140,7 @@ export default function CreateCollection() {
     }
   }
 
-  const handleUploadSuccess = async (result: any) => {
+  const handleUploadSuccess = async (result: NFTUploadServiceResult) => {
     toast.success(`Successfully uploaded ${result.uploadedCount} NFTs!`)
     
     // NOTE: Authority transfer disabled to prevent "Account does not exist" errors
@@ -302,13 +296,22 @@ export default function CreateCollection() {
                   Royalty Percentage
                 </label>
                 <input
-                  type="number"
-                  value={collectionData.royaltyPercentage}
-                  onChange={(e) => setCollectionData(prev => ({ ...prev, royaltyPercentage: Number(e.target.value) }))}
+                  type="text" // Changed to text to handle input more flexibly
+                  value={collectionData.royaltyPercentage.toString()} // Convert number to string for text input
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow empty string for temporary clearing, convert to 0 if invalid number or empty
+                    setCollectionData(prev => ({ 
+                      ...prev, 
+                      royaltyPercentage: value === '' ? 0 : (Number(value) || 0) 
+                    }));
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   min="0"
                   max="50"
                   step="0.1"
+                  inputMode="numeric" // Suggest numeric keyboard on mobile
+                  pattern="[0-9]*[.]?[0-9]*" // Allow numbers and a decimal point
                 />
               </div>
             </div>
@@ -327,65 +330,37 @@ export default function CreateCollection() {
 
         {currentStep === 'mint-settings' && (
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold mb-6">Mint Settings</h2>
+            <h2 className="text-2xl font-bold mb-6 text-gray-900">Mint Settings</h2>
             
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-900 mb-1">
                   Total Supply
                 </label>
                 <input
-                  type="number"
-                  value={mintSettings.totalSupply}
-                  onChange={(e) => setMintSettings(prev => ({ ...prev, totalSupply: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="text" // Changed to text to handle input more flexibly
+                  value={mintSettings.totalSupply.toString()} // Convert number to string for text input
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow empty string, convert to 1 if invalid number or empty to ensure min supply
+                    setMintSettings(prev => ({ 
+                      ...prev, 
+                      totalSupply: value === '' ? 1 : (Number(value) || 1) 
+                    }));
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   min="1"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Mint Price (SOL)
-                </label>
-                <input
-                  type="number"
-                  value={mintSettings.mintPrice}
-                  onChange={(e) => setMintSettings(prev => ({ ...prev, mintPrice: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  min="0"
-                  step="0.01"
+              <div className="border-t pt-6">
+                <PhaseManager
+                  onPhasesChange={(phases) => setMintSettings(prev => ({ ...prev, phases }))}
+                  initialPhases={mintSettings.phases}
                 />
               </div>
-
-              <div>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={mintSettings.whitelistEnabled}
-                    onChange={(e) => setMintSettings(prev => ({ ...prev, whitelistEnabled: e.target.checked }))}
-                    className="mr-2"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Enable Whitelist Phase</span>
-                </label>
-              </div>
-
-              {mintSettings.whitelistEnabled && (
-                <div className="ml-6 space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Whitelist Price (SOL)
-                    </label>
-                    <input
-                      type="number"
-                      value={mintSettings.whitelistPrice}
-                      onChange={(e) => setMintSettings(prev => ({ ...prev, whitelistPrice: Number(e.target.value) }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="mt-6 flex justify-between">
@@ -396,7 +371,13 @@ export default function CreateCollection() {
                 Back
               </button>
               <button
-                onClick={() => setCurrentStep('review')}
+                onClick={() => {
+                  if (mintSettings.phases.length === 0) {
+                    toast.error('Please add at least one mint phase')
+                    return
+                  }
+                  setCurrentStep('review')
+                }}
                 className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 Next
@@ -436,14 +417,42 @@ export default function CreateCollection() {
                     <dd className="text-sm font-medium">{mintSettings.totalSupply}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-gray-500">Mint Price</dt>
-                    <dd className="text-sm font-medium">{mintSettings.mintPrice} SOL</dd>
-                  </div>
-                  <div>
                     <dt className="text-sm text-gray-500">Royalty</dt>
                     <dd className="text-sm font-medium">{collectionData.royaltyPercentage}%</dd>
                   </div>
                 </dl>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Mint Phases</h3>
+                {mintSettings.phases.length > 0 ? (
+                  <div className="space-y-2">
+                    {mintSettings.phases.map((phase, index) => (
+                      <div key={index} className="bg-gray-50 p-3 rounded">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-gray-900">{phase.name}</p>
+                            <p className="text-sm text-gray-600">
+                              {phase.price} SOL • Starts {new Date(phase.start_time).toLocaleString()}
+                            </p>
+                            {phase.allowed_wallets && phase.allowed_wallets.length > 0 && (
+                              <p className="text-xs text-gray-500">{phase.allowed_wallets.length} wallets allowed</p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            phase.phase_type === 'og' ? 'bg-purple-100 text-purple-700' :
+                            phase.phase_type === 'whitelist' ? 'bg-blue-100 text-blue-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            {phase.phase_type.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No phases configured</p>
+                )}
               </div>
 
               <div className="bg-blue-50 p-4 rounded-lg">
@@ -501,11 +510,13 @@ export default function CreateCollection() {
               </p>
             </div>
 
-            <NFTUploadAdvanced
-              collectionAddress={collectionAddress}
-              candyMachineAddress={candyMachineId || undefined}
-              onSuccess={handleUploadSuccess}
-            />
+            <Suspense fallback={<div>Loading NFT Uploader...</div>}> {/* Add Suspense fallback */}
+              <LazyNFTUploadAdvanced
+                collectionAddress={collectionAddress}
+                candyMachineAddress={candyMachineId || undefined}
+                onSuccess={handleUploadSuccess}
+              />
+            </Suspense>
 
             <div className="mt-6 flex justify-end">
               <button

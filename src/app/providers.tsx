@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { WalletProvider } from '@/contexts/WalletContext';
+import { WalletConnectionProvider } from '@/contexts/WalletConnectionProvider';
 
 interface ProvidersProps {
   children: ReactNode;
@@ -9,8 +9,8 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <WalletProvider>
+    <WalletConnectionProvider>
       {children}
-    </WalletProvider>
+    </WalletConnectionProvider>
   );
 }

@@ -18,24 +18,16 @@ export async function GET(request: NextRequest) {
 
     const collections = await SupabaseService.getCollectionsByCreator(wallet);
 
-    // Enhance with additional data
-    const enhancedCollections = await Promise.all(
-      collections.map(async (collection) => {
-        const [items, mintStats] = await Promise.all([
-          SupabaseService.getItemsByCollection(collection.id!, 1, 1),
-          SupabaseService.getCollectionMintStats(collection.id!)
-        ]);
-
-        return {
-          ...collection,
-          items_count: items.total,
-          minted_count: mintStats.minted || 0,
-          floor_price: mintStats.floor_price || 0,
-          volume: mintStats.volume || 0,
-          status: collection.status || 'draft'
-        };
-      })
-    );
+    // Enhance with additional data - This step is now simplified as getCollectionsByCreator fetches most data
+    const enhancedCollections = collections.map(collection => ({
+      ...collection,
+      // The counts are now directly available from the joined query results
+      items_count: collection.items_count || 0,
+      minted_count: collection.minted_count || 0,
+      floor_price: collection.floor_price || 0, // Ensure default if not set
+      volume: collection.volume || 0,           // Ensure default if not set
+      status: collection.status || 'draft'
+    }));
 
     return new Response(
       JSON.stringify({ success: true, collections: enhancedCollections }),

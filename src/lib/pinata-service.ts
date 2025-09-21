@@ -1,3 +1,5 @@
+import { MetaplexEnhancedService } from '@/lib/metaplex-enhanced';
+
 export interface IPFSUploadResult {
   imageUri: string;
   metadataUri: string;
@@ -55,14 +57,37 @@ export class PinataService {
     console.log('Pinata service initialized successfully');
   }
 
+  private async sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async withRetry<T>(fn: () => Promise<T>, attempts = 5, initialDelay = 1000): Promise<T> {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fn();
+      } catch (error: unknown) {
+        const isLastAttempt = i === attempts - 1;
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+        console.warn(`Attempt ${i + 1}/${attempts} failed: ${errorMessage}`);
+        if (isLastAttempt) {
+          throw new Error(`Failed after ${attempts} attempts: ${errorMessage}`);
+        }
+        const delay = initialDelay * Math.pow(2, i); // Exponential backoff
+        console.log(`Retrying in ${delay / 1000} seconds...`);
+        await this.sleep(delay);
+      }
+    }
+    throw new Error('Unexpected error in withRetry function'); // Should not be reached
+  }
+
   private async toGatewayUrl(cid: string): Promise<string> {
     return `https://${this.gateway}/ipfs/${cid}`;
   }
 
-  async uploadFile(fileBuffer: Buffer, fileName: string, contentType: string): Promise<string> {
-    try {
+  async uploadFile(fileBuffer: Buffer, originalFileName: string, contentType: string): Promise<string> {
+    const uploadFn = async () => {
       console.log(`Starting file upload to Pinata:`, {
-        fileName,
+        originalFileName,
         contentType,
         bufferSize: fileBuffer.length,
         gatewayConfigured: !!this.gateway
@@ -71,15 +96,11 @@ export class PinataService {
       const formData = new FormData();
       const blob = new Blob([new Uint8Array(fileBuffer)], { type: contentType });
       
-      // Ensure unique filename to prevent conflicts
-      const timestamp = Date.now();
-      const uniqueFileName = `${timestamp}_${fileName}`;
-      formData.append('file', blob, uniqueFileName);
+      formData.append('file', blob, originalFileName);
       
-      // Add pinata options to ensure individual file upload
       formData.append('pinataOptions', JSON.stringify({
         cidVersion: 1,
-        wrapWithDirectory: false // This ensures individual file upload, not folder
+        wrapWithDirectory: false
       }));
 
       console.log('Sending request to Pinata API...');
@@ -107,24 +128,23 @@ export class PinataService {
         throw new Error('Upload response missing IpfsHash');
       }
 
-      const gatewayUrl = await this.toGatewayUrl(result.IpfsHash);
+      const gatewayUrl = `https://${this.gateway}/ipfs/${result.IpfsHash}`;
+
       console.log(`File uploaded successfully:`, {
-        originalFileName: fileName,
-        uniqueFileName,
+        originalFileName,
         ipfsHash: result.IpfsHash,
         gatewayUrl: gatewayUrl,
         pinSize: result.PinSize,
         timestamp: result.Timestamp
       });
       return gatewayUrl;
-    } catch (error) {
-      console.error('Failed to upload file to Pinata:', error);
-      throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    };
+    
+    return this.withRetry(uploadFn);
   }
 
   async uploadJSON(data: Record<string, unknown>): Promise<string> {
-    try {
+    const uploadFn = async () => {
       console.log('Starting JSON upload to Pinata:', {
         dataKeys: Object.keys(data),
         hasName: !!data.name,
@@ -170,10 +190,9 @@ export class PinataService {
       const metadataUrl = `https://${this.gateway}/ipfs/${result.IpfsHash}`;
       console.log(`JSON uploaded successfully: ${metadataUrl}`);
       return metadataUrl;
-    } catch (error) {
-      console.error('Failed to upload JSON to Pinata:', error);
-      throw new Error(`Failed to upload JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    };
+    
+    return this.withRetry(uploadFn);
   }
 
   async uploadNFTAssets(

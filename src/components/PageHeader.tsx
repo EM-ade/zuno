@@ -1,8 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { useState } from 'react'
-import { useWallet } from '@solana/wallet-adapter-react'
 import { useWalletModal } from '@solana/wallet-adapter-react-ui'
+import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
 
 interface PageHeaderProps {
   title: string
@@ -17,18 +17,26 @@ export default function PageHeader({
   createButtonText = "Create", 
   createButtonHref = "/creator/create" 
 }: PageHeaderProps) {
-  const { publicKey, connected, disconnect } = useWallet()
+  const { publicKey, isConnected, isConnecting, connect, disconnect } = useWalletConnection(); // Use custom hook
   const { setVisible } = useWalletModal()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
+  // Handle connect action
+  const handleConnect = async () => {
+    // The connect function from useWalletConnection already handles opening the modal if no wallet is selected
+    // and includes retry logic. We just need to call it.
+    await connect();
+  };
+
+  // Handle disconnect action
   const handleDisconnect = async () => {
     try {
-      await disconnect()
-      setMobileNavOpen(false)
+      await disconnect();
+      setMobileNavOpen(false);
     } catch (error) {
-      console.error('Failed to disconnect wallet:', error)
+      console.error('Failed to disconnect wallet:', error);
     }
-  }
+  };
 
   return (
     <>
@@ -49,7 +57,7 @@ export default function PageHeader({
                   {createButtonText}
                 </Link>
               )}
-              {connected && publicKey && (
+              {isConnected && publicKey && (
                 <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg">
                   {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
                 </div>
@@ -67,13 +75,13 @@ export default function PageHeader({
               <span className="text-blue-600">ZUNO</span>
             </Link>
             <div className="flex items-center space-x-3">
-              {connected && publicKey ? (
+              {isConnected && publicKey ? (
                 <button className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-semibold">
                   {publicKey.toBase58().slice(0, 4)}...{publicKey.toBase58().slice(-4)}
                 </button>
               ) : (
                 <button 
-                  onClick={() => setVisible(true)} 
+                  onClick={handleConnect} 
                   className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-semibold"
                 >
                   CONNECT WALLET
@@ -131,9 +139,9 @@ export default function PageHeader({
                   </Link>
                 )}
                 <div className="border-t border-gray-200 pt-3">
-                  {!connected ? (
+                  {!isConnected ? (
                     <button 
-                      onClick={() => { setVisible(true); setMobileNavOpen(false); }} 
+                      onClick={() => { handleConnect(); setMobileNavOpen(false); }} 
                       className="w-full text-left text-blue-600 hover:text-blue-800 font-medium py-2"
                     >
                       Connect Wallet
