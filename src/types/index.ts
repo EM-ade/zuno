@@ -3,8 +3,8 @@ export interface Phase {
   name: string
   phase_type: 'og' | 'whitelist' | 'public' | 'custom'
   price: number
-  startDate: string
-  endDate?: string
+  startDate: Date | string
+  endDate?: Date | string
   mint_limit?: number
   allowed_wallets?: string[]
 }

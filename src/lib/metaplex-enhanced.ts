@@ -14,13 +14,17 @@ import {
   some,
   none,
   transactionBuilder, // Import the transactionBuilder
+  TransactionBuilder, // Import TransactionBuilder as a value
   type Umi,
   type PublicKey,
   type Signer,
-  type TransactionBuilder,
-  type TransactionResult,
-  type Signature
+  TransactionResult, // Importing TransactionResult as a value
+  Signature,
+  // type Signature // Removed as it's not directly exported in this manner
 } from '@metaplex-foundation/umi';
+import { MerkleTree } from 'merkletreejs';
+import { keccak256 } from 'js-sha3';
+// import { TransactionResult, Signature } from '@metaplex-foundation/umi'; // Remove this problematic import
 import { 
   createCollectionV1,
   createV1,
@@ -47,11 +51,14 @@ import { format, parseISO } from 'date-fns';
 
 // Phase configuration for minting
 export interface MintPhase {
+  id?: string; // Add id
   name: string;
+  phase_type: 'og' | 'whitelist' | 'public' | 'custom'; // Add phase_type
   startDate: Date | string;
   endDate?: Date | string;
   price: number; // in SOL
-  allowList?: string[]; // wallet addresses for WL/OG phases
+  mint_limit?: number; // Add mint_limit
+  allowed_wallets?: string[]; // Renamed from allowList
 }
 
 // Enhanced collection configuration
@@ -94,7 +101,7 @@ export interface UploadedNFTResult {
   imageUri: string;
   index?: number; // Optional, used for candy machine config lines
   nftAddress?: PublicKey; // For direct NFT creation
-  signature?: Signature | string; // Transaction signature (batch signature for direct creation)
+  signature?: string; // Transaction signature (batch signature for direct creation)
   owner?: string; // For direct NFT creation
   attributes?: Array<{ trait_type: string; value: string | number }>; // Add attributes property
 }
@@ -119,6 +126,12 @@ export class MetaplexEnhancedService {
     this.umi.use(keypairIdentity(keypair));
   }
 
+  private generateMerkleRoot(wallets: string[]): Uint8Array {
+    const leaves = wallets.map(wallet => Buffer.from(keccak256(wallet), 'hex'));
+    const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
+    return Buffer.from(tree.getRoot().toString('hex'), 'hex');
+  }
+
   private async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -133,7 +146,7 @@ export class MetaplexEnhancedService {
       try {
         // Step 1: Simulate transaction before sending
         console.log(`Simulating transaction (attempt ${i + 1}/${attempts})...`);
-        const simulationResult = await (builderOrSigner instanceof TransactionBuilder ? builderOrSigner.simulate(this.umi) : this.umi.rpc.simulateTransaction(await builderOrSigner.transaction(this.umi)));
+        const simulationResult = await (builderOrSigner instanceof TransactionBuilder ? (builderOrSigner as any).simulate(this.umi) : this.umi.rpc.simulateTransaction(await (builderOrSigner as any).transaction(this.umi)));
         
         if (simulationResult.value.err) {
           console.error(`Simulation failed on attempt ${i + 1}/${attempts}:`, simulationResult.value.err);
@@ -273,7 +286,7 @@ export class MetaplexEnhancedService {
       return {
         success: true,
         collectionMint: collectionMint.publicKey,
-        transactionSignature: bs58.encode(result.signature),
+        transactionSignature: bs58.encode(result.signature as Uint8Array),
         metadataUri: collectionMetadataUri,
         imageUri: collectionImageUri,
         candyMachineId,
@@ -340,12 +353,29 @@ export class MetaplexEnhancedService {
       });
     }
     
-    // Add mint limit per wallet
-    guards.mintLimit = some({
-      id: 1,
-      limit: 5 // Default limit per wallet
-    });
-    
+    // Add mint limit per wallet based on the first phase that defines it
+    if (firstPhase.mint_limit !== undefined && firstPhase.mint_limit > 0) {
+      guards.mintLimit = some({
+        id: 1,
+        limit: firstPhase.mint_limit 
+      });
+    } else {
+      // Default mint limit if not specified
+      guards.mintLimit = some({
+        id: 1,
+        limit: 5 // Default limit per wallet
+      });
+    }
+
+    // Add allow list if defined in the first phase
+    if (firstPhase.phase_type === 'whitelist' && firstPhase.allowed_wallets && firstPhase.allowed_wallets.length > 0) {
+      // For simplicity, we are assuming a single allow list for the first phase
+      // Advanced scenarios might require a more complex guard setup for multiple allow lists
+      guards.allowList = some({
+        merkleRoot: this.generateMerkleRoot(firstPhase.allowed_wallets),
+      });
+    }
+
     return guards;
   }
 
@@ -360,7 +390,7 @@ export class MetaplexEnhancedService {
     try {
       console.log(`Uploading ${nfts.length} NFTs to collection ${collectionAddress}`);
       
-      const results: UploadedNFTResult[] = [];
+      const results: UploadedNFTResult[] = []; // Explicitly type results
       const CHUNK_SIZE = 10; // Process 10 NFTs concurrently
 
       for (let i = 0; i < nfts.length; i += CHUNK_SIZE) {
@@ -464,20 +494,29 @@ export class MetaplexEnhancedService {
             batchBuilder = batchBuilder.add(builder);
           }
 
-          console.log(`Sending batch transaction for ${resolvedTransactions.length} NFTs...`);
-          const txResult = await this.withTxRetry(batchBuilder, (b) => b.sendAndConfirm(this.umi, { confirm: { commitment: 'finalized' } }));
-          console.log(`Batch transaction confirmed: ${bs58.encode(txResult.signature)}`);
+          try {
+            console.log(`Sending batch transaction for ${resolvedTransactions.length} NFTs...`);
+            const txResult = await this.withTxRetry(batchBuilder, (b) => b.sendAndConfirm(this.umi, { confirm: { commitment: 'finalized' } }));
+            console.log(`Batch transaction confirmed: ${bs58.encode(txResult.signature as Uint8Array)}`);
 
-          // Update results with created NFT addresses and signatures
-          resolvedTransactions.forEach(({ assetSigner, result }) => {
-            createdNfts.push({
-              ...result,
-              nftAddress: assetSigner.publicKey,
-              // Note: The signature here is the batch transaction signature, not individual NFT mint signature
-              // If individual mint signatures are needed, the NFTs would have to be minted one-by-one.
-              signature: bs58.encode(txResult.signature),
+            // Update results with created NFT addresses and signatures
+            resolvedTransactions.forEach(({ assetSigner, result }) => {
+              createdNfts.push({
+                ...result,
+                nftAddress: assetSigner.publicKey,
+                // Note: The signature here is the batch transaction signature, not individual NFT mint signature
+                // If individual mint signatures are needed, the NFTs would have to be minted one-by-one.
+                signature: bs58.encode(txResult.signature as Uint8Array),
+              });
             });
-          });
+          } catch (batchError) {
+            console.error(`Error in batch NFT creation:`, batchError);
+            // If a batch fails, mark all NFTs in that batch as failed
+            chunk.forEach(nft => errors.push({
+              name: nft.name,
+              error: batchError instanceof Error ? batchError.message : 'Unknown error'
+            }));
+          }
         }
         // Overwrite results with the created NFT details
         results.splice(0, results.length, ...createdNfts);
@@ -571,8 +610,8 @@ export class MetaplexEnhancedService {
     try {
       console.log(`Creating ${nfts.length} NFTs for user ${buyerWallet} in collection ${collectionAddress}`);
       
-      const results = [];
-      const errors = [];
+      const results: UploadedNFTResult[] = []; // Explicitly type results
+      const errors: Array<{ name: string; error: string }> = []; // Explicitly type errors
 
       const BATCH_CREATE_SIZE = 5; // Number of NFTs to create in one transaction
 
@@ -580,91 +619,91 @@ export class MetaplexEnhancedService {
         const chunk = nfts.slice(i, i + BATCH_CREATE_SIZE);
         console.log(`Processing NFT creation batch ${i / BATCH_CREATE_SIZE + 1} of ${Math.ceil(nfts.length / BATCH_CREATE_SIZE)}...`);
 
-        const transactionPromises = chunk.map(async (nft) => {
-          // Prepare NFT metadata
-          const nftMetadata = {
-            name: nft.name,
-            description: nft.description,
-            image: nft.imageUri,
-            attributes: nft.attributes || [],
-            properties: {
-              files: [
-                {
-                  uri: nft.imageUri,
-                  type: 'image/png'
-                }
-              ],
-              category: 'image'
-            }
-          };
-
-          // Upload metadata to IPFS
-          const metadataUri = await pinataService.uploadJSON(nftMetadata);
-
-          // Generate a new signer for the NFT
-          const assetSigner = generateSigner(this.umi);
-
-          // Create the NFT with the buyer as the owner
-          const builder = await createV1(this.umi, {
-            asset: assetSigner,
-            collection: publicKey(collectionAddress),
-            name: nft.name,
-            uri: metadataUri,
-            owner: publicKey(buyerWallet),
-            authority: this.umi.identity,
-            plugins: []
-          });
-          return { builder, assetSigner, nft, metadataUri };
-        });
-
-        const resolvedTransactionData = await Promise.all(transactionPromises);
-
-        // Combine builders into a single transaction for the chunk
-        let batchBuilder = transactionBuilder();
-        for (const { builder } of resolvedTransactionData) {
-          batchBuilder = batchBuilder.add(builder);
-        }
-
-        try {
-          console.log(`Sending batch transaction for ${resolvedTransactionData.length} NFTs...`);
-          const txResult = await this.withTxRetry(batchBuilder, (b) => b.sendAndConfirm(this.umi, { confirm: { commitment: 'finalized' } }));
-          console.log(`Batch transaction confirmed: ${bs58.encode(txResult.signature)}`);
-
-          resolvedTransactionData.forEach(({ assetSigner, nft, metadataUri }) => {
-            results.push({
+          const transactionPromises = chunk.map(async (nft) => {
+            // Prepare NFT metadata
+            const nftMetadata = {
               name: nft.name,
-              nftAddress: assetSigner.publicKey,
-              signature: bs58.encode(txResult.signature), // Batch signature
-              metadataUri,
-              imageUri: nft.imageUri,
-              owner: buyerWallet
+              description: nft.description,
+              image: nft.imageUri,
+              attributes: nft.attributes || [],
+              properties: {
+                files: [
+                  {
+                    uri: nft.imageUri,
+                    type: 'image/png'
+                  }
+                ],
+                category: 'image'
+              }
+            };
+
+            // Upload metadata to IPFS
+            const metadataUri = await pinataService.uploadJSON(nftMetadata);
+
+            // Generate a new signer for the NFT
+            const assetSigner = generateSigner(this.umi);
+
+            // Create the NFT with the buyer as the owner
+            const builder = await createV1(this.umi, {
+              asset: assetSigner,
+              collection: publicKey(collectionAddress),
+              name: nft.name,
+              uri: metadataUri,
+              owner: publicKey(buyerWallet),
+              authority: this.umi.identity,
+              plugins: []
             });
+            return { builder, assetSigner, nft, metadataUri };
           });
-        } catch (batchError) {
-          console.error(`Error in batch NFT creation:`, batchError);
-          // If a batch fails, mark all NFTs in that batch as failed
-          chunk.forEach(nft => errors.push({
-            name: nft.name,
-            error: batchError instanceof Error ? batchError.message : 'Unknown error'
-          }));
+
+          const resolvedTransactionData = await Promise.all(transactionPromises);
+
+          // Combine builders into a single transaction for the chunk
+          let batchBuilder = transactionBuilder();
+          for (const { builder } of resolvedTransactionData) {
+            batchBuilder = batchBuilder.add(builder);
+          }
+
+          try {
+            console.log(`Sending batch transaction for ${resolvedTransactionData.length} NFTs...`);
+            const txResult = await this.withTxRetry(batchBuilder, (b) => b.sendAndConfirm(this.umi, { confirm: { commitment: 'finalized' } }));
+            console.log(`Batch transaction confirmed: ${bs58.encode(txResult.signature as Uint8Array)}`);
+
+            resolvedTransactionData.forEach(({ assetSigner, nft, metadataUri }) => {
+              results.push({
+                name: nft.name,
+                nftAddress: assetSigner.publicKey,
+                signature: bs58.encode(txResult.signature as Uint8Array), // Batch signature
+                metadataUri,
+                imageUri: nft.imageUri,
+                owner: buyerWallet
+              });
+            });
+          } catch (batchError) {
+            console.error(`Error in batch NFT creation:`, batchError);
+            // If a batch fails, mark all NFTs in that batch as failed
+            chunk.forEach(nft => errors.push({
+              name: nft.name,
+              error: batchError instanceof Error ? batchError.message : 'Unknown error'
+            }));
+          }
         }
+        
+        return {
+          success: results.length > 0,
+          partialSuccess: results.length > 0 && errors.length > 0,
+          created: results,
+          failed: errors,
+          totalRequested: nfts.length,
+          totalCreated: results.length,
+          totalFailed: errors.length
+        };
+        
+      } catch (error) {
+        console.error('Error creating NFTs for user:', error);
+        throw new Error(`Failed to create NFTs: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-      
-      return {
-        success: results.length > 0,
-        partialSuccess: results.length > 0 && errors.length > 0,
-        created: results,
-        failed: errors,
-        totalRequested: nfts.length,
-        totalCreated: results.length,
-        totalFailed: errors.length
-      };
-      
-    } catch (error) {
-      console.error('Error creating NFTs for user:', error);
-      throw new Error(`Failed to create NFTs: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }
 
   /**
    * Transfer update authority to creator (industry standard)

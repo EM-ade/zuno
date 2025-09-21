@@ -3,7 +3,7 @@
  * Example of implementing all performance optimizations
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withOptimization, withRateLimit } from '@/lib/api-optimizer';
 import { dbOptimizer } from '@/lib/database-optimizer';
 
@@ -20,7 +20,7 @@ interface CollectionRecord {
   minted_count: number;
   status: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string; // Made optional
   start_date?: string | null; // From phases, might be needed for status/timeleft
   end_date?: string | null; // From phases, might be needed for status/timeleft
 }
@@ -94,7 +94,7 @@ export const GET = withRateLimit(100, 60000)(
         const sorted = sortCollections(collectionsWithStats, sortBy, sortOrder);
         
         // Return optimized response
-        return {
+        return NextResponse.json({
           success: true,
           collections: sorted,
           pagination: {
@@ -107,11 +107,15 @@ export const GET = withRateLimit(100, 60000)(
             cached: true,
             timestamp: Date.now(),
           },
-        };
+        });
         
       } catch (error) {
         console.error('Marketplace API error:', error);
-        throw new Error('Failed to fetch collections');
+        // Ensure error response is also a NextResponse
+        return NextResponse.json(
+          { success: false, error: 'Failed to fetch collections', details: error instanceof Error ? error.message : 'Unknown error' },
+          { status: 500 }
+        );
       }
     },
     {
@@ -136,7 +140,7 @@ function getCollectionStatus(collection: CollectionRecord): 'live' | 'upcoming' 
     return 'upcoming';
   }
   
-  if (endDate && endDate.isAfter(now)) { // Assuming isAfter method from a date library
+  if (endDate && endDate > now) { 
     return 'ended';
   }
    if (endDate && endDate < now) {
