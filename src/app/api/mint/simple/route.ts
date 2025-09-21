@@ -186,7 +186,7 @@ export async function PUT(request: NextRequest) {
       }
     ).single();
 
-    if (rpcError || !rpcResult || !rpcResult.success) {
+    if (rpcError || !rpcResult?.success) {
       console.error('Error from confirm_mint_atomic RPC:', rpcError?.message || rpcResult?.message || 'Unknown RPC error');
       // The RPC already handles internal transaction failures and updates mint_requests table
       // So, just return the appropriate error response.
