@@ -96,6 +96,7 @@ export interface UploadedNFTResult {
   nftAddress?: PublicKey; // For direct NFT creation
   signature?: Signature | string; // Transaction signature (batch signature for direct creation)
   owner?: string; // For direct NFT creation
+  attributes?: Array<{ trait_type: string; value: string | number }>; // Add attributes property
 }
 
 export interface NFTUploadServiceResult {

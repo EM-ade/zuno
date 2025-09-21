@@ -253,7 +253,7 @@ class CacheService {
     if (redisKeys.length > 0) {
       try {
         const redisValues = await this.redis.mget<string[]>(...redisKeys);
-        redisValues.forEach((redisData, index) => {
+        redisValues.forEach((redisData: string | null, index: number) => {
           if (redisData) {
             const originalKey = keys[index]; // Get the original key from the `keys` array
             const data = JSON.parse(redisData) as T;
