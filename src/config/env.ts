@@ -13,6 +13,8 @@ export interface EnvConfig {
   priceOracleUrl: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
+  redisUrl: string;
+  redisToken: string;
 }
 
 function getEnvVar(key: string, defaultValue?: string): string {
@@ -44,6 +46,10 @@ export const envConfig: EnvConfig = {
   // Supabase configuration
   supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+
+  // Redis configuration
+  redisUrl: process.env.REDIS_URL || '',
+  redisToken: process.env.REDIS_TOKEN || '',
 };
 
 // Function to get current SOL price in USD
