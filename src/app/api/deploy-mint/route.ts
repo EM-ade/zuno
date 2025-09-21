@@ -110,9 +110,13 @@ export async function POST(request: NextRequest) {
           });
 
           uploadedAssets.push({
-            name: asset.name,
             imageUri,
-            metadataUri
+            metadata: { // Wrap metadataUri in a metadata object
+              uri: metadataUri,
+              name: asset.name,
+              description: asset.description || '',
+              attributes: asset.attributes || [],
+            }
           });
         } catch (error) {
           console.error(`Failed to upload asset ${asset.name}:`, error);
@@ -126,10 +130,9 @@ export async function POST(request: NextRequest) {
     const candyMachineResult = await metaplexCoreService.deployCandyMachineTransaction({
       collectionMint,
       totalSupply,
-      phases: mintPhases,
       creatorWallet,
       nftAssets: uploadedAssets
-    });
+    }, mintPhases);
 
     console.log('Candy Machine transaction created:', {
       candyMachineId: candyMachineResult.candyMachineId

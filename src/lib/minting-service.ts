@@ -1,4 +1,4 @@
-import { MetaplexCoreService } from './metaplex-core-backup';
+import { MetaplexCoreService } from './metaplex-core';
 import { SupabaseService } from './supabase-service';
 
 export interface MintTransactionData {

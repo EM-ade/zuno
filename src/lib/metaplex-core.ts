@@ -10,6 +10,15 @@ import { MerkleTree } from 'merkletreejs';
 import keccak256 from 'keccak256';
 import { Connection, Keypair, SystemProgram, Transaction, VersionedTransaction, LAMPORTS_PER_SOL, PublicKey, TransactionInstruction, TransactionMessage } from '@solana/web3.js';
 import { SupabaseService } from "./supabase-service";
+// import { MintPhase } from './metaplex-enhanced'; // Removed incorrect import
+
+export interface UMITransactionResult {
+  instructions?: Array<{
+    keys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
+    programId: string;
+    data: Uint8Array;
+  }>;
+}
 
 export interface MintPhase {
   name: string;
@@ -18,6 +27,11 @@ export interface MintPhase {
   endTime?: string; // ISO string
   allowList?: string[]; // array of wallet addresses
   mintLimit?: number; // max mints per wallet
+}
+
+export interface Creator {
+  address: string;
+  share: number;
 }
 
 export interface CollectionConfig {
@@ -29,6 +43,8 @@ export interface CollectionConfig {
   phases: MintPhase[];
   creatorWallet: string;
   imageUri?: string;
+  // price: number; // Temporarily comment out price
+  price: number; // Re-add price
 }
 
 export interface CreatedCollection {
@@ -108,12 +124,7 @@ export class MetaplexCoreService {
 
   async createCollection(config: CollectionConfig): Promise<CreatedCollection> {
     try {
-      const { name, symbol, description, totalSupply, phases, creatorWallet, imageUri } = config;
-
-      // Validate phases (now optional) - only validate if phases array is explicitly provided and empty
-      if (Array.isArray(phases) && phases.length === 0) {
-        throw new Error('If phases are provided, at least one mint phase is required');
-      }
+      const { name, symbol, description, totalSupply, creatorWallet, imageUri, price, phases } = config;
 
       // Server wallet balance check removed - let Solana network handle insufficient funds
 
@@ -139,7 +150,7 @@ export class MetaplexCoreService {
           ],
           category: 'image',
           creators: [
-            {
+            { 
               address: creatorWallet,
               share: 100
             }
@@ -157,7 +168,7 @@ export class MetaplexCoreService {
       const candyMachine = generateSigner(this.umi);
 
       // Configure guard groups for each phase (if phases exist)
-      const guardGroups = (phases || []).map((phase, index) => ({
+      const guardGroups = (config.phases || []).map((phase, index) => ({
         label: phase.name,
         guards: this.configureGuardsForPhase(phase, creatorWallet),
       }));
@@ -166,9 +177,9 @@ export class MetaplexCoreService {
       const transaction = transactionBuilder()
         .add(
           await createCollectionV1(this.umi, {
-            collection: collectionMint,
-            name,
-            uri: collectionMetadataUri,
+        collection: collectionMint,
+        name,
+        uri: collectionMetadataUri,
           })
         )
         .add(
@@ -186,7 +197,7 @@ export class MetaplexCoreService {
               uriLength: 30,
               isSequential: false,
             }),
-            guards: phases && phases.length > 0 ? this.configureGuardsForPhase(phases[0], creatorWallet) : {}, // Default guards
+            guards: config.phases && config.phases.length > 0 ? this.configureGuardsForPhase(config.phases[0], creatorWallet) : {},
             groups: guardGroups,
           })
         );
@@ -198,13 +209,13 @@ export class MetaplexCoreService {
 
       // Map phases to guard group IDs
       const phaseMapping: Record<string, string> = {};
-      (phases || []).forEach((phase, index) => {
+      (config.phases || []).forEach((phase, index) => {
         phaseMapping[phase.name] = index.toString();
       });
 
       return {
-        collectionMint: collectionMint.publicKey,
-        candyMachineId: candyMachine.publicKey,
+        collectionMint: collectionMint.publicKey.toString(), // Convert PublicKey to string
+        candyMachineId: candyMachine.publicKey.toString(), // Convert PublicKey to string
         transactionSignature: result.signature.toString(),
         phases: phaseMapping,
       };
@@ -375,19 +386,17 @@ export class MetaplexCoreService {
   }
 
   // Stage 2: Deploy Candy Machine linked to existing Collection NFT
-  // Stage 2: Deploy Candy Machine linked to existing Collection NFT
   async deployCandyMachineTransaction(config: {
     collectionMint: string;
     totalSupply: number;
-    phases: MintPhase[];
     creatorWallet: string;
     nftAssets?: Array<{ imageUri: string; metadata: unknown }>;
-  }): Promise<{
+  }, phases: MintPhase[]): Promise<{
     transactionBase64: string;
     candyMachineId: string;
   }> {
     try {
-      const { collectionMint, totalSupply, phases, creatorWallet, nftAssets } = config;
+      const { collectionMint, totalSupply, creatorWallet, nftAssets } = config;
 
       // Validate phases
       if (!phases || phases.length === 0) {
@@ -441,15 +450,6 @@ export class MetaplexCoreService {
       const connection = new Connection(envConfig.solanaRpcUrl);
       const { blockhash } = await connection.getLatestBlockhash('finalized');
 
-      // Define interface for UMI transaction result
-      interface UMITransactionResult {
-        instructions?: Array<{
-          keys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
-          programId: string;
-          data: Uint8Array;
-        }>;
-      }
-
       const instructions: TransactionInstruction[] = [];
       // Convert UMI instructions to web3.js format
       if (builtTx && typeof builtTx === 'object' && 'instructions' in builtTx) {
@@ -482,7 +482,7 @@ export class MetaplexCoreService {
 
       return {
         transactionBase64,
-        candyMachineId: candyMachine.publicKey
+        candyMachineId: candyMachine.publicKey.toString() // Convert PublicKey to string
       };
 
     } catch (error) {
@@ -548,14 +548,15 @@ export class MetaplexCoreService {
     return guards;
   }
 
-  async createCollectionTransaction(config: CollectionConfig): Promise<{
+  async createCollectionTransaction(config: CollectionConfig, phases: MintPhase[]): Promise<{
     transactionBase64: string;
     collectionMint: string;
     candyMachineId: string;
     metadataUri: string;
+    collectionAddress: string;
   }> {
     try {
-      const { name, symbol, description, totalSupply, phases, creatorWallet, imageUri } = config;
+      const { name, symbol, description, totalSupply, creatorWallet, imageUri } = config;
 
       // Validate phases (now optional) - only validate if phases array is explicitly provided and empty
       if (Array.isArray(phases) && phases.length === 0) {
@@ -600,9 +601,9 @@ export class MetaplexCoreService {
         .add(
           // This instruction designates the asset as a collection
           await createCollectionV1(tempUmi, {
-            collection: collectionMint,
-            name,
-            uri: collectionMetadataUri,
+        collection: collectionMint,
+        name,
+        uri: collectionMetadataUri,
             updateAuthority: publicKey(creatorWallet), // User's wallet is the authority
           })
         )
@@ -631,15 +632,6 @@ export class MetaplexCoreService {
 
       // Build the transaction and get the serialized version
       const builtTx = await umiTransaction.build(tempUmi);
-
-      // Define interface for UMI transaction result
-      interface UMITransactionResult {
-        instructions?: Array<{
-          keys: Array<{ pubkey: string; isSigner: boolean; isWritable: boolean }>;
-          programId: string;
-          data: Uint8Array;
-        }>;
-      }
 
       const instructions: TransactionInstruction[] = [];
       // Convert UMI instructions to web3.js format
@@ -672,12 +664,13 @@ export class MetaplexCoreService {
 
       // Serialize transaction to base64
       const transactionBase64 = Buffer.from(versionedTransaction.serialize()).toString('base64');
-
+      
       return {
         transactionBase64,
-        collectionMint: collectionMint.publicKey,
-        candyMachineId: candyMachine.publicKey,
-        metadataUri: collectionMetadataUri
+        collectionMint: collectionMint.publicKey.toString(), // Convert PublicKey to string
+        candyMachineId: candyMachine.publicKey.toString(), // Convert PublicKey to string
+        metadataUri: collectionMetadataUri,
+        collectionAddress: collectionMint.publicKey.toString() // Also return collectionAddress
       };
 
     } catch (error) {

@@ -144,8 +144,9 @@ export async function POST(request: NextRequest) {
         royaltyPercentage: royaltyPercentage || 5,
         creatorWallet,
         imageUri,
-        phases: mintPhases
-      });
+        price: mintPrice, // Add price here
+        phases: mintPhases,
+      }, mintPhases);
 
       return new Response(
         JSON.stringify({
@@ -162,7 +163,8 @@ export async function POST(request: NextRequest) {
             totalSupply,
             royaltyPercentage: royaltyPercentage || 5,
             imageUri,
-            creatorWallet
+            creatorWallet,
+            price: mintPrice, // Also add price to collectionData
           },
           phases: mintPhases
         }),
@@ -179,6 +181,7 @@ export async function POST(request: NextRequest) {
       royaltyPercentage: royaltyPercentage || 5,
       creatorWallet,
       imageUri,
+      price: mintPrice, // Add price here
       phases: mintPhases
     });
 

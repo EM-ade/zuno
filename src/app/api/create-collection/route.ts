@@ -1,18 +1,18 @@
 import { NextRequest } from "next/server";
-import { metaplexCoreService } from "@/lib/metaplex-core";
+import { metaplexCoreService, MintPhase } from "@/lib/metaplex-core";
 import { pinataService } from "@/lib/pinata-service";
 import { SupabaseService } from "@/lib/supabase-service";
 import { magicEdenService, MagicEdenCollectionData } from "@/lib/magic-eden-service";
 
 // Types for the API request
-interface Phase {
-  name: string;
-  price: number;
-  startTime: string;
-  endTime?: string;
-  allowList?: string[];
-  mintLimit?: number;
-}
+// interface Phase { // Removed local Phase interface
+//   name: string;
+//   price: number;
+//   startTime: string;
+//   endTime?: string;
+//   allowList?: string[];
+//   mintLimit?: number;
+// }
 
 interface CreateCollectionRequest {
   collectionName: string;
@@ -20,9 +20,10 @@ interface CreateCollectionRequest {
   description: string;
   totalSupply: number;
   royaltyPercentage: number;
-  phases?: Phase[]; // Now optional
+  phases?: MintPhase[]; // Now using imported MintPhase
   creatorWallet: string;
   imageData?: string; // Base64 encoded image data
+  price: number; // Add price to CollectionConfig
 }
 
 export async function POST(request: NextRequest) {
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
       phases,
       creatorWallet,
       imageData,
+      price // Extract price from body
     } = body;
 
     // Validate required fields
@@ -94,16 +96,10 @@ export async function POST(request: NextRequest) {
       description,
       totalSupply,
       royaltyPercentage,
-      phases: phases?.map(phase => ({
-        name: phase.name,
-        price: phase.price,
-        startTime: phase.startTime,
-        endTime: phase.endTime,
-        allowList: phase.allowList,
-        mintLimit: phase.mintLimit,
-      })) || [],
       creatorWallet,
       imageUri,
+      price, // Explicitly pass price here
+      phases: phases || [], // Directly pass phases
     });
 
     // Store collection data in Supabase

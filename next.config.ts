@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   // Enable Turbopack for faster development
-  turbopack: true,
+  
 
   // Enable React Strict Mode for better error detection
   reactStrictMode: true,

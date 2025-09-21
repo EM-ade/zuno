@@ -48,8 +48,8 @@ export const envConfig: EnvConfig = {
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
 
   // Redis configuration
-  redisUrl: process.env.REDIS_URL || '',
-  redisToken: process.env.REDIS_TOKEN || '',
+  redisUrl: process.env.UPSTASH_REDIS_REST_URL || '',
+  redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || '',
 };
 
 // Function to get current SOL price in USD
@@ -85,4 +85,12 @@ if (!envConfig.pinataJwt) {
 
 if (!envConfig.pinataGateway) {
   console.warn('PINATA_GATEWAY environment variable is missing - using fallback');
+}
+
+if (!envConfig.redisUrl) {
+  console.warn('REDIS_URL environment variable is missing');
+}
+
+if (!envConfig.redisToken) {
+  console.warn('REDIS_TOKEN environment variable is missing');
 }
