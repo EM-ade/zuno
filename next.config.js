@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
-const path = require('path');
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the directory name in ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const nextConfig = {
   // Enable React Strict Mode for better error detection
@@ -73,4 +78,4 @@ const nextConfig = {
   }
 };
 
-module.exports = nextConfig;
+export default nextConfig;
