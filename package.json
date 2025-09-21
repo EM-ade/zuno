@@ -11,7 +11,9 @@
     "test:supabase": "node test-supabase-connection.js",
     "migrate:supabase": "node scripts/run-supabase-migration.js",
     "vercel-install": "npm install --legacy-peer-deps --no-audit",
-    "vercel-build": "next build"
+    "vercel-build": "next build",
+    "clean-install": "rm -rf node_modules package-lock.json && npm cache clean --force && npm install --legacy-peer-deps",
+    "clean-install-win": "rmdir /s /q node_modules && del package-lock.json && npm cache clean --force && npm install --legacy-peer-deps"
   },
   "dependencies": {
     "@irys/sdk": "^0.2.11",
