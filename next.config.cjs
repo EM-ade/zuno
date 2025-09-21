@@ -1,11 +1,4 @@
 /** @type {import('next').NextConfig} */
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Get the directory name in ES module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const nextConfig = {
   // Enable React Strict Mode for better error detection
   reactStrictMode: true,
@@ -53,15 +46,15 @@ const nextConfig = {
   // Webpack configuration for module resolution
   webpack: (config, { isServer }) => {
     // Explicitly set resolve paths
-    config.resolve.modules.push(path.resolve('./src'));
+    config.resolve.modules.push(require('path').resolve('./src'));
     
     // Update aliases to use absolute paths
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@/components': path.resolve(__dirname, 'src/components'),
-      '@/types': path.resolve(__dirname, 'src/types'),
-      '@/contexts': path.resolve(__dirname, 'src/contexts'),
-      '@/lib': path.resolve(__dirname, 'src/lib'),
+      '@/components': require('path').resolve(__dirname, 'src/components'),
+      '@/types': require('path').resolve(__dirname, 'src/types'),
+      '@/contexts': require('path').resolve(__dirname, 'src/contexts'),
+      '@/lib': require('path').resolve(__dirname, 'src/lib'),
     };
 
     return config;
@@ -78,4 +71,4 @@ const nextConfig = {
   }
 };
 
-export default nextConfig;
+module.exports = nextConfig;
