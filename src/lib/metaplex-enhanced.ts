@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * Enhanced Metaplex Core Service
  * Supports: Collections with pricing, phases, image uploads, and NFT management
@@ -7,9 +5,9 @@
  */
 
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { 
-  keypairIdentity, 
-  generateSigner, 
+import {
+  keypairIdentity,
+  generateSigner,
   publicKey, // UMI's publicKey function
   sol,
   dateTime,
@@ -23,7 +21,7 @@ import {
 } from '@metaplex-foundation/umi';
 import { MerkleTree } from 'merkletreejs';
 import { keccak256 } from 'js-sha3';
-import { 
+import {
   createCollectionV1,
   createV1,
   fetchCollectionV1,
@@ -34,7 +32,7 @@ import {
   type AssetV1,
   updateCollectionV1
 } from '@metaplex-foundation/mpl-core';
-import { 
+import {
   create as createCandyMachine,
   mplCandyMachine,
   addConfigLines,
@@ -69,21 +67,21 @@ export interface EnhancedCollectionConfig {
   name: string;
   symbol: string;
   description: string;
-  
+
   // Pricing
   price: number; // Base price in SOL
-  
+
   // Creator info
   creatorWallet: string;
   royaltyPercentage?: number;
-  
+
   // Media
   imageFile?: File | Buffer; // For upload
   imageUri?: string; // Or direct URI
-  
+
   // Supply
   totalSupply: number;
-  
+
   // Optional phases
   phases?: MintPhase[];
 }
@@ -118,6 +116,10 @@ export class MetaplexEnhancedService {
   private umi: Umi;
 
   constructor() {
+    console.log('Initializing MetaplexEnhancedService constructor...');
+    console.log('envConfig.solanaRpcUrl:', envConfig.solanaRpcUrl);
+    console.log('envConfig.serverWalletPrivateKey:', envConfig.serverWalletPrivateKey);
+
     this.umi = createUmi(envConfig.solanaRpcUrl)
       .use(mplCore())
       .use(mplCandyMachine());
@@ -126,6 +128,7 @@ export class MetaplexEnhancedService {
     const privateKey = bs58.decode(envConfig.serverWalletPrivateKey);
     const keypair = this.umi.eddsa.createKeypairFromSecretKey(privateKey);
     this.umi.use(keypairIdentity(keypair));
+    console.log('UMI identity public key:', this.umi.identity.publicKey.toString());
   }
 
   private generateMerkleRoot(wallets: string[]): Uint8Array {
@@ -138,44 +141,42 @@ export class MetaplexEnhancedService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private async withTxRetry<T extends TransactionBuilder | Signer>( // Allow TransactionBuilder or Signer
+  // The `withTxRetry` method is designed for server-side transactions.
+  // We'll keep it for the collection and candy machine creation which are server-paid.
+  private async withTxRetry<T extends TransactionBuilder | Signer>(
     builderOrSigner: T,
-    fn: (b: T) => Promise<any>, // Changed to any to avoid Signature type issue temporarily
-    attempts = 5, 
+    fn: (b: T) => Promise<{ signature: Uint8Array }>,
+    attempts = 5,
     initialDelay = 1000
-  ): Promise<any> { // Changed to any
+  ): Promise<{ signature: Uint8Array }> {
     for (let i = 0; i < attempts; i++) {
       try {
-        // Step 1: Simulate transaction before sending (only for TransactionBuilder)
-        if (builderOrSigner instanceof TransactionBuilder) {
+        if ('build' in builderOrSigner) {
           console.log(`Simulating transaction (attempt ${i + 1}/${attempts})...`);
-          const builtTransaction = await builderOrSigner.build(this.umi);
-          const connection = new Connection(envConfig.solanaRpcUrl); // Use web3.js Connection
+          const builtTransaction = await (builderOrSigner as TransactionBuilder).build(this.umi);
+          const connection = new Connection(envConfig.solanaRpcUrl);
 
-          // Convert UMI Transaction to web3.js VersionedTransaction for simulation
           let instructions: TransactionInstruction[] = [];
+          
+          // Type-safe transaction parsing
           if ('items' in builtTransaction && Array.isArray(builtTransaction.items)) {
-            instructions = builtTransaction.items.map((ix: any) => new TransactionInstruction({
+            instructions = builtTransaction.items.map((ix: {
+              programId: { toString(): string };
+              keys: Array<{
+                pubkey: { toString(): string };
+                isSigner: boolean;
+                isWritable: boolean;
+              }>;
+              data: Uint8Array;
+            }) => new TransactionInstruction({
               programId: new SolanaWeb3PublicKey(ix.programId.toString()),
-              keys: ix.keys.map((k: any) => ({
+              keys: ix.keys.map((k) => ({
                 pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
                 isSigner: k.isSigner,
                 isWritable: k.isWritable
               })),
               data: Buffer.from(ix.data)
             }));
-          } else if ('instructions' in builtTransaction && Array.isArray(builtTransaction.instructions)) {
-            instructions = builtTransaction.instructions.map((ix: any) => new TransactionInstruction({
-              programId: new SolanaWeb3PublicKey(ix.programId.toString()),
-              keys: ix.keys.map((k: any) => ({
-                pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
-                isSigner: k.isSigner,
-                isWritable: k.isWritable
-              })),
-              data: Buffer.from(ix.data)
-            }));
-          } else {
-            throw new Error('Unable to extract instructions from UMI transaction for simulation.');
           }
 
           const { blockhash } = await connection.getLatestBlockhash('finalized');
@@ -187,7 +188,7 @@ export class MetaplexEnhancedService {
           const versionedTx = new VersionedTransaction(messageV0);
 
           const simulationResult = await connection.simulateTransaction(versionedTx);
-          
+
           if (simulationResult.value.err) {
             console.error(`Simulation failed on attempt ${i + 1}/${attempts}:`, simulationResult.value.err);
             if (i === attempts - 1) {
@@ -199,11 +200,8 @@ export class MetaplexEnhancedService {
             continue;
           }
           console.log(`Simulation successful on attempt ${i + 1}/${attempts}.`);
-        } else {
-          console.log(`Bypassing simulation for Signer type. Attempt ${i + 1}/${attempts}.`);
         }
 
-        // Step 2: Send and confirm if simulation passed (or skipped)
         console.log(`Sending and confirming transaction (attempt ${i + 1}/${attempts})...`);
         return await fn(builderOrSigner);
 
@@ -214,12 +212,12 @@ export class MetaplexEnhancedService {
         if (isLastAttempt) {
           throw new Error(`Failed to send and confirm transaction after ${attempts} attempts: ${errorMessage}`);
         }
-        const delay = initialDelay * Math.pow(2, i); // Exponential backoff
+        const delay = initialDelay * Math.pow(2, i);
         console.log(`Retrying in ${delay / 1000} seconds...`);
         await this.sleep(delay);
       }
     }
-    throw new Error('Unexpected error in withTxRetry function'); // Should not be reached
+    throw new Error('Unexpected error in withTxRetry function');
   }
 
   /**
@@ -233,18 +231,18 @@ export class MetaplexEnhancedService {
       let collectionImageUri = config.imageUri;
       if (config.imageFile) {
         console.log('Uploading collection image to Pinata...');
-        const fileBuffer = config.imageFile instanceof File 
+        const fileBuffer = config.imageFile instanceof File
           ? Buffer.from(await config.imageFile.arrayBuffer())
           : config.imageFile;
-        const fileName = config.imageFile instanceof File 
-          ? config.imageFile.name 
+        const fileName = config.imageFile instanceof File
+          ? config.imageFile.name
           : `collection-${Date.now()}.png`;
-        const contentType = config.imageFile instanceof File 
-          ? config.imageFile.type 
+        const contentType = config.imageFile instanceof File
+          ? config.imageFile.type
           : 'image/png';
         collectionImageUri = await pinataService.uploadFile(fileBuffer, fileName, contentType);
       }
-      
+
       if (!collectionImageUri) {
         collectionImageUri = 'https://placeholder.com/collection-image.png';
       }
@@ -272,7 +270,7 @@ export class MetaplexEnhancedService {
 
       // Step 3: Upload metadata to IPFS
       const collectionMetadataUri = await pinataService.uploadJSON(collectionMetadata);
-      
+
       // Step 4: Prepare on-chain transactions as a single batch
       const collectionMint = generateSigner(this.umi);
       const candyMachine = generateSigner(this.umi);
@@ -354,35 +352,35 @@ export class MetaplexEnhancedService {
     basePrice: number
   ): GuardSet {
     const guards: GuardSet = {};
-    
+
     // Find the earliest phase for start date
     const sortedPhases = [...phases].sort((a, b) => {
       const dateA = parseISO(a.start_time);
       const dateB = parseISO(b.start_time);
       return dateA.getTime() - dateB.getTime();
     });
-    
+
     const firstPhase = sortedPhases[0];
     const lastPhase = sortedPhases[sortedPhases.length - 1];
-    
+
     // Set start date from first phase
     if (firstPhase.start_time) {
       const startDate = parseISO(firstPhase.start_time);
-      
+
       guards.startDate = some({
         date: dateTime(startDate)
       });
     }
-    
+
     // Set end date from last phase if available
     if (lastPhase.end_time) {
       const endDate = parseISO(lastPhase.end_time);
-        
+
       guards.endDate = some({
         date: dateTime(endDate)
       });
     }
-    
+
     // Use the base price or first phase price for SOL payment
     const mintPrice = firstPhase.price || basePrice;
     if (mintPrice > 0) {
@@ -391,12 +389,12 @@ export class MetaplexEnhancedService {
         destination: publicKey(creatorWallet)
       });
     }
-    
+
     // Add mint limit per wallet based on the first phase that defines it
     if (firstPhase.mint_limit !== undefined && firstPhase.mint_limit > 0) {
       guards.mintLimit = some({
         id: 1,
-        limit: firstPhase.mint_limit 
+        limit: firstPhase.mint_limit
       });
     } else {
       // Default mint limit if not specified
@@ -419,224 +417,106 @@ export class MetaplexEnhancedService {
   }
 
   /**
-   * Upload NFTs to an existing collection
+   * This function should not exist in its current form, as it attempts to mint NFTs
+   * for a user with the server's wallet. We will refactor it into a two-step process:
+   * 1. A server function to create a transaction.
+   * 2. A client-side function to sign and send the transaction.
+   *
+   * The original `uploadNFTsToCollection` function is now split.
+   * The upload part remains on the server, but the on-chain minting is now a separate,
+   * client-side responsibility.
+   *
+   * We will create a new function that returns the unsigned transaction for the client.
    */
-  async uploadNFTsToCollection(
-    collectionAddress: string,
-    candyMachineAddress: string | null,
-    nfts: NFTUploadConfig[]
-  ) {
-    try {
-      console.log(`Uploading ${nfts.length} NFTs to collection ${collectionAddress}`);
-      
-      const results: UploadedNFTResult[] = []; // Explicitly type results
-      const errors: Array<{ name: string; error: string }> = []; // Explicitly type errors
-      const CHUNK_SIZE = 10; // Process 10 NFTs concurrently
-
-      for (let i = 0; i < nfts.length; i += CHUNK_SIZE) {
-        const chunk = nfts.slice(i, i + CHUNK_SIZE);
-        console.log(`Processing chunk ${i / CHUNK_SIZE + 1} of ${Math.ceil(nfts.length / CHUNK_SIZE)}...`);
-
-        // Stage 1: Upload all images in the chunk in parallel
-        console.log(`  Uploading ${chunk.length} images...`);
-        const imageUploadPromises = chunk.map(async (nft) => {
-          if (!nft.imageFile) {
-            return nft.imageUri || 'https://placeholder.com/nft.png';
-          }
-          const fileBuffer = nft.imageFile instanceof File 
-            ? Buffer.from(await nft.imageFile.arrayBuffer())
-            : nft.imageFile;
-          const fileName = nft.imageFile instanceof File ? nft.imageFile.name : `nft-${Date.now()}.png`;
-          const contentType = nft.imageFile instanceof File ? nft.imageFile.type : 'image/png';
-          return pinataService.uploadFile(fileBuffer, fileName, contentType);
-        });
-        const imageUris = await Promise.all(imageUploadPromises);
-        console.log(`  Finished uploading images.`);
-
-        // Stage 2: Prepare and upload all metadata in the chunk in parallel
-        console.log(`  Uploading ${chunk.length} metadata files...`);
-        const metadataUploadPromises = chunk.map(async (nft, indexInChunk) => {
-          const overallIndex = i + indexInChunk;
-          const nftImageUri = imageUris[indexInChunk];
-
-          const nftMetadata = {
-            name: nft.name,
-            description: nft.description,
-            image: nftImageUri,
-            attributes: nft.attributes || [],
-            properties: {
-              files: [{ uri: nftImageUri, type: 'image/png' }],
-              category: 'image'
-            }
-          };
-          const metadataUri = await pinataService.uploadJSON(nftMetadata);
-
-          return {
-            name: nft.name,
-            metadataUri,
-            imageUri: nftImageUri,
-            index: overallIndex,
-          };
-        });
-
-        const chunkResults = await Promise.all(metadataUploadPromises);
-        console.log(`  Finished uploading metadata.`);
-        results.push(...chunkResults);
-      }
-      
-      // If candy machine exists, add all config lines at once
-      if (candyMachineAddress) {
-        const configLines = results.map(r => ({ name: r.name, uri: r.metadataUri }));
-        
-        if (configLines.length > 0) {
-          console.log('Adding all config lines to candy machine at once...');
-
-          // Fetch the candy machine to find the current number of items loaded
-          const candyMachine = await fetchCandyMachine(this.umi, publicKey(candyMachineAddress));
-          const currentIndex = candyMachine.itemsLoaded;
-
-          console.log(`Candy machine has ${currentIndex} items. Adding new items at this index.`);
-
-          const builder = await addConfigLines(this.umi, {
-            candyMachine: publicKey(candyMachineAddress),
-            index: currentIndex,
-            configLines
-          });
-          await builder.sendAndConfirm(this.umi, { confirm: { commitment: 'finalized' } });
-          console.log(`Added ${configLines.length} NFTs to candy machine`);
-        }
-      } else {
-        // Direct NFT creation - batching multiple createV1 instructions into single transactions
-        const BATCH_TX_SIZE = 5; // Number of NFTs to include in one transaction
-        const createdNfts: UploadedNFTResult[] = [];
-
-        for (let j = 0; j < results.length; j += BATCH_TX_SIZE) {
-          const txChunk = results.slice(j, j + BATCH_TX_SIZE);
-          console.log(`Processing direct NFT creation batch ${j / BATCH_TX_SIZE + 1} of ${Math.ceil(results.length / BATCH_TX_SIZE)}...`);
-
-          const transactionPromises = txChunk.map(async (result) => {
-            const assetSigner = generateSigner(this.umi);
-            const builder = await createV1(this.umi, {
-              asset: assetSigner,
-              collection: publicKey(collectionAddress),
-              name: result.name,
-              uri: result.metadataUri,
-              authority: this.umi.identity
-            });
-            return { builder, assetSigner, result };
-          });
-          
-          const resolvedTransactions = await Promise.all(transactionPromises);
-
-          // Combine builders into a single transaction for the chunk
-          let batchBuilder = transactionBuilder();
-          for (const { builder } of resolvedTransactions) {
-            batchBuilder = batchBuilder.add(builder);
-          }
-
-          try {
-            console.log(`Sending batch transaction for ${resolvedTransactions.length} NFTs...`);
-            const txResult = await this.withTxRetry(batchBuilder, (b) => b.sendAndConfirm(this.umi, { confirm: { commitment: 'finalized' } }));
-            console.log(`Batch transaction confirmed: ${bs58.encode(txResult.signature as Uint8Array)}`);
-
-            // Update results with created NFT addresses and signatures
-            resolvedTransactions.forEach(({ assetSigner, result }) => {
-              createdNfts.push({
-                ...result,
-                nftAddress: assetSigner.publicKey,
-                // Note: The signature here is the batch transaction signature, not individual NFT mint signature
-                // If individual mint signatures are needed, the NFTs would have to be minted one-by-one.
-                signature: bs58.encode(txResult.signature as Uint8Array),
-              });
-            });
-          } catch (batchError) {
-            console.error(`Error in batch NFT creation:`, batchError);
-            // If a batch fails, mark all NFTs in that batch as failed
-            txChunk.forEach((nft: UploadedNFTResult) => errors.push({
-              name: nft.name,
-              error: batchError instanceof Error ? batchError.message : 'Unknown error'
-            }));
-          }
-        }
-        // Overwrite results with the created NFT details
-        results.splice(0, results.length, ...createdNfts);
-      }
-      
-      return {
-        success: true,
-        uploadedCount: results.length,
-        nfts: results
-      };
-      
-    } catch (error) {
-      console.error('Error uploading NFTs:', error);
-      throw new Error(`Failed to upload NFTs: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
 
   /**
    * Create a mint transaction for candy machine (user pays)
+   * Returns an unsigned, serialized transaction for the client to sign and send.
    */
   async createCandyMachineMintTransaction(
     candyMachineAddress: string,
     buyerWallet: string,
-    quantity: number = 1
-  ) {
+    quantity: number = 1,
+  ): Promise<{ transactionBase64: string, nftMintAddress: string }> {
     try {
-      console.log(`Creating mint transaction for ${quantity} NFTs from candy machine ${candyMachineAddress}`);
+      console.log(`Generating mint transaction for ${quantity} NFTs from candy machine ${candyMachineAddress} for ${buyerWallet}`);
+
+      const candyMachine = await fetchCandyMachine(this.umi, publicKey(candyMachineAddress));
+      console.log('Fetched Candy Machine:', candyMachine);
+
+      const nftMint = generateSigner(this.umi);
+      console.log('Buyer Wallet:', buyerWallet);
+
+      // Create the mint instruction
+      const mintInstruction = mintV1(this.umi, {
+        candyMachine: publicKey(candyMachineAddress),
+        collection: publicKey(candyMachine.collectionMint.toString()),
+        asset: nftMint,
+        owner: publicKey(buyerWallet)
+      });
+
+      // Create transaction builder and add the instruction
+      let mintBuilder = transactionBuilder().add(mintInstruction);
+
+      // Set the latest blockhash
+      mintBuilder = await mintBuilder.setLatestBlockhash(this.umi);
+
+      const builtTransaction = await mintBuilder.build(this.umi);
       
-      const { Connection: Web3Connection, Transaction: Web3Transaction, SystemProgram, PublicKey: SolanaWeb3PublicKey, LAMPORTS_PER_SOL } = await import('@solana/web3.js'); // Renamed Connection and Transaction to avoid conflict
-      const connection = new Web3Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com');
+      // Convert UMI transaction to web3.js VersionedTransaction
+      const connection = new Connection(envConfig.solanaRpcUrl);
+      const { blockhash } = await connection.getLatestBlockhash('finalized');
       
-      // For now, create a simple payment transaction
-      // The actual candy machine minting will be handled separately
-      // This is a placeholder for the actual Metaplex Candy Machine mint instruction
-      const transaction = new Web3Transaction(); // Use Web3Transaction
+      // Extract instructions from UMI transaction
+      const instructions: TransactionInstruction[] = [];
       
-      // Add platform fee (temporary solution until proper candy machine integration)
-      const platformFee = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL fee
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
-          toPubkey: new SolanaWeb3PublicKey(process.env.NEXT_PUBLIC_PLATFORM_WALLET || buyerWallet),
-          lamports: Math.floor(platformFee * quantity)
-        })
-      );
+      if ('items' in builtTransaction && Array.isArray(builtTransaction.items)) {
+        instructions.push(...builtTransaction.items.map((ix: {
+          programId: { toString(): string };
+          keys: Array<{
+            pubkey: { toString(): string };
+            isSigner: boolean;
+            isWritable: boolean;
+          }>;
+          data: Uint8Array;
+        }) => new TransactionInstruction({
+          programId: new SolanaWeb3PublicKey(ix.programId.toString()),
+          keys: ix.keys.map((k) => ({
+            pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable
+          })),
+          data: Buffer.from(ix.data)
+        })));
+      }
+
+      // Create versioned transaction message
+      const messageV0 = new TransactionMessage({
+        payerKey: new SolanaWeb3PublicKey(buyerWallet),
+        recentBlockhash: blockhash,
+        instructions,
+      }).compileToV0Message();
+
+      const versionedTx = new VersionedTransaction(messageV0);
       
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = new SolanaWeb3PublicKey(buyerWallet);
-      
-      // Serialize for client signing
-      const serializedTransaction = transaction.serialize({
-        requireAllSignatures: false,
-        verifySignatures: false
-      }).toString('base64');
-      
+      // Serialize the versioned transaction
+      const transactionBase64 = Buffer.from(versionedTx.serialize()).toString('base64');
+
+      console.log('Unsigned mint transaction generated.');
+
       return {
-        success: true,
-        transactions: [{
-          transaction: serializedTransaction,
-          nftMint: 'pending'
-        }],
-        candyMachine: {
-          address: candyMachineAddress,
-          price: 0.01, // Temporary fixed price
-          itemsAvailable: 1000,
-          itemsRedeemed: 0
-        }
+        transactionBase64,
+        nftMintAddress: nftMint.publicKey.toString(),
       };
-      
     } catch (error) {
-      console.error('Error creating candy machine mint transaction:', error);
+      console.error('Error generating candy machine mint transaction:', error);
       throw error;
     }
   }
 
   /**
    * Create NFTs directly for a user using Metaplex Core
-   * This avoids ownership transfer issues by creating NFTs with the correct owner from the start
+   * This method is now refactored to generate an unsigned transaction that the user pays for.
    */
   async createNFTsForUser(
     collectionAddress: string,
@@ -649,102 +529,84 @@ export class MetaplexEnhancedService {
     }>
   ) {
     try {
-      console.log(`Creating ${nfts.length} NFTs for user ${buyerWallet} in collection ${collectionAddress}`);
-      
-      const results: UploadedNFTResult[] = []; // Explicitly type results
-      const errors: Array<{ name: string; error: string }> = []; // Explicitly type errors
+      console.log(`Preparing to create ${nfts.length} NFTs for user ${buyerWallet} in collection ${collectionAddress}`);
 
       const BATCH_CREATE_SIZE = 5; // Number of NFTs to create in one transaction
+      const transactionsToSign: { transactionBase64: string, nftMintAddress: string, name: string }[] = [];
 
       for (let i = 0; i < nfts.length; i += BATCH_CREATE_SIZE) {
         const chunk = nfts.slice(i, i + BATCH_CREATE_SIZE);
         console.log(`Processing NFT creation batch ${i / BATCH_CREATE_SIZE + 1} of ${Math.ceil(nfts.length / BATCH_CREATE_SIZE)}...`);
 
-          const transactionPromises = chunk.map(async (nft) => {
-            // Prepare NFT metadata
-            const nftMetadata = {
-              name: nft.name,
-              description: nft.description,
-              image: nft.imageUri,
-              attributes: nft.attributes || [],
-              properties: {
-                files: [
-                  {
-                    uri: nft.imageUri,
-                    type: 'image/png'
-                  }
-                ],
-                category: 'image'
-              }
-            };
+        const transactionPromises = chunk.map(async (nft) => {
+          const nftMetadata = {
+            name: nft.name,
+            description: nft.description,
+            image: nft.imageUri,
+            attributes: nft.attributes || [],
+            properties: {
+              files: [{ uri: nft.imageUri, type: 'image/png' }],
+              category: 'image'
+            }
+          };
 
-            // Upload metadata to IPFS
-            const metadataUri = await pinataService.uploadJSON(nftMetadata);
+          // Upload metadata to IPFS
+          const metadataUri = await pinataService.uploadJSON(nftMetadata);
+          const assetSigner = generateSigner(this.umi);
 
-            // Generate a new signer for the NFT
-            const assetSigner = generateSigner(this.umi);
-
-            // Create the NFT with the buyer as the owner
-            const builder = await createV1(this.umi, {
-              asset: assetSigner,
-              collection: publicKey(collectionAddress),
-              name: nft.name,
-              uri: metadataUri,
-              owner: publicKey(buyerWallet),
-              authority: this.umi.identity,
-              plugins: []
-            });
-            return { builder, assetSigner, nft, metadataUri };
+          // Create the NFT with the buyer as the owner and payer
+          const builder = await createV1(this.umi, {
+            asset: assetSigner,
+            collection: publicKey(collectionAddress),
+            name: nft.name,
+            uri: metadataUri,
+            owner: publicKey(buyerWallet), // The user owns the NFT
+            authority: this.umi.identity, // The server's wallet signs to create it
+            payer: this.umi.identity, // Use the server's identity as payer
+            plugins: []
           });
 
-          const resolvedTransactionData = await Promise.all(transactionPromises);
+          return { builder, assetSigner, nft, metadataUri };
+        });
 
-          // Combine builders into a single transaction for the chunk
-          let batchBuilder = transactionBuilder();
-          for (const { builder } of resolvedTransactionData) {
-            batchBuilder = batchBuilder.add(builder);
-          }
+        const resolvedTransactionData = await Promise.all(transactionPromises);
 
-          try {
-            console.log(`Sending batch transaction for ${resolvedTransactionData.length} NFTs...`);
-            const txResult = await this.withTxRetry(batchBuilder, (b) => b.sendAndConfirm(this.umi, { confirm: { commitment: 'finalized' } }));
-            console.log(`Batch transaction confirmed: ${bs58.encode(txResult.signature as Uint8Array)}`);
-
-            resolvedTransactionData.forEach(({ assetSigner, nft, metadataUri }) => {
-              results.push({
-                name: nft.name,
-                nftAddress: assetSigner.publicKey,
-                signature: bs58.encode(txResult.signature as Uint8Array), // Batch signature
-                metadataUri,
-                imageUri: nft.imageUri,
-                owner: buyerWallet
-              });
-            });
-          } catch (batchError) {
-            console.error(`Error in batch NFT creation:`, batchError);
-            // If a batch fails, mark all NFTs in that batch as failed
-            chunk.forEach(nft => errors.push({
-              name: nft.name,
-              error: batchError instanceof Error ? batchError.message : 'Unknown error'
-            }));
-          }
+        // Combine builders into a single transaction for the chunk
+        let batchBuilder = transactionBuilder();
+        const assetSigners = [];
+        for (const { builder, assetSigner } of resolvedTransactionData) {
+          batchBuilder = batchBuilder.add(builder);
+          assetSigners.push(assetSigner);
         }
         
-        return {
-          success: results.length > 0,
-          partialSuccess: results.length > 0 && errors.length > 0,
-          created: results,
-          failed: errors,
-          totalRequested: nfts.length,
-          totalCreated: results.length,
-          totalFailed: errors.length
-        };
+        // Set the latest blockhash
+        await batchBuilder.setLatestBlockhash(this.umi);
+
+        // Build the transaction
+        const builtTransaction = await batchBuilder.build(this.umi);
+
+        // Convert to base64 for client consumption
+        const transactionBase64 = Buffer.from(builtTransaction.serializedMessage).toString('base64');
         
-      } catch (error) {
-        console.error('Error creating NFTs for user:', error);
-        throw new Error(`Failed to create NFTs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // Add all NFTs in this batch to the list
+        resolvedTransactionData.forEach(({ assetSigner, nft }) => {
+            transactionsToSign.push({
+                transactionBase64,
+                nftMintAddress: assetSigner.publicKey.toString(),
+                name: nft.name,
+            });
+        });
       }
+
+      // Return the list of unsigned transactions for the client to process
+      return transactionsToSign;
+
+    } catch (error) {
+      console.error('Error creating NFTs for user:', error);
+      throw new Error(`Failed to create NFTs: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
 
   /**
    * Transfer update authority to creator (industry standard)
@@ -755,19 +617,19 @@ export class MetaplexEnhancedService {
   ) {
     try {
       console.log(`Transferring update authority of ${collectionAddress} to ${newAuthority}`);
-      
+
       const builder = await updateCollectionV1(this.umi, {
         collection: publicKey(collectionAddress),
         newUpdateAuthority: publicKey(newAuthority)
       });
-      
+
       const result = await builder.sendAndConfirm(this.umi, {
         confirm: { commitment: 'finalized' }
       });
-      
+
       console.log('Update authority transferred successfully');
       return bs58.encode(result.signature);
-      
+
     } catch (error) {
       console.error('Error transferring authority:', error);
       throw error;
@@ -780,20 +642,101 @@ export class MetaplexEnhancedService {
   async getCollectionDetails(collectionAddress: string) {
     try {
       const collection = await fetchCollectionV1(this.umi, publicKey(collectionAddress));
-      
+
       if (!collection) {
         throw new Error('Collection not found');
       }
-      
+
       return {
         address: collectionAddress,
         name: collection.name,
         uri: collection.uri,
         updateAuthority: collection.updateAuthority
       };
-      
+
     } catch (error) {
       console.error('Error fetching collection:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload NFTs to an existing collection
+   */
+  async uploadNFTsToCollection(
+    collectionAddress: string,
+    candyMachineAddress: string | null,
+    nfts: Array<{
+      name: string;
+      description: string;
+      imageFile?: File | Buffer;
+      imageUri?: string;
+      attributes: Array<{ trait_type: string; value: string | number }>;
+    }>
+  ): Promise<NFTUploadServiceResult> {
+    try {
+      console.log(`Uploading ${nfts.length} NFTs to collection ${collectionAddress}`);
+
+      const uploadedNFTs: UploadedNFTResult[] = [];
+
+      for (let i = 0; i < nfts.length; i++) {
+        const nft = nfts[i];
+        console.log(`Processing NFT ${i + 1}/${nfts.length}: ${nft.name}`);
+
+        // Upload image if provided
+        let imageUri = nft.imageUri;
+        if (nft.imageFile) {
+          const fileBuffer = nft.imageFile instanceof File
+            ? Buffer.from(await nft.imageFile.arrayBuffer())
+            : nft.imageFile;
+          const fileName = nft.imageFile instanceof File
+            ? nft.imageFile.name
+            : `nft-${i + 1}-${Date.now()}.png`;
+          const contentType = nft.imageFile instanceof File
+            ? nft.imageFile.type
+            : 'image/png';
+          imageUri = await pinataService.uploadFile(fileBuffer, fileName, contentType);
+        }
+
+        if (!imageUri) {
+          imageUri = 'https://placeholder.com/nft-image.png';
+        }
+
+        // Create metadata
+        const nftMetadata = {
+          name: nft.name,
+          description: nft.description,
+          image: imageUri,
+          attributes: nft.attributes || [],
+          properties: {
+            files: [{ uri: imageUri, type: 'image/png' }],
+            category: 'image'
+          },
+          external_url: 'https://zunoagent.xyz'
+        };
+
+        // Upload metadata to IPFS
+        const metadataUri = await pinataService.uploadJSON(nftMetadata);
+
+        uploadedNFTs.push({
+          name: nft.name,
+          metadataUri,
+          imageUri,
+          index: i,
+          attributes: nft.attributes
+        });
+      }
+
+      console.log(`Successfully uploaded ${uploadedNFTs.length} NFTs`);
+
+      return {
+        success: true,
+        uploadedCount: uploadedNFTs.length,
+        nfts: uploadedNFTs
+      };
+
+    } catch (error) {
+      console.error('Error uploading NFTs to collection:', error);
       throw error;
     }
   }
@@ -801,3 +744,13 @@ export class MetaplexEnhancedService {
 
 // Singleton instance
 export const metaplexEnhancedService = new MetaplexEnhancedService();
+
+
+
+
+
+
+
+
+
+

@@ -5,7 +5,7 @@ import { Upload, FileJson, FileText, Folder, Image, Plus, Trash2, Loader2, Check
 import { toast } from 'react-hot-toast'; // Added toast import
 import OptimizedImage from '@/components/OptimizedImage';
 import { NFTUploadConfig, NFTUploadServiceResult } from '@/lib/metaplex-enhanced';
-import { pinataService } from '@/lib/pinata-service'; // Corrected pinataService import
+// Removed direct pinataService import - will use API route instead
 import { Buffer } from 'buffer'; // Import Buffer
 
 interface NFTAttribute {
@@ -135,8 +135,8 @@ export default function NFTUploadAdvanced({
   }, [uploadType, imageFiles, jsonFile, csvFile, folderFiles]);
 
   useEffect(() => {
-    generatePreview();
-  }, [generatePreview]);
+    // generatePreview(); // Removed, as preview is now updated after upload
+  }, []); // Empty dependency array, runs only once on mount
 
 
   const handleUpload = useCallback(async () => {
@@ -144,49 +144,108 @@ export default function NFTUploadAdvanced({
     setUploadError(null);
     setUploadSuccess(null);
 
-    let filesToUpload: FileToUpload[] = [];
-    const metadataToUpload: CsvMetadataToProcess[] = [];
+    let processedNftData: NFTUploadConfig[] = []; // This will hold our final NFT data with resolved imageUris
 
+    // Define a concurrency limit for image uploads
+    const IMAGE_UPLOAD_CONCURRENCY_LIMIT = 5; 
+
+    // Helper function to upload an image and return its URI
+    const uploadImage = async (file: File): Promise<string> => {
+      const imageFormData = new FormData();
+      imageFormData.append('file', file);
+      imageFormData.append('name', file.name);
+      imageFormData.append('type', file.type);
+      
+      const imageResponse = await fetch('/api/upload/image', {
+        method: 'POST',
+        body: imageFormData
+      });
+      
+      if (!imageResponse.ok) {
+        throw new Error('Failed to upload image: ' + (await imageResponse.json()).error);
+      }
+      
+      const imageResult = await imageResponse.json();
+      return imageResult.url;
+    };
+
+    try {
     if (uploadType === 'images') {
       if (imageFiles.length === 0) {
         setUploadError('Please select image files.');
         setIsUploading(false);
         return;
       }
-      filesToUpload = imageFiles.map((file: File, index: number) => ({
-        file,
-        name: `${baseName} #${index + 1}`,
-        metadata: generateMetadata ? {
-          name: `${baseName} #${index + 1}`,
-          description: defaultDescription,
-          attributes: defaultAttributes.filter(attr => attr.trait_type && attr.value),
-        } : undefined,
-      }));
+
+        // Process images in parallel batches
+        const imageUploadPromises: Promise<void>[] = [];
+        for (let i = 0; i < imageFiles.length; i++) {
+          const file = imageFiles[i];
+          const nftName = `${baseName} #${i + 1}`;
+
+          imageUploadPromises.push((async () => {
+            const imageUri = await uploadImage(file);
+            processedNftData.push({
+              name: nftName,
+              description: generateMetadata ? defaultDescription : '',
+              imageUri: imageUri,
+              attributes: generateMetadata ? defaultAttributes.filter(attr => attr.trait_type && attr.value) : [],
+            });
+          })());
+
+          // If we hit the concurrency limit or it's the last image, await the current batch
+          if ((i + 1) % IMAGE_UPLOAD_CONCURRENCY_LIMIT === 0 || i === imageFiles.length - 1) {
+            await Promise.all(imageUploadPromises);
+            imageUploadPromises.length = 0; // Clear the array for the next batch
+          }
+        }
     } else if (uploadType === 'json') {
       if (jsonFile.length === 0) {
         setUploadError('Please upload JSON files.');
         setIsUploading(false);
         return;
       }
-      // For JSON upload, we assume JSON files contain all metadata including image_uri
-      // So we'll process them directly. If images are separate, this logic needs adjustment.
+
+        const imageFileMap = new Map<string, File>();
+        imageFiles.forEach(file => imageFileMap.set(file.name.split('.')[0].toLowerCase(), file));
+
+        const jsonProcessingPromises: Promise<void>[] = [];
       for (const file of jsonFile) {
+          jsonProcessingPromises.push((async () => {
         const content = await file.text();
         const metadata: NFTMetadata = JSON.parse(content);
-        filesToUpload.push({
-          file, // We might not actually upload the JSON file itself, but its content
+            const baseFileName = file.name.replace('.json', '').toLowerCase();
+
+            let imageUriToUse: string | undefined;
+
+            const matchingImageFile = imageFileMap.get(baseFileName);
+            if (matchingImageFile) {
+              imageUriToUse = await uploadImage(matchingImageFile);
+            } else if (metadata.image) {
+              imageUriToUse = metadata.image;
+            } else {
+              console.warn(`NFT ${metadata.name || file.name} has no image file and no image URI in metadata.`);
+              imageUriToUse = '/placeholder.svg';
+            }
+
+            processedNftData.push({
           name: metadata.name || file.name.replace('.json', ''),
-          metadata,
+              description: metadata.description || '',
+              imageUri: imageUriToUse,
+              attributes: metadata.attributes || [],
         });
+          })());
       }
+        await Promise.all(jsonProcessingPromises);
+
     } else if (uploadType === 'csv') {
       if (!csvFile) {
         setUploadError('Please upload a CSV file.');
         setIsUploading(false);
         return;
       }
+
       const csvText = await csvFile.text();
-      // Simple CSV parsing, assumes first row is headers
       const lines = csvText.split('\n').filter((line: string) => line.trim() !== '');
       if (lines.length <= 1) {
         setUploadError('CSV file is empty or has no data rows.');
@@ -194,38 +253,65 @@ export default function NFTUploadAdvanced({
         return;
       }
       const headers = lines[0].split(',').map((h: string) => h.trim());
+        const imageFileMap = new Map<string, File>();
+        imageFiles.forEach(file => imageFileMap.set(file.name.split('.')[0].toLowerCase(), file));
+
+        const csvProcessingPromises: Promise<void>[] = [];
       for (let i = 1; i < lines.length; i++) {
+          csvProcessingPromises.push((async () => {
         const values = lines[i].split(',').map((v: string) => v.trim());
         const metadata: NFTMetadata = { attributes: [] };
-        let name = '';
+            let nftName = '';
+            let csvImageName: string | undefined;
         for (let j = 0; j < headers.length; j++) {
           const header = headers[j];
           const value = values[j];
-          if (header === 'name') name = value;
+              if (header === 'name') nftName = value;
           else if (header === 'description') metadata.description = value;
+              else if (header === 'image' || header === 'image_uri') csvImageName = value;
           else if (header.startsWith('trait_type:')) {
             metadata.attributes?.push({ trait_type: header.split(':')[1], value });
           } else {
             metadata[header] = value;
           }
         }
-        if (!name) {
+
+            if (!nftName) {
           console.warn(`Skipping CSV row ${i + 1} due to missing name.`);
-          continue;
+              return; // Skip this NFT
+            }
+
+            let imageUriToUse: string | undefined;
+            if (csvImageName) {
+              const baseCsvImageName = csvImageName.split('.')[0].toLowerCase();
+              const matchingImageFile = imageFileMap.get(baseCsvImageName);
+              if (matchingImageFile) {
+                imageUriToUse = await uploadImage(matchingImageFile);
+              } else {
+                imageUriToUse = csvImageName;
+              }
+            } else {
+              console.warn(`NFT ${nftName} from CSV has no specified image filename or URI.`);
+              imageUriToUse = '/placeholder.svg';
+            }
+
+            processedNftData.push({
+              name: nftName,
+              description: metadata.description || '',
+              imageUri: imageUriToUse,
+              attributes: metadata.attributes || [],
+            });
+          })());
         }
-        metadataToUpload.push({
-          name,
-          metadata,
-          imageUri: metadata.image, // Assume image_uri is in CSV or will be matched later
-        });
-      }
+        await Promise.all(csvProcessingPromises);
+
     } else if (uploadType === 'folder') {
       if (folderFiles.length === 0) {
         setUploadError('Please select a folder.');
         setIsUploading(false);
         return;
       }
-      // For folder upload, we assume a mix of image and JSON files
+
       const imageMap = new Map<string, File>();
       const jsonMap = new Map<string, NFTMetadata>();
 
@@ -235,63 +321,47 @@ export default function NFTUploadAdvanced({
         if (fileName.endsWith('.json')) {
           const content = await file.text();
           jsonMap.set(baseFileName, JSON.parse(content));
-        } else if (fileName.endsWith('.png') || fileName.endsWith('.jpg') || fileName.endsWith('.gif')) {
+          } else if (fileName.endsWith('.png') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.gif') || fileName.endsWith('.webp')) {
           imageMap.set(baseFileName, file);
         }
       }
 
-      imageMap.forEach((imageFile: File, baseFileName: string) => {
+        const folderProcessingPromises: Promise<void>[] = [];
+        for (const [baseFileName, imageFile] of imageMap.entries()) {
+            folderProcessingPromises.push((async () => {
         const metadata = jsonMap.get(baseFileName) || {};
-        filesToUpload.push({
-          file: imageFile,
-          name: metadata.name || imageFile.name.replace(/\.(png|jpg|gif)$/i, ''),
-          metadata: { ...metadata, image: undefined }, // Remove image property from metadata if it's a separate file
-        });
-      });
 
-      if (filesToUpload.length === 0 && metadataToUpload.length === 0) {
-        setUploadError('No valid image or JSON files found in the folder.');
+                const imageUri = await uploadImage(imageFile);
+
+                processedNftData.push({
+                    name: metadata.name || imageFile.name.replace(/\.(png|jpg|gif|jpeg|webp)$/i, ''),
+                    description: metadata.description || '',
+                    imageUri: imageUri,
+                    attributes: metadata.attributes || [],
+                });
+            })());
+        }
+        await Promise.all(folderProcessingPromises);
+
+        if (processedNftData.length === 0) {
+          setUploadError('No valid image or JSON files found in the folder after processing.');
         setIsUploading(false);
         return;
       }
     }
 
-    try {
-      const nftConfigs: NFTUploadConfig[] = await Promise.all(
-        filesToUpload.map(async ({ file, name, metadata }: FileToUpload) => {
-          let imageUri: string | undefined = undefined;
-          if (file) {
-            // Upload image file if present
-            imageUri = await pinataService.uploadFile(Buffer.from(await file.arrayBuffer()), file.name, file.type);
-          } else if (metadata?.image) {
-            // If metadata has an image property, assume it's a direct URI
-            imageUri = metadata.image;
-          }
-
-          return {
-            name,
-            description: metadata?.description || defaultDescription,
-            imageUri: imageUri || '/placeholder.svg',
-            attributes: metadata?.attributes || defaultAttributes,
-          };
-        })
-      );
-
-      // Handle CSV-generated metadata (no file upload, just metadata upload)
-      for (const { name, metadata, imageUri } of metadataToUpload) {
-        nftConfigs.push({
-          name,
-          description: metadata.description || defaultDescription,
-          imageUri: imageUri || '/placeholder.svg',
-          attributes: metadata.attributes || defaultAttributes,
-        });
-      }
-
-      if (nftConfigs.length === 0) {
+      if (processedNftData.length === 0) {
         setUploadError('No NFTs to upload after processing.');
         setIsUploading(false);
         return;
       }
+      
+      // After all processing, update the preview with the uploaded image URIs
+      setPreview(processedNftData.map(nft => ({
+        url: nft.imageUri || '/placeholder.svg',
+        name: nft.name,
+        type: 'image',
+      })));
 
       const response = await fetch('/api/enhanced/upload-advanced', {
         method: 'POST',
@@ -299,7 +369,7 @@ export default function NFTUploadAdvanced({
         body: JSON.stringify({
           collectionAddress,
           candyMachineAddress,
-          nfts: nftConfigs,
+          nfts: processedNftData, // Send the fully processed NFT data
         }),
       });
 
@@ -316,7 +386,7 @@ export default function NFTUploadAdvanced({
       setJsonFile([]);
       setCsvFile(null);
       setFolderFiles([]);
-      setPreview([]);
+      // setPreview([]); // Removed, as preview is updated from processedNftData
       setDefaultAttributes([{
         trait_type: 'Collection', value: 'My Collection'
       }]);

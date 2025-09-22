@@ -88,7 +88,7 @@ export default function FeaturedMint() {
             const bScore = (b.minted_count || 0) * 2 + (b.volume || 0) * 0.1 + (b.total_supply || 0) * 0.01;
             return bScore - aScore;
           })
-          .slice(0, 12); // Increased limit to show more collections
+          .slice(0, 6); // Limit to 6 featured collections
 
         console.log('Featured collections loaded:', processedCollections.length, 'collections');
         console.log('Collections by status:', {
@@ -214,7 +214,9 @@ export default function FeaturedMint() {
                             width={200}
                             height={128}
                             className="w-full h-full object-cover"
-                            priority={true} // Set priority to true for featured collections
+                            priority={index < 6} // Set priority only for the first 6 featured collections
+                            loading={index < 6 ? 'eager' : 'lazy'} // Eager load first 6, lazy load others
+                            sizes="(max-width: 640px) 200px, (max-width: 768px) 300px, 400px"
                           />
                         ) : (
                           <div className="text-white text-2xl sm:text-4xl">🎨</div>
@@ -317,7 +319,9 @@ export default function FeaturedMint() {
                               width={80}
                               height={80}
                               className="w-full h-full object-cover"
-                              priority={true} // Set priority to true for explore NFTs
+                              priority={false} // Explore NFTs are not critical for initial load
+                              loading="lazy" // Always lazy load explore NFTs
+                              sizes="(max-width: 640px) 80px, 120px"
                             />
                           ) : (
                             <span className="text-2xl sm:text-3xl">🎨</span>

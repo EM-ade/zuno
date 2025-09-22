@@ -1,14 +1,40 @@
-import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { keypairIdentity, generateSigner, transactionBuilder, some, sol, publicKey, dateTime } from '@metaplex-foundation/umi';
-import { createCollectionV1, createV1, mplCore } from '@metaplex-foundation/mpl-core';
-import { create as createCandyMachine, mplCandyMachine, GuardSet } from '@metaplex-foundation/mpl-core-candy-machine';
-import { pinataService } from './pinata-service';
-import { envConfig } from '../config/env';
-import { PriceOracleService } from './price-oracle';
-import bs58 from 'bs58';
-import { MerkleTree } from 'merkletreejs';
-import keccak256 from 'keccak256';
-import { Connection, Keypair, SystemProgram, Transaction, VersionedTransaction, LAMPORTS_PER_SOL, PublicKey, TransactionInstruction, TransactionMessage } from '@solana/web3.js';
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import {
+  keypairIdentity,
+  generateSigner,
+  transactionBuilder,
+  some,
+  sol,
+  publicKey,
+  dateTime,
+} from "@metaplex-foundation/umi";
+import {
+  createCollectionV1,
+  createV1,
+  mplCore,
+} from "@metaplex-foundation/mpl-core";
+import {
+  create as createCandyMachine,
+  mplCandyMachine,
+  GuardSet,
+} from "@metaplex-foundation/mpl-core-candy-machine";
+import { pinataService } from "./pinata-service";
+import { envConfig } from "../config/env";
+import { PriceOracleService } from "./price-oracle";
+import bs58 from "bs58";
+import { MerkleTree } from "merkletreejs";
+import keccak256 from "keccak256";
+import {
+  Connection,
+  Keypair,
+  SystemProgram,
+  Transaction,
+  VersionedTransaction,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  TransactionInstruction,
+  TransactionMessage,
+} from "@solana/web3.js";
 import { SupabaseService } from "./supabase-service";
 // import { MintPhase } from './metaplex-enhanced'; // Removed incorrect import
 
@@ -69,13 +95,19 @@ export class MetaplexCoreService {
     this.priceOracleService = new PriceOracleService();
   }
 
-  private createMerkleTree(walletAddresses: string[]): { root: Buffer; tree: MerkleTree } {
-    const leaves = walletAddresses.map(addr => keccak256(addr));
+  private createMerkleTree(walletAddresses: string[]): {
+    root: Buffer;
+    tree: MerkleTree;
+  } {
+    const leaves = walletAddresses.map((addr) => keccak256(addr));
     const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
     return { root: tree.getRoot(), tree };
   }
 
-  private configureGuardsForPhase(phase: MintPhase, creatorWallet: string): GuardSet {
+  private configureGuardsForPhase(
+    phase: MintPhase,
+    creatorWallet: string
+  ): GuardSet {
     const guards: GuardSet = {};
 
     // Start date guard
@@ -98,9 +130,13 @@ export class MetaplexCoreService {
         lamports: sol(phase.price),
         destination: publicKey(creatorWallet),
       });
-      console.log(`Added SOL payment guard: ${phase.price} SOL to ${creatorWallet}`);
+      console.log(
+        `Added SOL payment guard: ${phase.price} SOL to ${creatorWallet}`
+      );
     } else {
-      console.log(`Free mint phase detected: ${phase.name} - no payment guard added`);
+      console.log(
+        `Free mint phase detected: ${phase.name} - no payment guard added`
+      );
     }
 
     // Allow list guard (whitelist)
@@ -122,46 +158,55 @@ export class MetaplexCoreService {
     return guards;
   }
 
+  // Update methods that build transactions to use latest blockhash correctly
   async createCollection(config: CollectionConfig): Promise<CreatedCollection> {
     try {
-      const { name, symbol, description, totalSupply, creatorWallet, imageUri, price, phases } = config;
-
-      // Server wallet balance check removed - let Solana network handle insufficient funds
+      const {
+        name,
+        symbol,
+        description,
+        totalSupply,
+        creatorWallet,
+        imageUri,
+        price,
+        phases,
+      } = config;
 
       // Create collection NFT
       const collectionMint = generateSigner(this.umi);
-      const collectionImageUri = imageUri || 'https://placeholder.com/collection-image.png';
+      const collectionImageUri =
+        imageUri || "https://placeholder.com/collection-image.png";
       const collectionMetadataUri = await pinataService.uploadJSON({
         name,
         description,
         symbol,
         image: collectionImageUri,
         attributes: [
-          { trait_type: 'Collection Type', value: 'Zuno NFT Collection' },
-          { trait_type: 'Total Supply', value: totalSupply.toString() },
-          { trait_type: 'Creator', value: creatorWallet }
+          { trait_type: "Collection Type", value: "Zuno NFT Collection" },
+          { trait_type: "Total Supply", value: totalSupply.toString() },
+          { trait_type: "Creator", value: creatorWallet },
         ],
         properties: {
           files: [
             {
               uri: collectionImageUri,
-              type: 'image/png'
-            }
+              type: "image/png",
+            },
           ],
-          category: 'image',
+          category: "image",
           creators: [
-            { 
+            {
               address: creatorWallet,
-              share: 100
-            }
-          ]
+              share: 100,
+            },
+          ],
         },
         seller_fee_basis_points: config.royaltyPercentage * 100,
-        external_url: 'https://zunoagent.xyz',
+        external_url: "https://zunoagent.xyz",
         collection: {
           name,
-          family: symbol
-        }
+          family: symbol,
+        },
       });
 
       // Create candy machine
@@ -177,9 +222,9 @@ export class MetaplexCoreService {
       const transaction = transactionBuilder()
         .add(
           await createCollectionV1(this.umi, {
-        collection: collectionMint,
-        name,
-        uri: collectionMetadataUri,
+            collection: collectionMint,
+            name,
+            uri: collectionMetadataUri,
           })
         )
         .add(
@@ -191,21 +236,27 @@ export class MetaplexCoreService {
             authority: this.umi.identity.publicKey,
             isMutable: false,
             configLineSettings: some({
-              prefixName: 'NFT #',
+              prefixName: "NFT #",
               nameLength: 10,
-              prefixUri: 'https://example.com/',
+              prefixUri: "https://example.com/",
               uriLength: 30,
               isSequential: false,
             }),
-            guards: config.phases && config.phases.length > 0 ? this.configureGuardsForPhase(config.phases[0], creatorWallet) : {},
+            guards:
+              config.phases && config.phases.length > 0
+                ? this.configureGuardsForPhase(config.phases[0], creatorWallet)
+                : {},
             groups: guardGroups,
           })
         );
 
+      // Set the latest blockhash
+      await transaction.setLatestBlockhash(this.umi);
+
       // Send the transaction
-      const result = await transaction.sendAndConfirm(this.umi, {
-        confirm: { commitment: 'finalized' }
-      });
+      const builtTx = await transaction.build(this.umi);
+      const signature = await this.umi.rpc.sendTransaction(builtTx);
+      // Transaction confirmation is handled by sendTransaction in UMI
 
       // Map phases to guard group IDs
       const phaseMapping: Record<string, string> = {};
@@ -216,15 +267,14 @@ export class MetaplexCoreService {
       return {
         collectionMint: collectionMint.publicKey.toString(), // Convert PublicKey to string
         candyMachineId: candyMachine.publicKey.toString(), // Convert PublicKey to string
-        transactionSignature: result.signature.toString(),
+        transactionSignature: signature.toString(),
         phases: phaseMapping,
       };
-
     } catch (error) {
-      console.error('Error creating collection:', error);
+      console.error("Error creating collection:", error);
 
       // Provide more detailed error information
-      let errorMessage = 'Unknown error';
+      let errorMessage = "Unknown error";
 
       if (error instanceof Error) {
         errorMessage = error.message;
@@ -241,7 +291,11 @@ export class MetaplexCoreService {
       }
       const solanaError = error as SolanaError;
       if (solanaError.logs) {
-        errorMessage += `\nTransaction logs: ${JSON.stringify(solanaError.logs, null, 2)}`;
+        errorMessage += `\nTransaction logs: ${JSON.stringify(
+          solanaError.logs,
+          null,
+          2
+        )}`;
       }
 
       throw new Error(`Failed to create collection: ${errorMessage}`);
@@ -270,39 +324,40 @@ export class MetaplexCoreService {
       const { name, symbol, description, imageUri, creatorWallet } = config;
 
       // Upload metadata to Pinata
-      const collectionImageUri = imageUri || 'https://placeholder.com/collection-image.png';
-      console.log('Uploading collection metadata to Pinata...');
+      const collectionImageUri =
+        imageUri || "https://placeholder.com/collection-image.png";
+      console.log("Uploading collection metadata to Pinata...");
       const collectionMetadataUri = await pinataService.uploadJSON({
         name,
         description,
         symbol,
         image: collectionImageUri,
         attributes: [
-          { trait_type: 'Collection Type', value: 'Zuno NFT Collection' },
-          { trait_type: 'Creator', value: creatorWallet }
+          { trait_type: "Collection Type", value: "Zuno NFT Collection" },
+          { trait_type: "Creator", value: creatorWallet },
         ],
         properties: {
           files: [
             {
               uri: collectionImageUri,
-              type: 'image/png'
-            }
+              type: "image/png",
+            },
           ],
-          category: 'image',
+          category: "image",
           creators: [
             {
               address: creatorWallet,
-              share: 100
-            }
-          ]
+              share: 100,
+            },
+          ],
         },
-        external_url: 'https://zunoagent.xyz',
+        external_url: "https://zunoagent.xyz",
         collection: {
           name,
-          family: symbol
-        }
+          family: symbol,
+        },
       });
-      console.log('Metadata uploaded successfully:', collectionMetadataUri);
+      console.log("Metadata uploaded successfully:", collectionMetadataUri);
 
       // Create UMI instance for transaction building
       const umi = createUmi(envConfig.solanaRpcUrl)
@@ -311,87 +366,107 @@ export class MetaplexCoreService {
 
       // Generate a signer for the collection using UMI's generateSigner
       const collectionSigner = generateSigner(umi);
-      
-      console.log('Generated collection mint address:', collectionSigner.publicKey);
+
+      console.log(
+        "Generated collection mint address:",
+        collectionSigner.publicKey
+      );
 
       // Build the collection creation transaction
-      console.log('Building collection creation transaction...');
-      
-      const builder = transactionBuilder()
-        .add(
-          await createCollectionV1(umi, {
-            collection: collectionSigner,
-            name,
-            uri: collectionMetadataUri,
-            updateAuthority: publicKey(creatorWallet),
-          })
-        );
+      console.log("Building collection creation transaction...");
 
-      // Build the transaction with latest blockhash
-      const builtTransaction = await builder.buildWithLatestBlockhash(umi);
-      
+      const builder = transactionBuilder().add(
+        await createCollectionV1(umi, {
+          collection: collectionSigner,
+          name,
+          uri: collectionMetadataUri,
+          updateAuthority: publicKey(creatorWallet),
+        })
+      );
+
+      // Set the latest blockhash
+      await builder.setLatestBlockhash(umi);
+
+      // Build the transaction
+      const builtTransaction = await builder.build(umi);
+
       // Convert to web3.js transaction for user signing
       const connection = new Connection(envConfig.solanaRpcUrl);
-      const { blockhash } = await connection.getLatestBlockhash('finalized');
-      
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
+
       // Create instructions array
       const instructions: TransactionInstruction[] = [];
-      
+
       // Access the instructions from the built transaction
-      const transactionInstructions = (builtTransaction as UMITransactionResult).instructions || [];
-      
+      const transactionInstructions =
+        (builtTransaction as UMITransactionResult).instructions || [];
+
       // Convert UMI instructions to web3.js instructions
       for (const ix of transactionInstructions) {
         instructions.push(
           new TransactionInstruction({
             programId: new PublicKey(ix.programId),
-            keys: ix.keys.map((k: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
-              pubkey: new PublicKey(k.pubkey),
-              isSigner: k.isSigner,
-              isWritable: k.isWritable
-            })),
-            data: Buffer.from(ix.data)
+            keys: ix.keys.map(
+              (k: {
+                pubkey: string;
+                isSigner: boolean;
+                isWritable: boolean;
+              }) => ({
+                pubkey: new PublicKey(k.pubkey),
+                isSigner: k.isSigner,
+                isWritable: k.isWritable,
+              })
+            ),
+            data: Buffer.from(ix.data),
           })
         );
       }
-      
+
       // Create versioned transaction
       const messageV0 = new TransactionMessage({
         payerKey: new PublicKey(creatorWallet),
         recentBlockhash: blockhash,
         instructions,
       }).compileToV0Message();
-      
+
       const versionedTx = new VersionedTransaction(messageV0);
-      
+
       // Note: The collection signer is a generated keypair that will be created by the transaction
       // We don't need to pre-sign it since it's a new account being created
       // The user's wallet will be the only signer needed
-      
+
       // Serialize for frontend
-      const transactionBase64 = Buffer.from(versionedTx.serialize()).toString('base64');
-      
-      console.log('Transaction serialized, ready for user signature');
+      const transactionBase64 = Buffer.from(versionedTx.serialize()).toString(
+        "base64"
+      );
+
+      console.log("Transaction serialized, ready for user signature");
 
       return {
         transactionBase64,
         collectionMint: collectionSigner.publicKey,
-        metadataUri: collectionMetadataUri
+        metadataUri: collectionMetadataUri,
       };
-
     } catch (error) {
-      console.error('Error creating collection NFT transaction:', error);
-      throw new Error(`Failed to create collection NFT transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error creating collection NFT transaction:", error);
+      throw new Error(
+        `Failed to create collection NFT transaction: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
   // Stage 2: Deploy Candy Machine linked to existing Collection NFT
-  async deployCandyMachineTransaction(config: {
-    collectionMint: string;
-    totalSupply: number;
-    creatorWallet: string;
-    nftAssets?: Array<{ imageUri: string; metadata: unknown }>;
-  }, phases: MintPhase[]): Promise<{
+  async deployCandyMachineTransaction(
+    config: {
+      collectionMint: string;
+      totalSupply: number;
+      creatorWallet: string;
+      nftAssets?: Array<{ imageUri: string; metadata: unknown }>;
+    },
+    phases: MintPhase[]
+  ): Promise<{
     transactionBase64: string;
     candyMachineId: string;
   }> {
@@ -400,7 +475,9 @@ export class MetaplexCoreService {
 
       // Validate phases
       if (!phases || phases.length === 0) {
-        throw new Error('At least one mint phase is required for Candy Machine');
+        throw new Error(
+          "At least one mint phase is required for Candy Machine"
+        );
       }
 
       // Create UMI instance and set server wallet as signer
@@ -422,49 +499,63 @@ export class MetaplexCoreService {
       }));
 
       // Build the Candy Machine creation transaction
-      const umiTransaction = transactionBuilder()
-        .add(
-          await createCandyMachine(tempUmi, {
-            candyMachine,
-            itemsAvailable: BigInt(totalSupply),
-            collection: publicKey(collectionMint),
-            collectionUpdateAuthority: tempUmi.identity, // Server wallet must be authority
-            authority: tempUmi.identity.publicKey, // Server wallet must be authority
-            isMutable: false,
-            configLineSettings: some({
-              prefixName: '',
-              nameLength: 32,
-              prefixUri: '',
-              uriLength: 200,
-              isSequential: false,
-            }),
-            guards: this.configureGuardsWithRevenueSplit(phases[0], creatorWallet), // Default guards with revenue split
-            groups: guardGroups,
-          })
-        );
+      const umiTransaction = transactionBuilder().add(
+        await createCandyMachine(tempUmi, {
+          candyMachine,
+          itemsAvailable: BigInt(totalSupply),
+          collection: publicKey(collectionMint),
+          collectionUpdateAuthority: tempUmi.identity, // Server wallet must be authority
+          authority: tempUmi.identity.publicKey, // Server wallet must be authority
+          isMutable: false,
+          configLineSettings: some({
+            prefixName: "",
+            nameLength: 32,
+            prefixUri: "",
+            uriLength: 200,
+            isSequential: false,
+          }),
+          guards: this.configureGuardsWithRevenueSplit(
+            phases[0],
+            creatorWallet
+          ), // Default guards with revenue split
+          groups: guardGroups,
+        })
+      );
 
-      // Build the transaction with the latest blockhash
-      const builtTx = await umiTransaction.buildWithLatestBlockhash(tempUmi);
+      // Set the latest blockhash
+      await umiTransaction.setLatestBlockhash(tempUmi);
+
+      // Build the transaction
+      const builtTx = await umiTransaction.build(tempUmi);
 
       // Fetch blockhash for the new Versioned Transaction
       const connection = new Connection(envConfig.solanaRpcUrl);
-      const { blockhash } = await connection.getLatestBlockhash('finalized');
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
 
       const instructions: TransactionInstruction[] = [];
       // Convert UMI instructions to web3.js format
-      if (builtTx && typeof builtTx === 'object' && 'instructions' in builtTx) {
-        for (const instruction of (builtTx as UMITransactionResult).instructions!) {
-          const keys = instruction.keys.map((key: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
-            pubkey: new PublicKey(key.pubkey),
-            isSigner: key.isSigner,
-            isWritable: key.isWritable
-          }));
+      if (builtTx && typeof builtTx === "object" && "instructions" in builtTx) {
+        for (const instruction of (builtTx as UMITransactionResult)
+          .instructions!) {
+          const keys = instruction.keys.map(
+            (key: {
+              pubkey: string;
+              isSigner: boolean;
+              isWritable: boolean;
+            }) => ({
+              pubkey: new PublicKey(key.pubkey),
+              isSigner: key.isSigner,
+              isWritable: key.isWritable,
+            })
+          );
 
-          instructions.push(new TransactionInstruction({
-            keys,
-            programId: new PublicKey(instruction.programId),
-            data: Buffer.from(instruction.data)
-          }));
+          instructions.push(
+            new TransactionInstruction({
+              keys,
+              programId: new PublicKey(instruction.programId),
+              data: Buffer.from(instruction.data),
+            })
+          );
         }
       }
 
@@ -478,21 +569,29 @@ export class MetaplexCoreService {
       const transaction = new VersionedTransaction(messageV0);
 
       // Serialize transaction to base64
-      const transactionBase64 = Buffer.from(transaction.serialize()).toString('base64');
+      const transactionBase64 = Buffer.from(transaction.serialize()).toString(
+        "base64"
+      );
 
       return {
         transactionBase64,
-        candyMachineId: candyMachine.publicKey.toString() // Convert PublicKey to string
+        candyMachineId: candyMachine.publicKey.toString(), // Convert PublicKey to string
       };
-
     } catch (error) {
-      console.error('Error creating candy machine transaction:', error);
-      throw new Error(`Failed to create candy machine transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error creating candy machine transaction:", error);
+      throw new Error(
+        `Failed to create candy machine transaction: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
   // Configure guards with revenue split (80% creator, 20% platform)
-  private configureGuardsWithRevenueSplit(phase: MintPhase, creatorWallet: string): GuardSet {
+  private configureGuardsWithRevenueSplit(
+    phase: MintPhase,
+    creatorWallet: string
+  ): GuardSet {
     const guards: GuardSet = {};
 
     // Start date guard
@@ -524,9 +623,13 @@ export class MetaplexCoreService {
 
       // Add additional payment split for platform (this might need custom implementation)
       // For now, we'll handle the split in the mint transaction
-      console.log(`Revenue split configured: ${creatorShare} SOL to creator, ${platformShare} SOL to platform`);
+      console.log(
+        `Revenue split configured: ${creatorShare} SOL to creator, ${platformShare} SOL to platform`
+      );
     } else {
-      console.log(`Free mint phase detected: ${phase.name} - no payment guard added`);
+      console.log(
+        `Free mint phase detected: ${phase.name} - no payment guard added`
+      );
     }
 
     // Allow list guard (whitelist)
@@ -548,7 +651,10 @@ export class MetaplexCoreService {
     return guards;
   }
 
-  async createCollectionTransaction(config: CollectionConfig, phases: MintPhase[]): Promise<{
+  async createCollectionTransaction(
+    config: CollectionConfig,
+    phases: MintPhase[]
+  ): Promise<{
     transactionBase64: string;
     collectionMint: string;
     candyMachineId: string;
@@ -556,15 +662,25 @@ export class MetaplexCoreService {
     collectionAddress: string;
   }> {
     try {
-      const { name, symbol, description, totalSupply, creatorWallet, imageUri } = config;
+      const {
+        name,
+        symbol,
+        description,
+        totalSupply,
+        creatorWallet,
+        imageUri,
+      } = config;
 
       // Validate phases (now optional) - only validate if phases array is explicitly provided and empty
       if (Array.isArray(phases) && phases.length === 0) {
-        throw new Error('If phases are provided, at least one mint phase is required');
+        throw new Error(
+          "If phases are provided, at least one mint phase is required"
+        );
       }
 
       // For now, use a simple placeholder metadata URI to avoid Pinata issues
-      const collectionImageUri = imageUri || 'https://placeholder.com/collection-image.png';
+      const collectionImageUri =
+        imageUri || "https://placeholder.com/collection-image.png";
       const collectionMetadataUri = `https://api.jsonbin.io/v3/b/placeholder-${Date.now()}`; // Temporary placeholder
 
       // Create UMI instance with creator as signer
@@ -601,9 +717,9 @@ export class MetaplexCoreService {
         .add(
           // This instruction designates the asset as a collection
           await createCollectionV1(tempUmi, {
-        collection: collectionMint,
-        name,
-        uri: collectionMetadataUri,
+            collection: collectionMint,
+            name,
+            uri: collectionMetadataUri,
             updateAuthority: publicKey(creatorWallet), // User's wallet is the authority
           })
         )
@@ -616,66 +732,88 @@ export class MetaplexCoreService {
             authority: tempUmi.identity.publicKey, // Use server wallet public key
             isMutable: false,
             configLineSettings: some({
-              prefixName: 'NFT #',
+              prefixName: "NFT #",
               nameLength: 10,
-              prefixUri: 'https://example.com/',
+              prefixUri: "https://example.com/",
               uriLength: 30,
               isSequential: false,
             }),
-            guards: phases && phases.length > 0 ? this.configureGuardsForPhase(phases[0], creatorWallet) : {},
+            guards:
+              phases && phases.length > 0
+                ? this.configureGuardsForPhase(phases[0], creatorWallet)
+                : {},
             groups: guardGroups,
           })
         );
 
-      // Convert UMI transaction to web3.js transaction
-      const connection = new Connection(envConfig.solanaRpcUrl);
+      // Set the latest blockhash
+      await umiTransaction.setLatestBlockhash(tempUmi);
 
-      // Build the transaction and get the serialized version
+      // Build the transaction
       const builtTx = await umiTransaction.build(tempUmi);
+
+      // Create a Versioned Transaction
+      const connection = new Connection(envConfig.solanaRpcUrl);
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
 
       const instructions: TransactionInstruction[] = [];
       // Convert UMI instructions to web3.js format
-      if (builtTx && typeof builtTx === 'object' && 'instructions' in builtTx) {
-        for (const instruction of (builtTx as UMITransactionResult).instructions!) {
-          const keys = instruction.keys.map((key: { pubkey: string; isSigner: boolean; isWritable: boolean }) => ({
-            pubkey: new PublicKey(key.pubkey),
-            isSigner: key.isSigner,
-            isWritable: key.isWritable
-          }));
+      if (builtTx && typeof builtTx === "object" && "instructions" in builtTx) {
+        for (const instruction of (builtTx as UMITransactionResult)
+          .instructions!) {
+          const keys = instruction.keys.map(
+            (key: {
+              pubkey: string;
+              isSigner: boolean;
+              isWritable: boolean;
+            }) => ({
+              pubkey: new PublicKey(key.pubkey),
+              isSigner: key.isSigner,
+              isWritable: key.isWritable,
+            })
+          );
 
-          instructions.push(new TransactionInstruction({
-            keys,
-            programId: new PublicKey(instruction.programId),
-            data: Buffer.from(instruction.data)
-          }));
+          instructions.push(
+            new TransactionInstruction({
+              keys,
+              programId: new PublicKey(instruction.programId),
+              data: Buffer.from(instruction.data),
+            })
+          );
         }
       } else {
-        console.warn('Could not access UMI transaction instructions - using basic transaction');
+        console.warn(
+          "Could not access UMI transaction instructions - using basic transaction"
+        );
       }
 
-      // Create a Versioned Transaction
       const messageV0 = new TransactionMessage({
         payerKey: new PublicKey(creatorWallet), // Set a temporary payer
-        recentBlockhash: await connection.getLatestBlockhash('finalized').then(({ blockhash }) => blockhash),
+        recentBlockhash: blockhash,
         instructions,
       }).compileToV0Message();
 
       const versionedTransaction = new VersionedTransaction(messageV0);
 
       // Serialize transaction to base64
-      const transactionBase64 = Buffer.from(versionedTransaction.serialize()).toString('base64');
-      
+      const transactionBase64 = Buffer.from(
+        versionedTransaction.serialize()
+      ).toString("base64");
+
       return {
         transactionBase64,
         collectionMint: collectionMint.publicKey.toString(), // Convert PublicKey to string
         candyMachineId: candyMachine.publicKey.toString(), // Convert PublicKey to string
         metadataUri: collectionMetadataUri,
-        collectionAddress: collectionMint.publicKey.toString() // Also return collectionAddress
+        collectionAddress: collectionMint.publicKey.toString(), // Also return collectionAddress
       };
-
     } catch (error) {
-      console.error('Error creating collection transaction:', error);
-      throw new Error(`Failed to create collection transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error creating collection transaction:", error);
+      throw new Error(
+        `Failed to create collection transaction: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -695,17 +833,18 @@ export class MetaplexCoreService {
   }): Promise<{ transactionBase64: string }> {
     try {
       const { collectionAddress, buyerWallet, items, price, quantity } = params;
-  
+
       // Create connection
       const connection = new Connection(envConfig.solanaRpcUrl);
-  
+
       // Create transaction with payment transfers
       const transaction = new Transaction();
-  
+
       // Use provided platform fee or calculate from $1.25 USD
-      const platformFeeSol = params.platformFee || await this.priceOracleService.usdtToSol(1.25);
+      const platformFeeSol =
+        params.platformFee || (await this.priceOracleService.usdtToSol(1.25));
       const platformFeeLamports = Math.round(platformFeeSol * LAMPORTS_PER_SOL);
-  
+
       transaction.add(
         SystemProgram.transfer({
           fromPubkey: new PublicKey(buyerWallet),
@@ -713,57 +852,63 @@ export class MetaplexCoreService {
           lamports: platformFeeLamports,
         })
       );
-  
+
       // Get collection to find creator wallet
-      const collection = await SupabaseService.getCollectionByMintAddress(collectionAddress);
+      const collection = await SupabaseService.getCollectionByMintAddress(
+        collectionAddress
+      );
       if (!collection) {
-        throw new Error('Collection not found');
+        throw new Error("Collection not found");
       }
-  
+
       // Create UMI instance for NFT creation
       const umi = createUmi(envConfig.solanaRpcUrl).use(mplCore());
       const privateKey = bs58.decode(envConfig.serverWalletPrivateKey);
       const keypair = umi.eddsa.createKeypairFromSecretKey(privateKey);
       umi.use(keypairIdentity(keypair));
-  
+
       // Create NFTs and add to transaction
       for (const item of items.slice(0, quantity)) {
         const assetSigner = generateSigner(umi);
         const metadataUri = await pinataService.uploadJSON({
           name: item.name,
-          image: item.image_uri || '',
-          attributes: item.attributes
+          image: item.image_uri || "",
+          attributes: item.attributes,
         });
-  
+
         const createInstruction = await createV1(umi, {
           asset: assetSigner,
           name: item.name,
           uri: metadataUri,
           owner: publicKey(buyerWallet),
-          collection: publicKey(collectionAddress) // Ensures NFT belongs to collection
+          collection: publicKey(collectionAddress), // Ensures NFT belongs to collection
         }).getInstructions();
-  
+
         // Convert UMI instruction to web3.js and add to transaction
-        createInstruction.forEach(inst => {
-          transaction.add(new TransactionInstruction({
-            programId: new PublicKey(inst.programId),
-            keys: inst.keys.map(k => ({
-              pubkey: new PublicKey(k.pubkey),
-              isSigner: k.isSigner,
-              isWritable: k.isWritable
-            })),
-            data: Buffer.from(inst.data)
-          }));
+        createInstruction.forEach((inst) => {
+          transaction.add(
+            new TransactionInstruction({
+              programId: new PublicKey(inst.programId),
+              keys: inst.keys.map((k) => ({
+                pubkey: new PublicKey(k.pubkey),
+                isSigner: k.isSigner,
+                isWritable: k.isWritable,
+              })),
+              data: Buffer.from(inst.data),
+            })
+          );
         });
       }
-  
+
       // Calculate creator payment with platform commission
       const totalMintPrice = price * quantity;
       if (totalMintPrice > 0) {
         const platformCommission = totalMintPrice * 0.05; // 5% platform commission
         const creatorPayment = totalMintPrice - platformCommission;
-        const creatorPaymentLamports = Math.round(creatorPayment * LAMPORTS_PER_SOL);
-  
+        const creatorPaymentLamports = Math.round(
+          creatorPayment * LAMPORTS_PER_SOL
+        );
+
         transaction.add(
           SystemProgram.transfer({
             fromPubkey: new PublicKey(buyerWallet),
@@ -772,30 +917,39 @@ export class MetaplexCoreService {
           })
         );
       }
-  
+
       // Add recent blockhash and set fee payer
       const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = new PublicKey(buyerWallet);
-  
+
       // Add memo instruction
       const memoInstruction = new TransactionInstruction({
         keys: [],
-        programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-        data: Buffer.from(`Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? 's' : ''}`, 'utf8')
+        programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+        data: Buffer.from(
+          `Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? "s" : ""}`,
+          "utf8"
+        ),
       });
       transaction.add(memoInstruction);
-  
+
       // Serialize transaction
-      const transactionBase64 = transaction.serialize({
-        requireAllSignatures: false,
-        verifySignatures: false
-      }).toString('base64');
-  
+      const transactionBase64 = transaction
+        .serialize({
+          requireAllSignatures: false,
+          verifySignatures: false,
+        })
+        .toString("base64");
+
       return { transactionBase64 };
     } catch (error) {
-      console.error('Error creating mint transaction:', error);
-      throw new Error(`Failed to create mint transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error creating mint transaction:", error);
+      throw new Error(
+        `Failed to create mint transaction: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -813,11 +967,25 @@ export class MetaplexCoreService {
       image_uri: string | null;
       attributes: Array<{ trait_type: string; value: string | number }>;
     }>;
-  }): Promise<{ success: boolean; signature?: string; error?: string; mintIds?: string[] }> {
+  }): Promise<{
+    success: boolean;
+    signature?: string;
+    error?: string;
+    mintIds?: string[];
+  }> {
     try {
-      const { candyMachineId, collectionMintAddress, userWallet, amount, price, platformFee, creatorPayment, selectedItems } = params; // Destructure new params
+      const {
+        candyMachineId,
+        collectionMintAddress,
+        userWallet,
+        amount,
+        price,
+        platformFee,
+        creatorPayment,
+        selectedItems,
+      } = params; // Destructure new params
 
-      console.log('Building mint transaction with platform fee collection:', {
+      console.log("Building mint transaction with platform fee collection:", {
         candyMachineId,
         userWallet,
         amount,
@@ -827,9 +995,11 @@ export class MetaplexCoreService {
       });
 
       // Get collection details to find creator wallet
-      const collection = await SupabaseService.getCollectionByMintAddress(collectionMintAddress);
+      const collection = await SupabaseService.getCollectionByMintAddress(
+        collectionMintAddress
+      );
       if (!collection) {
-        throw new Error('Collection not found for fee distribution');
+        throw new Error("Collection not found for fee distribution");
       }
 
       const creatorWallet = collection.creator_wallet;
@@ -854,9 +1024,13 @@ export class MetaplexCoreService {
       }
 
       // Add creator payment transfer - send creator's share to creator
-      const creatorPaymentLamports = Math.round(creatorPayment * LAMPORTS_PER_SOL);
+      const creatorPaymentLamports = Math.round(
+        creatorPayment * LAMPORTS_PER_SOL
+      );
       if (creatorPaymentLamports > 0) {
-        console.log(`Adding creator payment: ${creatorPaymentLamports} lamports (${creatorPayment} SOL)`);
+        console.log(
+          `Adding creator payment: ${creatorPaymentLamports} lamports (${creatorPayment} SOL)`
+        );
         transaction.add(
           SystemProgram.transfer({
             fromPubkey: new PublicKey(userWallet),
@@ -865,7 +1039,9 @@ export class MetaplexCoreService {
           })
         );
       } else {
-        console.log('Free mint detected or no creator payment required after commission');
+        console.log(
+          "Free mint detected or no creator payment required after commission"
+        );
       }
 
       // Create actual NFTs using Metaplex Core (separate UMI transaction)
@@ -881,34 +1057,42 @@ export class MetaplexCoreService {
         // Create metadata for this NFT using selected item data
         const nftMetadata = {
           name: selectedItem?.name || `${collection.name} #${Date.now()}-${i}`,
-          description: collection.description || `NFT from ${collection.name} collection`,
-          symbol: collection.symbol || 'ZUNO',
-          image: selectedItem?.image_uri || collection.image_uri || 'https://placeholder.com/nft-image.png',
+          description:
+            collection.description || `NFT from ${collection.name} collection`,
+          symbol: collection.symbol || "ZUNO",
+          image:
+            selectedItem?.image_uri ||
+            collection.image_uri ||
+            "https://placeholder.com/nft-image.png",
           attributes: selectedItem?.attributes || [
-            { trait_type: 'Collection', value: collection.name },
-            { trait_type: 'Mint Number', value: `${Date.now()}-${i}` },
-            { trait_type: 'Creator', value: collection.creator_wallet }
+            { trait_type: "Collection", value: collection.name },
+            { trait_type: "Mint Number", value: `${Date.now()}-${i}` },
+            { trait_type: "Creator", value: collection.creator_wallet },
           ],
           properties: {
             files: [
               {
-                uri: collection.image_uri || 'https://placeholder.com/nft-image.png',
-                type: 'image/png'
-              }
+                uri:
+                  collection.image_uri ||
+                  "https://placeholder.com/nft-image.png",
+                type: "image/png",
+              },
             ],
-            category: 'image',
+            category: "image",
             creators: [
               {
                 address: collection.creator_wallet,
-                share: 100
-              }
-            ]
+                share: 100,
+              },
+            ],
           },
           collection: {
             name: collection.name,
-            family: collection.symbol || 'ZUNO'
+            family: collection.symbol || "ZUNO",
           },
-          seller_fee_basis_points: collection.royalty_percentage ? collection.royalty_percentage * 100 : 0,
+          seller_fee_basis_points: collection.royalty_percentage
+            ? collection.royalty_percentage * 100
+            : 0,
           external_url: `https://zunoagent.xyz/nft/${assetSigner.publicKey}`,
         };
 
@@ -942,44 +1126,47 @@ export class MetaplexCoreService {
       transaction.sign(serverKeypair);
 
       // Send the fee collection transaction
-      console.log('Sending fee collection transaction...');
-      const feeSignature = await connection.sendRawTransaction(transaction.serialize());
-      await connection.confirmTransaction(feeSignature, 'finalized');
+      console.log("Sending fee collection transaction...");
+      const feeSignature = await connection.sendRawTransaction(
+        transaction.serialize()
+      );
+      await connection.confirmTransaction(feeSignature, "finalized");
 
-      // Then, send the NFT creation transaction using UMI
-      console.log('Creating NFTs...');
-      const nftResult = await umiTransaction.sendAndConfirm(this.umi, {
-        confirm: { commitment: 'finalized' }
-      });
+      // Build the UMI transaction with latest blockhash before sending
+      const builtUmiTransaction = await umiTransaction.build(this.umi);
 
-      const completeSignature = nftResult.signature.toString();
+      // Send the NFT creation transaction using UMI
+      console.log("Creating NFTs on blockchain...");
+      const nftResult = await this.umi.rpc.sendTransaction(builtUmiTransaction);
+      // Transaction confirmation is handled by sendTransaction in UMI
 
-      console.log('NFT minting completed successfully:', {
+      const completeSignature = nftResult.toString();
+
+      console.log("NFT minting completed successfully:", {
         signature: completeSignature,
         mintCount: amount,
         mintIds,
         totalPaid: price * amount + platformFee + creatorPayment,
         platformFee,
-        creatorPayment
+        creatorPayment,
       });
 
       return {
         success: true,
         signature: completeSignature,
-        mintIds
+        mintIds,
       };
-
     } catch (error) {
-      console.error('Error minting NFTs with fee collection:', error);
+      console.error("Error minting NFTs with fee collection:", error);
 
-      let errorMessage = 'Unknown error occurred during minting';
+      let errorMessage = "Unknown error occurred during minting";
       if (error instanceof Error) {
         errorMessage = error.message;
       }
 
       return {
         success: false,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -997,20 +1184,28 @@ export class MetaplexCoreService {
     feePayer?: string; // Optional: specify a different wallet to pay fees
   }): Promise<{ success: boolean; error?: string; mintIds?: string[] }> {
     try {
-      const { collectionMintAddress, userWallet, selectedItems, transactionSignature, feePayer } = params;
+      const {
+        collectionMintAddress,
+        userWallet,
+        selectedItems,
+        transactionSignature,
+        feePayer,
+      } = params;
 
-      console.log('Creating NFTs from selected items:', {
+      console.log("Creating NFTs from selected items:", {
         collectionMintAddress,
         userWallet,
         itemCount: selectedItems.length,
         transactionSignature,
-        feePayer: feePayer || 'server_wallet'
+        feePayer: feePayer || "server_wallet",
       });
 
       // Get collection details
-      const collection = await SupabaseService.getCollectionByMintAddress(collectionMintAddress);
+      const collection = await SupabaseService.getCollectionByMintAddress(
+        collectionMintAddress
+      );
       if (!collection) {
-        throw new Error('Collection not found');
+        throw new Error("Collection not found");
       }
 
       const mintIds: string[] = [];
@@ -1025,43 +1220,56 @@ export class MetaplexCoreService {
         // Create metadata for this specific NFT using the selected item's data
         const nftMetadata = {
           name: item.name,
-          description: collection.description || `${item.name} from ${collection.name} collection`,
-          symbol: collection.symbol || 'ZUNO',
-          image: item.image_uri || collection.image_uri || 'https://placeholder.com/nft-image.png',
+          description:
+            collection.description ||
+            `${item.name} from ${collection.name} collection`,
+          symbol: collection.symbol || "ZUNO",
+          image:
+            item.image_uri ||
+            collection.image_uri ||
+            "https://placeholder.com/nft-image.png",
           attributes: item.attributes,
           properties: {
             files: [
               {
-                uri: item.image_uri || collection.image_uri || 'https://placeholder.com/nft-image.png',
-                type: item.image_uri?.includes('.gif') ? 'image/gif' :
-                  item.image_uri?.includes('.mp4') ? 'video/mp4' : 'image/png'
-              }
+                uri:
+                  item.image_uri ||
+                  collection.image_uri ||
+                  "https://placeholder.com/nft-image.png",
+                type: item.image_uri?.includes(".gif")
+                  ? "image/gif"
+                  : item.image_uri?.includes(".mp4")
+                  ? "video/mp4"
+                  : "image/png",
+              },
             ],
-            category: 'image',
+            category: "image",
             creators: [
               {
                 address: collection.creator_wallet,
                 verified: true,
-                share: 100
-              }
-            ]
+                share: 100,
+              },
+            ],
           },
           collection: {
             name: collection.name,
-            family: collection.symbol || 'ZUNO',
-            verified: false // Will be true once collection is verified
+            family: collection.symbol || "ZUNO",
+            verified: false, // Will be true once collection is verified
           },
-          seller_fee_basis_points: collection.royalty_percentage ? collection.royalty_percentage * 100 : 0,
+          seller_fee_basis_points: collection.royalty_percentage
+            ? collection.royalty_percentage * 100
+            : 0,
           external_url: `https://zunoagent.xyz/collection/${collection.id}`,
           // Add standard NFT metadata fields
-          compiler: 'Zuno NFT Platform',
+          compiler: "Zuno NFT Platform",
           date: new Date().toISOString(),
           // Add collection verification info
           uses: {
-            useMethod: 'single',
+            useMethod: "single",
             remaining: 1,
-            total: 1
-          }
+            total: 1,
+          },
         };
 
         // Upload NFT metadata to IPFS
@@ -1080,37 +1288,45 @@ export class MetaplexCoreService {
         mintIds.push(assetSigner.publicKey.toString());
       }
 
+      // Build the UMI transaction with latest blockhash before sending
+      const builtUmiTransaction = await umiTransaction.buildWithLatestBlockhash(
+        this.umi
+      );
+
       // Send the NFT creation transaction using UMI
-      console.log('Creating NFTs on blockchain...');
-      const nftResult = await umiTransaction.sendAndConfirm(this.umi, {
-        confirm: { commitment: 'finalized' }
-      });
+      console.log("Creating NFTs on blockchain...");
+      const nftResult = await this.umi.rpc.sendTransaction(
+        builtUmiTransaction,
+        {
+          commitment: "finalized",
+        }
+      );
+      // Transaction confirmation is handled by sendTransaction in UMI
 
-      const completeSignature = nftResult.signature.toString();
+      const completeSignature = nftResult.toString();
 
-      console.log('NFT creation completed successfully:', {
+      console.log("NFT creation completed successfully:", {
         signature: completeSignature,
         mintCount: selectedItems.length,
         mintIds,
-        originalTransactionSignature: transactionSignature
+        originalTransactionSignature: transactionSignature,
       });
 
       return {
         success: true,
-        mintIds
+        mintIds,
       };
-
     } catch (error) {
-      console.error('Error creating NFTs from items:', error);
+      console.error("Error creating NFTs from items:", error);
 
-      let errorMessage = 'Unknown error occurred during NFT creation';
+      let errorMessage = "Unknown error occurred during NFT creation";
       if (error instanceof Error) {
         errorMessage = error.message;
       }
 
       return {
         success: false,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -1122,7 +1338,7 @@ export class MetaplexCoreService {
       const keypair = Keypair.fromSecretKey(privateKey);
       return keypair.publicKey;
     } catch (error) {
-      console.error('Error getting server wallet public key:', error);
+      console.error("Error getting server wallet public key:", error);
       return null;
     }
   }

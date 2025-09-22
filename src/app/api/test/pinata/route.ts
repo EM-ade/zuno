@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
+import { envConfig } from '@/config/env';
 
 export async function GET(request: NextRequest) {
   try {
     console.log('=== Pinata Configuration Test ===');
     
     // Check environment variables
-    const pinataJwt = process.env.PINATA_JWT;
-    const pinataGateway = process.env.PINATA_GATEWAY;
+    const pinataJwt = envConfig.pinataJwt;
+    const pinataGateway = envConfig.pinataGateway;
     
     const results = {
       pinataJwtExists: !!pinataJwt,

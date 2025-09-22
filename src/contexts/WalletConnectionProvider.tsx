@@ -62,11 +62,10 @@ function useWalletConnectionManager() {
         // A common pattern is to just let the user handle it from the modal.
         // We'll set connecting to false and let the adapter's state take over.
         setIsConnecting(false);
-        return;
       }
       
-      console.log('Attempting to connect to:', wallet.wallet.adapter.name);
-      await wallet.connect();
+      console.log('Attempting to connect to:', wallet.wallet?.adapter.name);
+      await wallet.connect(); // Uncommented manual connect call
 
     } catch (e) {
       const err = e as WalletError;

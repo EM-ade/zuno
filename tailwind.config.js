@@ -6,7 +6,22 @@ module.exports = {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      keyframes: {
+        'spin-slow': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+        'spin-fast': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(-360deg)' }, // Counter-rotate
+        },
+      },
+      animation: {
+        'spin-slow': 'spin-slow 2s linear infinite',
+        'spin-fast': 'spin-fast 1s linear infinite',
+      },
+    },
   },
   plugins: [],
 };

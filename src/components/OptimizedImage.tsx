@@ -4,6 +4,7 @@ import Image, { ImageProps, StaticImageData } from 'next/image'
 
 interface OptimizedImageProps extends ImageProps {
   placeholderSrc?: string // Optional prop for a custom placeholder
+  loading?: 'eager' | 'lazy' // Optional prop to control loading behavior
 }
 
 const OptimizedImage: React.FC<OptimizedImageProps> = ({
@@ -13,6 +14,7 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
   height = 300,
   className = '',
   priority = false,
+  loading = 'lazy',
   quality = 75,
   sizes = '100vw',
   placeholderSrc = '/placeholder.svg', // Use local SVG as default placeholder
@@ -55,6 +57,7 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
         width={width}
         height={height}
         priority={priority}
+        {...(!priority && imageSrc !== placeholderSrc && { loading: loading })} // Conditionally apply loading
         className={`transition-opacity duration-300 ${
           isLoading ? 'opacity-50' : 'opacity-100'
         } ${hasError ? 'grayscale' : ''}`}

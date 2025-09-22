@@ -1,7 +1,89 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { metaplexEnhancedService } from '@/lib/metaplex-enhanced';
 import { supabaseServer } from '@/lib/supabase-service';
-import { Phase } from '@/types'; // Import the Phase interface
+import { Phase } from '@/types';
+import { EnhancedCollectionConfig } from '@/lib/metaplex-enhanced';
+
+// Server-side collection creation method
+async function serverCreateCollection(config: EnhancedCollectionConfig) {
+  try {
+    // Validate required fields
+    if (!config.name || !config.symbol || !config.description || !config.creatorWallet) {
+      throw new Error('Missing required collection fields');
+    }
+
+    // Perform server-side collection creation
+    const result = await metaplexEnhancedService.createEnhancedCollection(config);
+
+    // Save to database
+    const { data: collection, error: dbError } = await supabaseServer
+      .from('collections')
+      .insert({
+        name: config.name,
+        symbol: config.symbol,
+        description: config.description,
+        collection_mint_address: result.collectionMint,
+        candy_machine_id: result.candyMachineId,
+        creator_wallet: config.creatorWallet,
+        total_supply: config.totalSupply,
+        price: config.price,
+        royalty_percentage: config.royaltyPercentage || 5,
+        image_uri: result.imageUri,
+        metadata: {
+          metadata_uri: result.metadataUri
+        }
+      })
+      .select()
+      .single();
+
+    if (dbError) {
+      throw new Error(`Failed to save collection to database: ${dbError.message}`);
+    }
+
+    // Save phases if provided
+    if (config.phases && config.phases.length > 0 && collection) {
+      const phaseRecords = config.phases.map((phase: Phase) => ({
+        collection_id: collection.id,
+        name: phase.name,
+        start_time: phase.start_time,
+        end_time: phase.end_time || null,
+        price: phase.price || config.price,
+        mint_limit: phase.mint_limit || null,
+        phase_type: phase.phase_type,
+        allowed_wallets: phase.allowed_wallets || null,
+      }));
+
+      const { error: phaseError } = await supabaseServer
+        .from('mint_phases')
+        .insert(phaseRecords);
+
+      if (phaseError) {
+        console.error('Error saving phases:', phaseError);
+      }
+    }
+
+    return {
+      success: true,
+      collection: {
+        id: collection?.id,
+        mintAddress: result.collectionMint,
+        candyMachineId: result.candyMachineId,
+        name: config.name,
+        symbol: config.symbol,
+        description: config.description,
+        imageUri: result.imageUri,
+        metadataUri: result.metadataUri,
+        price: config.price,
+        totalSupply: config.totalSupply,
+        phases: result.phases,
+        transactionSignature: result.transactionSignature
+      }
+    };
+  } catch (error) {
+    console.error('Server-side collection creation error:', error);
+    throw error;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,16 +106,8 @@ export async function POST(request: NextRequest) {
     const phasesJson = formData.get('phases') as string | null;
     const phases: Phase[] | undefined = phasesJson ? JSON.parse(phasesJson) : undefined;
     
-    // Validate required fields
-    if (!name || !symbol || !description || !creatorWallet) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-    
-    // Create the enhanced collection
-    const result = await metaplexEnhancedService.createEnhancedCollection({
+    // Create collection using server-side method
+    const result = await serverCreateCollection({
       name,
       symbol,
       description,
@@ -46,86 +120,32 @@ export async function POST(request: NextRequest) {
       phases
     });
     
-    // Save to database with all required fields
-    const { data: collection, error: dbError } = await supabaseServer
-      .from('collections')
-      .insert({
-        collection_mint_address: result.collectionMint,
-        candy_machine_id: result.candyMachineId || null,
-        name,
-        symbol,
-        description,
-        image_uri: result.imageUri || null,
-        creator_wallet: creatorWallet,
-        update_authority: creatorWallet, // Set to creator after transfer
-        price: price || 0,
-        total_supply: totalSupply,
-        minted_count: 0,
-        royalty_percentage: royaltyPercentage || 5,
-        status: 'active',
-        metadata: {
-          metadataUri: result.metadataUri || null,
-          network: process.env.SOLANA_NETWORK || 'devnet',
-          transactionSignature: result.transactionSignature
-        }
-      })
-      .select()
-      .single();
-    
-    if (dbError) {
-      console.error('Database error saving collection:', dbError);
-      // Instead of logging and continuing, throw an error to be caught by the outer catch block
-      throw new Error(`Collection created on-chain (${result.collectionMint}) but failed to save to database: ${dbError.message}`);
-    } else {
-      console.log('Collection saved to database:', collection?.id);
-      
-      // Save phases if provided
-      if (phases && phases.length > 0 && collection) {
-        const phaseRecords = phases.map((phase: Phase) => ({
-          collection_id: collection.id,
-          name: phase.name,
-          start_time: phase.start_time, // Use phase.start_time
-          end_time: phase.end_time || null, // Use phase.end_time
-          price: phase.price || price,
-          mint_limit: phase.mint_limit || null, // New column for mint_phases
-          phase_type: phase.phase_type, // New column for mint_phases (enum)
-          allowed_wallets: phase.allowed_wallets || null, // New column for mint_phases (TEXT[])
-        }));
-
-        const { error: phaseError } = await supabaseServer
-          .from('mint_phases') // Changed from 'phases' to 'mint_phases'
-          .insert(phaseRecords);
-
-        if (phaseError) {
-          console.error('Error saving phases:', phaseError);
-        }
-      }
-    }
-    
-    return NextResponse.json({
-      success: true,
-      collection: {
-        id: collection?.id,
-        mintAddress: result.collectionMint,
-        candyMachineId: result.candyMachineId,
-        name,
-        symbol,
-        description,
-        imageUri: result.imageUri,
-        metadataUri: result.metadataUri,
-        price,
-        totalSupply,
-        phases: result.phases,
-        transactionSignature: result.transactionSignature
-      }
-    });
+    return NextResponse.json(result);
     
   } catch (error) {
     console.error('Error creating enhanced collection:', error);
+    
+    // Provide user-friendly error messages
+    let userMessage = 'Failed to create collection';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('Insufficient server wallet balance')) {
+        userMessage = error.message;
+      } else if (error.message.includes('insufficient lamports')) {
+        userMessage = 'Insufficient server funds. Please contact support.';
+      } else if (error.message.includes('Transaction simulation failed')) {
+        userMessage = 'Transaction failed. Please try again.';
+      } else if (error.message.includes('custom program error')) {
+        userMessage = 'Blockchain transaction failed. Please try again.';
+      } else {
+        userMessage = error.message;
+      }
+    }
+    
     return NextResponse.json(
       { 
-        error: 'Failed to create collection',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        success: false, 
+        error: userMessage
       },
       { status: 500 }
     );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { metaplexEnhancedService, NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced';
+import { metaplexEnhancedService, NFTUploadServiceResult, UploadedNFTResult, NFTUploadConfig } from '@/lib/metaplex-enhanced';
 import { NFTParser, type ParsedNFT, type NFTAttribute } from '@/lib/nft-parser';
 import { supabaseServer } from '@/lib/supabase-service';
 
@@ -13,13 +13,14 @@ interface ProcessedNFT {
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
+    // Expecting a JSON body directly
+    const body = await request.json();
     
-    // Get collection info
-    const collectionAddress = formData.get('collectionAddress') as string;
-    const candyMachineAddress = formData.get('candyMachineAddress') as string | null;
-    const uploadType = formData.get('uploadType') as string; // 'json', 'csv', 'folder', 'images'
-    
+    // Get collection info from the JSON body
+    const collectionAddress = body.collectionAddress as string;
+    const candyMachineAddress = body.candyMachineAddress as string | null;
+    const nftConfigs = body.nfts as NFTUploadConfig[];
+
     if (!collectionAddress) {
       return NextResponse.json(
         { error: 'Collection address is required' },
@@ -27,173 +28,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let parsedNFTs: ParsedNFT[] = [];
-    const processedNFTs: ProcessedNFT[] = [];
-
-    // Handle different upload types
-    switch (uploadType) {
-      case 'json': {
-        const jsonFile = formData.get('jsonFile') as File;
-        if (!jsonFile) {
-          return NextResponse.json(
-            { error: 'JSON file is required' },
-            { status: 400 }
-          );
-        }
-        
-        const jsonContent = await jsonFile.text();
-        parsedNFTs = NFTParser.parseJSON(jsonContent);
-        
-        // Check for accompanying images
-        const imageFiles = formData.getAll('images') as File[];
-        if (imageFiles.length > 0) {
-          // Match images to NFTs by index or name
-          parsedNFTs.forEach((nft, index) => {
-            const matchingImage = imageFiles.find(img => 
-              NFTParser['getBaseName'](img.name) === nft.name ||
-              NFTParser['getBaseName'](img.name) === String(index + 1)
-            ) || imageFiles[index];
-            
-            if (matchingImage) {
-              nft.imageFile = matchingImage;
-            }
-          });
-        }
-        break;
-      }
-
-      case 'csv': {
-        const csvFile = formData.get('csvFile') as File;
-        if (!csvFile) {
-          return NextResponse.json(
-            { error: 'CSV file is required' },
-            { status: 400 }
-          );
-        }
-        
-        const csvContent = await csvFile.text();
-        parsedNFTs = NFTParser.parseCSV(csvContent);
-        
-        // Check for accompanying images
-        const imageFiles = formData.getAll('images') as File[];
-        if (imageFiles.length > 0) {
-          parsedNFTs.forEach((nft, index) => {
-            const matchingImage = imageFiles.find(img => 
-              NFTParser['getBaseName'](img.name) === nft.name ||
-              NFTParser['getBaseName'](img.name) === String(index + 1)
-            ) || imageFiles[index];
-            
-            if (matchingImage) {
-              nft.imageFile = matchingImage;
-            }
-          });
-        }
-        break;
-      }
-
-      case 'folder': {
-        // Get all files from folder upload
-        const allFiles: File[] = [];
-        let fileIndex = 0;
-        let file = formData.get(`file_${fileIndex}`) as File;
-        
-        while (file) {
-          allFiles.push(file);
-          fileIndex++;
-          file = formData.get(`file_${fileIndex}`) as File;
-        }
-        
-        if (allFiles.length === 0) {
-          return NextResponse.json(
-            { error: 'No files found in folder' },
-            { status: 400 }
-          );
-        }
-        
-        // Log the files being processed
-        console.log(`Processing ${allFiles.length} files from folder upload:`);
-        allFiles.forEach((f, i) => {
-          console.log(`  File ${i}: ${f.name} (${f.type}, ${f.size} bytes)`);
-        });
-        
-        // Parse folder contents
-        const folderNFTs = NFTParser.matchFilesInFolder(allFiles);
-        console.log(`Parsed ${folderNFTs.length} NFTs from folder`);
-        
-        // Process matched files
-        for (const nft of folderNFTs) {
-          if (nft.properties?.jsonFile) {
-            // Parse the JSON file content
-            const jsonFile = nft.properties.jsonFile as File;
-            const jsonContent = await jsonFile.text();
-            const [parsedData] = NFTParser.parseJSON(jsonContent);
-            
-            // Merge parsed data with image
-            nft.name = parsedData.name || nft.name;
-            nft.description = parsedData.description || nft.description;
-            nft.attributes = parsedData.attributes || nft.attributes;
-            
-            if (!nft.imageFile && parsedData.image) {
-              nft.image = parsedData.image;
-            }
-          }
-        }
-        
-        parsedNFTs = folderNFTs;
-        break;
-      }
-
-      case 'images': {
-        // Simple image upload with optional traits
-        const imageFiles = formData.getAll('images') as File[];
-        const traitsJson = formData.get('traits') as string | null;
-        
-        if (imageFiles.length === 0) {
-          return NextResponse.json(
-            { error: 'No images provided' },
-            { status: 400 }
-          );
-        }
-        
-        // Parse traits if provided
-        let defaultAttributes: NFTAttribute[] = [];
-        if (traitsJson) {
-          try {
-            const traits = JSON.parse(traitsJson);
-            defaultAttributes = NFTParser['normalizeAttributes'](traits);
-          } catch (error) {
-            console.warn('Failed to parse traits:', error);
-          }
-        }
-        
-        parsedNFTs = NFTParser.parseNumberedFolder(imageFiles, defaultAttributes);
-        break;
-      }
-
-      default:
+    if (!nftConfigs || nftConfigs.length === 0) {
         return NextResponse.json(
-          { error: 'Invalid upload type' },
-          { status: 400 }
+            { error: 'No NFTs provided for upload' },
+            { status: 400 }
         );
     }
-
-    // Process parsed NFTs for upload
-    for (const nft of parsedNFTs) {
-      processedNFTs.push({
-        name: nft.name,
-        description: nft.description,
-        imageFile: nft.imageFile,
-        imageUri: nft.image,
-        attributes: nft.attributes
-      });
-    }
-
-    if (processedNFTs.length === 0) {
-      return NextResponse.json(
-        { error: 'No valid NFTs to upload' },
-        { status: 400 }
-      );
-    }
+    
+    // Process parsed NFTs for upload (already formatted by client)
+    const processedNFTs: ProcessedNFT[] = nftConfigs.map(nft => ({
+      name: nft.name,
+      description: nft.description || '', // Ensure description is not undefined
+      imageUri: nft.imageUri,
+      attributes: nft.attributes || [] // Ensure attributes is not undefined
+    }));
 
     // Upload NFTs using the enhanced service
     const result: NFTUploadServiceResult = await metaplexEnhancedService.uploadNFTsToCollection(

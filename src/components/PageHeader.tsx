@@ -51,10 +51,10 @@ export default function PageHeader({
               <span className="text-sm text-gray-500">{title}</span>
               {showCreateButton && (
                 <Link
-                  href="/creator"
+                  href={createButtonHref}
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                 >
-                  Create
+                  {createButtonText}
                 </Link>
               )}
               {isConnected && publicKey ? (

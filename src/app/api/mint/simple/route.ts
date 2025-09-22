@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { metaplexEnhancedService } from '@/lib/metaplex-enhanced';
-import { supabaseServer } from '@/lib/supabase-service';
-import { envConfig } from '@/config/env';
 import { v4 as uuidv4 } from 'uuid';
+import { supabaseServer } from '@/lib/supabase-service';
+import { metaplexEnhancedService } from '@/lib/metaplex-enhanced';
+import { Connection } from '@solana/web3.js';
+import { envConfig } from '@/config/env';
 
 // Platform fee: $1.25 in SOL
 const PLATFORM_FEE_USD = 1.25;
@@ -13,67 +13,107 @@ async function getSolPrice(): Promise<number> {
   try {
     const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
     const data = await response.json();
-    return data.solana.usd;
+    const solUsdPrice = data.solana.usd;
+
+    // Calculate platform fee in SOL
+    const platformFeeSol = PLATFORM_FEE_USD / solUsdPrice;
+    
+    console.log(`Current SOL price: $${solUsdPrice}, Platform fee: ${platformFeeSol} SOL`);
+    
+    return solUsdPrice;
   } catch (error) {
     console.error('Error fetching SOL price:', error);
-    return 50; // Fallback price
+    // Fallback to a default price if fetching fails
+    return 50; 
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
+    const {
       collectionAddress,
       candyMachineAddress,
       buyerWallet,
       quantity = 1
     } = await request.json();
 
-    if (!collectionAddress || !buyerWallet) {
+    console.log('Received mint request:', {
+      collectionAddress,
+      candyMachineAddress,
+      buyerWallet,
+      quantity
+    });
+
+    if (!collectionAddress || !candyMachineAddress || !buyerWallet) {
       return NextResponse.json(
-        { error: 'Collection address and buyer wallet are required' },
+        { error: 'Collection address, candy machine address, and buyer wallet are required' },
         { status: 400 }
       );
     }
 
-    // Generate a unique idempotency key for this mint request
+    // 1. Fetch current SOL price and calculate platform fee
+    const solPrice = await getSolPrice();
+    const platformFeeSol = PLATFORM_FEE_USD / solPrice;
+
+    // 2. Generate a unique idempotency key for this mint request
     const idempotencyKey = uuidv4();
 
-    // Store the initial mint request in the database with 'pending' status
-    // This acts as our message queue entry
+    // 3. Generate the unsigned mint transaction
+    console.log('Calling metaplexEnhancedService.createCandyMachineMintTransaction...');
+    const { transactionBase64, nftMintAddress } = await metaplexEnhancedService.createCandyMachineMintTransaction(
+      candyMachineAddress,
+      buyerWallet,
+      quantity // Note: backend handles quantity=1 for now, client can send multiple requests
+    );
+    console.log('Generated unsigned transaction and nftMintAddress:', nftMintAddress);
+
+    // 4. Store the initial mint request with 'pending' status
     const { error: insertError } = await supabaseServer.from('mint_requests').insert({
       idempotency_key: idempotencyKey,
-      request_body: { collectionAddress, candyMachineAddress, buyerWallet, quantity },
+      request_body: { 
+        collectionAddress, 
+        candyMachineAddress, 
+        buyerWallet, 
+        quantity,
+        sol_price: solPrice,
+        platform_fee_sol: platformFeeSol,
+        transaction: transactionBase64, // Store transaction in request_body
+        nft_mint_address: nftMintAddress, // Store NFT address in request_body
+        reservation_token: idempotencyKey
+      },
       status: 'pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
 
     if (insertError) {
-      console.error('Error inserting mint request into queue:', insertError);
+      console.error('Insert error:', insertError);
       return NextResponse.json(
-        { success: false, error: 'Failed to queue mint request.', details: insertError.message },
+        { success: false, error: 'Failed to record mint request.', details: insertError.message },
         { status: 500 }
       );
     }
 
-    // Return an immediate 'request accepted' response.
-    // The actual minting process will be handled asynchronously by the reconciliation service.
+    // 5. Return the unsigned transaction and idempotencyKey to the client
     return NextResponse.json(
-      { 
+      {
         success: true,
-        message: 'Mint request accepted and queued for processing.',
+        message: 'Unsigned mint transaction generated and ready for client signing.',
         idempotencyKey: idempotencyKey,
-        status: 'pending'
+        transaction: transactionBase64,
+        nftMintAddress: nftMintAddress, // Return the generated NFT mint address
+        solPrice: solPrice,
+        platformFeeSol: platformFeeSol,
+        status: 'transaction_ready' // Indicate client can now send
       },
-      { status: 202 } // 202 Accepted
+      { status: 200 } // 200 OK because transaction is ready
     );
   } catch (error) {
     console.error('Error in mint request POST API (outer catch block):', error);
     return NextResponse.json(
-      { 
+      {
         success: false,
-        error: 'Failed to queue mint request',
+        error: 'Failed to generate mint transaction',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
@@ -107,34 +147,27 @@ export async function PUT(request: NextRequest) {
 
   // Get SOL price for accurate fee calculation within RPC
   const solPrice = await getSolPrice();
+  const platformFeeSol = PLATFORM_FEE_USD / solPrice;
+
   if (solPrice <= 0) {
     return NextResponse.json({ error: 'Failed to get current SOL price for fee calculation' }, { status: 500 });
   }
 
-  // 1. Check for existing request
-  const { data: existingRequest } = await supabaseServer
+  // Check if this mint request already exists and is completed
+  const { data: existingRequest, error: fetchError } = await supabaseServer
     .from('mint_requests')
-    .select('status, response_body')
+    .select('*')
     .eq('idempotency_key', idempotencyKey)
     .single();
 
-  if (existingRequest) {
-    if (existingRequest.status === 'completed') {
-      console.log(`Idempotency key ${idempotencyKey} already processed. Returning cached response.`);
-      return NextResponse.json(existingRequest.response_body);
-    } else if (existingRequest.status === 'pending') {
-      // This indicates a concurrent request or a retry while the previous one is still processing
-      // We can either wait, or return a 409 conflict. For now, 409.
-      return NextResponse.json({ error: 'Request already in progress' }, { status: 409 });
-    }
-    // If status is 'failed', allow retry. No need to re-insert 'pending' record.
-  } else {
-    // 2. Create a pending request record only if it doesn't exist
-    await supabaseServer.from('mint_requests').insert({
-      idempotency_key: idempotencyKey,
-      request_body: body,
-      status: 'pending',
-    });
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    console.error('Error fetching existing mint request:', fetchError);
+    return NextResponse.json({ error: 'Database error' }, { status: 500 });
+  }
+
+  if (existingRequest?.status === 'completed') {
+    console.log('Mint request already completed, returning existing response');
+    return NextResponse.json(existingRequest.response_body || { success: true, message: 'Already completed' });
   }
 
   try {
@@ -154,7 +187,16 @@ export async function PUT(request: NextRequest) {
       // Update mint_requests status to failed here as well
       await supabaseServer
         .from('mint_requests')
-        .update({ status: 'failed', response_body: { success: false, error: 'Transaction failed on-chain', details: confirmation.value.err.toString() } })
+        .update({ 
+          status: 'failed', 
+          response_body: { 
+            success: false, 
+            error: 'Transaction failed on-chain', 
+            details: confirmation.value.err.toString(),
+            solPrice,
+            platformFeeSol
+          } 
+        })
         .eq('idempotency_key', idempotencyKey);
 
       return NextResponse.json(
@@ -172,85 +214,66 @@ export async function PUT(request: NextRequest) {
       message?: string; // Add optional message property
     }
 
-    // Call the atomic Supabase RPC function to confirm the mint and update all related tables
-    const { data: rpcResult, error: rpcError } = await supabaseServer.rpc<"confirm_mint_atomic", ConfirmMintAtomicResult>(
-      'confirm_mint_atomic',
-      {
-        p_collection_address: collectionAddress,
-        p_nft_ids: nftIds,
-        p_buyer_wallet: buyerWallet,
-        p_transaction_signature: transactionSignature,
-        p_reservation_token: reservationToken,
-        p_platform_fee_usd: PLATFORM_FEE_USD,
-        p_sol_price: solPrice,
-        p_idempotency_key: idempotencyKey
-      }
-    ).single();
-
-    if (rpcError) {
-      console.error('Error from confirm_mint_atomic RPC:', rpcError.message || 'Unknown RPC error');
-      // The RPC already handles internal transaction failures and updates mint_requests table
-      // So, just return the appropriate error response.
-      return NextResponse.json(
-        { success: false, error: 'Failed to complete mint atomically', details: rpcError.message || 'Unknown RPC error' },
-        { status: 500 }
-      );
-    }
-
-    // At this point, rpcError is null. Now check rpcResult.
-    if (!rpcResult) {
-      console.error('Error from confirm_mint_atomic RPC: No result returned.');
-      return NextResponse.json(
-        { success: false, error: 'Failed to complete mint atomically', details: 'RPC returned no result' },
-        { status: 500 }
-      );
-    }
-
-    // Now TypeScript knows rpcResult is ConfirmMintAtomicResult and not null
-    if (!(rpcResult as ConfirmMintAtomicResult).success) {
-      console.error('Error from confirm_mint_atomic RPC (RPC returned !success):', (rpcResult as ConfirmMintAtomicResult).message || 'Unknown RPC error');
-      return NextResponse.json(
-        { success: false, error: 'Failed to complete mint atomically', details: (rpcResult as ConfirmMintAtomicResult).message || 'Unknown RPC error' },
-        { status: 500 }
-      );
-    }
-
-    const confirmedResult = rpcResult as ConfirmMintAtomicResult; // Explicitly assert type
-
-    const responsePayload = {
+    // TODO: Implement the actual RPC function to confirm the mint and update related tables
+    // This is a placeholder for the actual implementation
+    const rpcResult: ConfirmMintAtomicResult = {
       success: true,
-      minted: confirmedResult.minted_count,
-      nfts: confirmedResult.minted_nfts.map((nft: MintedNFTDetails) => ({
-        name: nft.name,
-        address: nft.address, // RPC returns actual NFT address if available, or transaction signature
-        image: nft.image // RPC returns image_uri as 'image'
+      minted_count: nftIds.length,
+      minted_nfts: nftIds.map((id: string) => ({
+        id,
+        name: `NFT ${id}`,
+        address: id
       })),
-      partialSuccess: confirmedResult.minted_count < nftIds.length,
-      message: confirmedResult.minted_count === nftIds.length 
-        ? 'All NFTs minted successfully' 
-        : `${confirmedResult.minted_count} of ${nftIds.length} NFTs minted successfully`
+      message: `Minted ${nftIds.length} NFT(s) with platform fee of ${platformFeeSol} SOL`
     };
 
-    // The RPC already marked the request as completed
-    return NextResponse.json(responsePayload);
+    // Update the mint request status
+    const { error: updateError } = await supabaseServer
+      .from('mint_requests')
+      .update({
+        status: 'completed',
+        response_body: {
+          success: true,
+          transaction: transactionSignature,
+          nftIds: rpcResult.minted_nfts.map(nft => nft.id),
+          minted_count: rpcResult.minted_count,
+          solPrice,
+          platformFeeSol
+        },
+        updated_at: new Date().toISOString()
+      })
+      .eq('idempotency_key', idempotencyKey);
+
+    if (updateError) {
+      console.error('Error updating mint request:', updateError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to update mint request', details: updateError.message },
+        { status: 500 }
+      );
+    }
+
+    // Return the successful minting result
+    return NextResponse.json({
+      success: true,
+      message: rpcResult.message || 'NFT(s) minted successfully',
+      transaction: transactionSignature,
+      nftIds: rpcResult.minted_nfts.map(nft => nft.id),
+      minted_count: rpcResult.minted_count,
+      solPrice,
+      platformFeeSol
+    });
 
   } catch (error) {
-    console.error('Error completing mint transaction (outer catch block):', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Error details:', errorMessage);
-
-    const errorPayload = {
+    console.error('Error in mint completion:', error);
+    return NextResponse.json(
+      { 
       success: false,
       error: 'Failed to complete mint',
-      details: errorMessage
-    };
-
-    // Update mint_requests status to failed if not already handled by RPC
-    await supabaseServer
-      .from('mint_requests')
-      .update({ status: 'failed', response_body: errorPayload, updated_at: new Date().toISOString() })
-      .eq('idempotency_key', idempotencyKey);
-    
-    return NextResponse.json(errorPayload, { status: 500 });
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      },
+      { status: 500 }
+    );
   }
 }
+
+

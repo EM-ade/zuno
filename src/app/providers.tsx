@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react';
 import { WalletConnectionProvider } from '@/contexts/WalletConnectionProvider';
+import LoadingScreen from '@/components/LoadingScreen'; // Import the new component
 
 interface ProvidersProps {
   children: ReactNode;
@@ -10,7 +11,7 @@ interface ProvidersProps {
 export function Providers({ children }: ProvidersProps) {
   return (
     <WalletConnectionProvider>
-      {children}
+      <LoadingScreen>{children}</LoadingScreen>
     </WalletConnectionProvider>
   );
 }

@@ -469,3 +469,4 @@ function CollectionCard({ collection }: { collection: Collection }) {
     </Link>
   )
 }
+

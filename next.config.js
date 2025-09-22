@@ -25,6 +25,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'crimson-peaceful-platypus-428.mypinata.cloud',
       },
+      {
+        protocol: 'https',
+        hostname: 'crimson-peaceful-platypus-428.mypinata.cloud',
+      },
     ],
   },
 

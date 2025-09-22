@@ -1,362 +1,490 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { Calendar, Clock, Users, DollarSign, Plus, Trash2 } from 'lucide-react'
-import { Phase } from '@/types'; // Import Phase from central types file
+import { useState, useEffect } from "react";
+import { Calendar, Clock, Users, DollarSign, Plus, Trash2 } from "lucide-react";
+import { Phase } from "@/types";
 
 interface PhaseManagerProps {
-  collectionId?: string
-  onPhasesChange: (phases: Phase[]) => void
-  initialPhases?: Phase[]
+  collectionId?: string;
+  onPhasesChange: (phases: Phase[]) => void;
+  initialPhases?: Phase[];
 }
 
-export default function PhaseManager({ collectionId, onPhasesChange, initialPhases = [] }: PhaseManagerProps) {
-  const [phases, setPhases] = useState<Phase[]>(initialPhases)
-  const [showAddPhase, setShowAddPhase] = useState(false)
-  
-  // Default phase templates
+export default function PhaseManager({
+  collectionId,
+  onPhasesChange,
+  initialPhases = [],
+}: PhaseManagerProps) {
+  const [phases, setPhases] = useState<Phase[]>(initialPhases);
+  const [showAddPhase, setShowAddPhase] = useState(false);
+
   const phaseTemplates = [
-    { name: 'OG Mint', phase_type: 'og' as const, price: 0.5, duration: 24 },
-    { name: 'Whitelist', phase_type: 'whitelist' as const, price: 0.75, duration: 48 },
-    { name: 'Public Sale', phase_type: 'public' as const, price: 1.0, duration: 0 },
-  ]
+    { name: "OG Mint", phase_type: "og" as const, price: 0.5, duration: 24 },
+    {
+      name: "Whitelist",
+      phase_type: "whitelist" as const,
+      price: 0.75,
+      duration: 48,
+    },
+    {
+      name: "Public Sale",
+      phase_type: "public" as const,
+      price: 1.0,
+      duration: 0,
+    },
+  ];
 
-  const [newPhase, setNewPhase] = useState<Phase>({
-    name: '',
-    phase_type: 'public',
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  const currentTime = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const [newPhase, setNewPhase] = useState<
+    Phase & {
+      startDate: string;
+      startTime: string;
+      endDate: string;
+      endTime: string;
+    }
+  >({
+    // Extended state for separate date/time inputs
+    name: "",
+    phase_type: "public",
     price: 0,
-    start_time: new Date().toISOString().slice(0, 16),
+    start_time: "",
+    end_time: undefined,
     mint_limit: undefined,
-    allowed_wallets: []
-  })
+    allowed_wallets: [],
+    startDate: today,
+    startTime: currentTime,
+    endDate: today,
+    endTime: currentTime,
+  });
 
-  const [walletInput, setWalletInput] = useState('')
+  const [walletInput, setWalletInput] = useState("");
+
+  // Helper function to determine phase status
+  const getPhaseStatus = (phase: Phase) => {
+    const now = new Date();
+    const startTime = new Date(phase.start_time);
+    const endTime = phase.end_time ? new Date(phase.end_time) : null;
+
+    if (now < startTime) return "upcoming";
+    if (endTime && now > endTime) return "ended";
+    return "live";
+  };
+
+  // Helper function to format time
+  const formatLocaleTime = (dateString: string) => {
+    if (!dateString) return "";
+    return new Date(dateString).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
 
   useEffect(() => {
-    onPhasesChange(phases)
-  }, [phases])
+    onPhasesChange(phases);
+  }, [phases]);
 
   const addPhase = () => {
     if (!newPhase.name || newPhase.price < 0) {
-      alert('Please fill in all required fields')
-      return
+      alert("Please fill in all required fields");
+      return;
     }
+
+    // Combine date and time inputs into ISO strings
+    const startDateTime =
+      newPhase.startDate && newPhase.startTime
+        ? new Date(`${newPhase.startDate}T${newPhase.startTime}`).toISOString()
+        : new Date().toISOString(); // Fallback if not provided
+
+    const endDateTime =
+      newPhase.endDate && newPhase.endTime
+        ? new Date(`${newPhase.endDate}T${newPhase.endTime}`).toISOString()
+        : undefined; // Keep undefined if not provided
 
     const phase: Phase = {
       ...newPhase,
       id: Date.now().toString(),
-      allowed_wallets: newPhase.allowed_wallets?.length ? newPhase.allowed_wallets : undefined
-    }
+      start_time: startDateTime,
+      end_time: endDateTime,
+      allowed_wallets: newPhase.allowed_wallets?.length
+        ? newPhase.allowed_wallets
+        : undefined,
+    };
 
-    setPhases([...phases, phase])
+    setPhases([...phases, phase]);
+    // Reset new phase state
     setNewPhase({
-      name: '',
-      phase_type: 'public',
+      name: "",
+      phase_type: "public",
       price: 0,
-      start_time: new Date().toISOString().slice(0, 16),
+      start_time: "",
+      end_time: undefined,
       mint_limit: undefined,
-      allowed_wallets: []
-    })
-    setWalletInput('')
-    setShowAddPhase(false)
-  }
+      allowed_wallets: [],
+      startDate: today,
+      startTime: currentTime,
+      endDate: today,
+      endTime: currentTime,
+    });
+    setWalletInput("");
+    setShowAddPhase(false);
+  };
 
   const removePhase = (id: string) => {
-    setPhases(phases.filter(p => p.id !== id))
-  }
+    setPhases(phases.filter((p) => p.id !== id));
+  };
 
   const addWallet = () => {
-    if (walletInput && walletInput.length === 44) { // Solana wallet length
+    if (walletInput && walletInput.length === 44) {
       setNewPhase({
         ...newPhase,
-        allowed_wallets: [...(newPhase.allowed_wallets || []), walletInput]
-      })
-      setWalletInput('')
+        allowed_wallets: [...(newPhase.allowed_wallets || []), walletInput],
+      });
+      setWalletInput("");
     } else {
-      alert('Please enter a valid Solana wallet address')
+      alert("Please enter a valid Solana wallet address");
     }
-  }
+  };
 
   const removeWallet = (wallet: string) => {
     setNewPhase({
       ...newPhase,
-      allowed_wallets: newPhase.allowed_wallets?.filter(w => w !== wallet)
-    })
-  }
+      allowed_wallets: newPhase.allowed_wallets?.filter((w) => w !== wallet),
+    });
+  };
 
-  const applyTemplate = (template: typeof phaseTemplates[0]) => {
-    const startTime = new Date()
-    const endTime = template.duration > 0 
-      ? new Date(startTime.getTime() + template.duration * 60 * 60 * 1000)
-      : undefined
+  const applyTemplate = (template: (typeof phaseTemplates)[0]) => {
+    const start = new Date();
+    const end =
+      template.duration > 0
+        ? new Date(start.getTime() + template.duration * 60 * 60 * 1000)
+        : undefined;
 
-    setNewPhase({
+    setNewPhase((prev) => ({
+      ...prev,
       name: template.name,
       phase_type: template.phase_type,
       price: template.price,
-      start_time: startTime.toISOString().slice(0, 16),
-      end_time: endTime?.toISOString().slice(0, 16),
-      mint_limit: template.phase_type === 'public' ? undefined : 100,
-      allowed_wallets: []
-    })
-  }
+      start_time: start.toISOString(),
+      end_time: end?.toISOString(),
+      mint_limit: template.phase_type === "public" ? undefined : 100,
+      allowed_wallets: [],
+      // Set separate date and time for template application
+      startDate: start.toISOString().split("T")[0],
+      startTime: start.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+      endDate: end ? end.toISOString().split("T")[0] : today,
+      endTime: end
+        ? end.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : currentTime,
+    }));
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900">Mint Phases</h3>
+      {/* Mobile-optimized header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+        <div>
+          <h3 className="text-lg font-semibold text-white">Mint Phases</h3>
+          <p className="text-sm text-gray-400 mt-1">
+            Configure when and how your NFTs can be minted
+          </p>
+        </div>
         <button
-          onClick={() => setShowAddPhase(!showAddPhase)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          onClick={() => setShowAddPhase(true)}
+          className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2"
         >
-          <Plus className="w-4 h-4" />
-          Add Phase
+          <span>+</span>
+          <span>Add Phase</span>
         </button>
       </div>
 
-      {/* Current Phases */}
-      <div className="space-y-3">
-        {phases.length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 rounded-lg">
-            <p className="text-gray-500">No phases added yet</p>
-            <p className="text-sm text-gray-400 mt-2">Add at least one phase to enable minting</p>
-          </div>
-        ) : (
-          phases.map((phase) => (
-            <div key={phase.id} className="bg-white border border-gray-200 rounded-lg p-4">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <h4 className="font-medium text-gray-900">{phase.name}</h4>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      phase.phase_type === 'og' ? 'bg-purple-100 text-purple-700' :
-                      phase.phase_type === 'whitelist' ? 'bg-blue-100 text-blue-700' :
-                      phase.phase_type === 'public' ? 'bg-green-100 text-green-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {phase.phase_type.toUpperCase()}
-                    </span>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 text-sm">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <DollarSign className="w-4 h-4" />
-                      <span>{phase.price} SOL</span>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Calendar className="w-4 h-4" />
-                      <span>{new Date(phase.start_time).toLocaleDateString()}</span>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Clock className="w-4 h-4" />
-                      <span>{new Date(phase.start_time).toLocaleTimeString()}</span>
-                    </div>
-                    
-                    {phase.allowed_wallets && phase.allowed_wallets.length > 0 && (
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <Users className="w-4 h-4" />
-                        <span>{phase.allowed_wallets.length} wallets</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <button
-                  onClick={() => removePhase(phase.id!)}
-                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Add Phase Form */}
-      {showAddPhase && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 space-y-4">
-          <h4 className="font-medium text-gray-900">Add New Phase</h4>
-          
-          {/* Templates */}
-          <div className="flex gap-2">
+      {/* Phase templates - mobile optimized */}
+      {phases.length === 0 && (
+        <div className="bg-black/20 backdrop-blur-md rounded-xl border border-white/10 p-4">
+          <h4 className="text-white font-medium mb-3">Quick Templates</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {phaseTemplates.map((template) => (
               <button
                 key={template.name}
                 onClick={() => applyTemplate(template)}
-                className="px-3 py-1 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+                className="p-3 bg-black/30 hover:bg-black/40 border border-white/10 rounded-lg text-left transition-all duration-200"
               >
-                {template.name}
+                <div className="text-white font-medium text-sm">
+                  {template.name}
+                </div>
+                <div className="text-gray-400 text-xs mt-1">
+                  {template.price} SOL
+                </div>
               </button>
             ))}
           </div>
+        </div>
+      )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phase Name *
-              </label>
-              <input
-                type="text"
-                value={newPhase.name}
-                onChange={(e) => setNewPhase({ ...newPhase, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                placeholder="e.g., OG Mint, Genesis Sale"
-              />
-            </div>
+      {/* Existing phases - mobile optimized */}
+      {phases.length > 0 && (
+        <div className="space-y-3">
+          {phases.map((phase, index) => (
+            <div
+              key={phase.id}
+              className="bg-black/20 backdrop-blur-md rounded-xl border border-white/10 p-4"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <h4 className="text-white font-medium">{phase.name}</h4>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        getPhaseStatus(phase) === "live"
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                          : getPhaseStatus(phase) === "upcoming"
+                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                      }`}
+                    >
+                      {getPhaseStatus(phase)}
+                    </span>
+                  </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phase Type *
-              </label>
-              <select
-                value={newPhase.phase_type}
-                onChange={(e) => setNewPhase({ ...newPhase, phase_type: e.target.value as Phase['phase_type'] })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-              >
-                <option value="og">OG</option>
-                <option value="whitelist">Whitelist</option>
-                <option value="public">Public</option>
-                <option value="custom">Custom</option>
-              </select>
-            </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-400">Price:</span>
+                      <span className="text-white ml-1">{phase.price} SOL</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Starts:</span>
+                      <span className="text-white ml-1 block sm:inline">
+                        {formatLocaleTime(phase.start_time)}
+                      </span>
+                    </div>
+                    {phase.end_time && (
+                      <div>
+                        <span className="text-gray-400">Ends:</span>
+                        <span className="text-white ml-1 block sm:inline">
+                          {formatLocaleTime(phase.end_time)}
+                        </span>
+                      </div>
+                    )}
+                    {phase.mint_limit && (
+                      <div>
+                        <span className="text-gray-400">Limit:</span>
+                        <span className="text-white ml-1">
+                          {phase.mint_limit}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Price (SOL) *
-              </label>
-              <input
-                type="text" // Changed to text
-                value={newPhase.price.toString()} // Convert number to string
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setNewPhase({ ...newPhase, price: value === '' ? 0 : (parseFloat(value) || 0) });
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-black text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                min="0"
-                step="0.01"
-                inputMode="decimal" // Suggest decimal keyboard
-                pattern="[0-9]*[.]?[0-9]*" // Allow numbers and a decimal point
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Mint Limit (per wallet)
-              </label>
-              <input
-                type="text" // Changed to text
-                value={newPhase.mint_limit === undefined ? '' : newPhase.mint_limit.toString()} // Handle undefined state
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setNewPhase({ ...newPhase, mint_limit: value === '' ? undefined : (parseInt(value) || undefined) });
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-black text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                min="1"
-                placeholder="No limit"
-                inputMode="numeric" // Suggest numeric keyboard
-                pattern="[0-9]*" // Allow only numbers
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Start Date & Time *
-              </label>
-              <input
-                type="datetime-local"
-                value={newPhase.start_time ? newPhase.start_time.slice(0, 16) : ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    const localDate = new Date(e.target.value);
-                    setNewPhase({ ...newPhase, start_time: localDate.toISOString() });
-                  } else {
-                    // If input is cleared, default to current time as a valid ISO string
-                    setNewPhase({ ...newPhase, start_time: new Date().toISOString() });
-                  }
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                End Date & Time (optional)
-              </label>
-              <input
-                type="datetime-local"
-                value={newPhase.end_time ? newPhase.end_time.slice(0, 16) : ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    const localDate = new Date(e.target.value);
-                    setNewPhase({ ...newPhase, end_time: localDate.toISOString() });
-                  } else {
-                    setNewPhase({ ...newPhase, end_time: undefined });
-                  }
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-              />
-            </div>
-          </div>
-
-          {/* Allowed Wallets (for non-public phases) */}
-          {newPhase.phase_type !== 'public' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Allowed Wallets (optional - if empty, all can mint)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={walletInput}
-                  onChange={(e) => setWalletInput(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                  placeholder="Enter Solana wallet address"
-                />
                 <button
-                  onClick={addWallet}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  onClick={() => removePhase(phase.id!)}
+                  className="w-full sm:w-auto px-3 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 rounded-lg text-sm font-medium transition-all duration-200"
                 >
-                  Add
+                  Remove
                 </button>
               </div>
-              
-              {newPhase.allowed_wallets && newPhase.allowed_wallets.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {newPhase.allowed_wallets.map((wallet) => (
-                    <div key={wallet} className="flex items-center justify-between bg-white px-3 py-2 rounded">
-                      <span className="text-sm text-gray-600 font-mono truncate">{wallet}</span>
-                      <button
-                        onClick={() => removeWallet(wallet)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-          )}
+          ))}
+        </div>
+      )}
 
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => setShowAddPhase(false)}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={addPhase}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Add Phase
-            </button>
+      {/* Add phase modal - mobile optimized */}
+      {showAddPhase && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 rounded-2xl border border-white/10 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-white">
+                  Add Mint Phase
+                </h3>
+                <button
+                  onClick={() => setShowAddPhase(false)}
+                  className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-gray-400 hover:text-white transition-all duration-200"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Mobile-optimized form fields */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-200 mb-2">
+                    Phase Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newPhase.name}
+                    onChange={(e) =>
+                      setNewPhase((prev) => ({ ...prev, name: e.target.value }))
+                    }
+                    className="w-full px-4 py-3 bg-black/30 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                    placeholder="e.g., Whitelist Sale"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-200 mb-2">
+                      Type
+                    </label>
+                    <select
+                      value={newPhase.phase_type}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          phase_type: e.target.value as
+                            | "public"
+                            | "whitelist"
+                            | "og",
+                        }))
+                      }
+                      className="w-full px-4 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                    >
+                      <option value="public">Public</option>
+                      <option value="whitelist">Whitelist</option>
+                      <option value="og">OG</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-200 mb-2">
+                      Price (SOL)
+                    </label>
+                    <input
+                      type="number"
+                      value={newPhase.price}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          price: parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      className="w-full px-4 py-3 bg-black/30 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                      placeholder="0.1"
+                      min="0"
+                      step="0.001"
+                    />
+                  </div>
+                </div>
+
+                {/* Date and time inputs - mobile optimized */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-200 mb-2">
+                    Start Date & Time
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={newPhase.startDate}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          startDate: e.target.value,
+                        }))
+                      }
+                      className="w-full px-3 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                    />
+                    <input
+                      type="time"
+                      value={newPhase.startTime}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          startTime: e.target.value,
+                        }))
+                      }
+                      className="w-full px-3 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-200 mb-2">
+                    End Date & Time (Optional)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={newPhase.endDate}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          endDate: e.target.value,
+                        }))
+                      }
+                      className="w-full px-3 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                    />
+                    <input
+                      type="time"
+                      value={newPhase.endTime}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          endTime: e.target.value,
+                        }))
+                      }
+                      className="w-full px-3 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
+                {newPhase.phase_type !== "public" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-200 mb-2">
+                      Mint Limit per Wallet
+                    </label>
+                    <input
+                      type="number"
+                      value={newPhase.mint_limit || ""}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          mint_limit: parseInt(e.target.value) || undefined,
+                        }))
+                      }
+                      className="w-full px-4 py-3 bg-black/30 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                      placeholder="e.g., 3"
+                      min="1"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex space-x-3 mt-6">
+                <button
+                  onClick={() => setShowAddPhase(false)}
+                  className="flex-1 px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-xl font-medium transition-all duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addPhase}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl font-medium transition-all duration-200"
+                >
+                  Add Phase
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }

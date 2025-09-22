@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     return new Response(
       JSON.stringify({ 
         success: true, 
+        url: ipfsUrl,
         ipfsUrl: ipfsUrl,
         ipfsHash: ipfsHash
       }),

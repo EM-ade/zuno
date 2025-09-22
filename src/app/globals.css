@@ -12,9 +12,8 @@
   --zuno-card-bg: #FFFFFF;
   --zuno-border-radius: 1.25rem;
   --zuno-card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
-
-@theme inline {
+  
+  /* Converted from @theme inline */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-zuno-blue: var(--zuno-blue);
