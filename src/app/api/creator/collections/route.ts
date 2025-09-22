@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { SupabaseService } from "@/lib/supabase-service";
-import { redis } from "@/lib/redis-service";
 import { pinataService } from "@/lib/pinata-service";
 import { metaplexCoreService } from "@/lib/metaplex-core";
 import { PriceOracleService } from "@/lib/price-oracle"; // Import PriceOracleService
@@ -11,7 +10,6 @@ const priceOracleService = new PriceOracleService();
 
 // Define a transaction fee in USD
 const TRANSACTION_FEE_USD = 1.25; // $1.25
-const CACHE_TTL = 60; // Cache for 1 minute
 
 // GET - Fetch creator's collections
 export async function GET(request: NextRequest) {
@@ -24,21 +22,6 @@ export async function GET(request: NextRequest) {
         JSON.stringify({ success: false, error: "Wallet address required" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
-    }
-
-    // Check cache first
-    const cacheKey = `creator_collections:${wallet}`;
-    try {
-      const cachedData = await redis.get(cacheKey);
-      if (cachedData) {
-        console.log(`Cache Hit for creator collections: ${wallet}`);
-        return new Response(cachedData, {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    } catch (cacheError) {
-      console.warn("Cache read failed:", cacheError);
     }
 
     const collections = await SupabaseService.getCollectionsByCreator(wallet);
@@ -54,23 +37,10 @@ export async function GET(request: NextRequest) {
       status: collection.status || "draft",
     }));
 
-    const responseData = JSON.stringify({
-      success: true,
-      collections: enhancedCollections,
-    });
-
-    // Cache the response
-    try {
-      await redis.setex(cacheKey, CACHE_TTL, responseData);
-      console.log(`Data cached for creator collections: ${wallet}`);
-    } catch (cacheError) {
-      console.warn("Cache write failed:", cacheError);
-    }
-
-    return new Response(responseData, {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: true, collections: enhancedCollections }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Error fetching creator collections:", error);
     return new Response(
@@ -98,7 +68,7 @@ export async function POST(request: NextRequest) {
       mintPrice,
       isPublic,
       startDate,
-      endDate,
+
       whitelistEnabled,
       whitelistPrice,
       whitelistSpots,
@@ -151,7 +121,7 @@ export async function POST(request: NextRequest) {
         price:
           mintPrice + (await priceOracleService.usdtToSol(TRANSACTION_FEE_USD)),
         startTime: startDate || new Date().toISOString(),
-        endTime: endDate || null,
+        endTime: undefined, // No end time needed
         allowList: undefined,
         mintLimit: undefined,
       });
@@ -165,7 +135,7 @@ export async function POST(request: NextRequest) {
           whitelistPrice +
           (await priceOracleService.usdtToSol(TRANSACTION_FEE_USD)),
         startTime: startDate || new Date().toISOString(),
-        endTime: endDate || null,
+        endTime: undefined, // No end time needed
         allowList: [],
         mintLimit: whitelistSpots || undefined,
       });
@@ -270,7 +240,7 @@ export async function POST(request: NextRequest) {
         price:
           mintPrice + (await priceOracleService.usdtToSol(TRANSACTION_FEE_USD)),
         start_time: startDate || new Date().toISOString(),
-        end_time: endDate || null,
+        end_time: null, // No end time needed
         mint_limit: null,
         phase_type: "public" as const,
         merkle_root: null,

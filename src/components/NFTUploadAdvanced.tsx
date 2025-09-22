@@ -1,12 +1,28 @@
-'use client';
+"use client";
 
-import React, { useState, useCallback, useEffect } from 'react'; // Added useEffect, useCallback
-import { Upload, FileJson, FileText, Folder, Image, Plus, Trash2, Loader2, CheckCircle, AlertCircle, X, Info } from 'lucide-react';
-import { toast } from 'react-hot-toast'; // Added toast import
-import OptimizedImage from '@/components/OptimizedImage';
-import { NFTUploadConfig, NFTUploadServiceResult } from '@/lib/metaplex-enhanced';
+import React, { useState, useCallback, useEffect } from "react"; // Added useEffect, useCallback
+import {
+  Upload,
+  FileJson,
+  FileText,
+  Folder,
+  Image,
+  Plus,
+  Trash2,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  X,
+  Info,
+} from "lucide-react";
+import { toast } from "react-hot-toast"; // Added toast import
+import OptimizedImage from "@/components/OptimizedImage";
+import {
+  NFTUploadConfig,
+  NFTUploadServiceResult,
+} from "@/lib/metaplex-enhanced";
 // Removed direct pinataService import - will use API route instead
-import { Buffer } from 'buffer'; // Import Buffer
+import { Buffer } from "buffer"; // Import Buffer
 
 interface NFTAttribute {
   trait_type: string;
@@ -36,7 +52,7 @@ interface CsvMetadataToProcess {
 interface PreviewItem {
   url: string;
   name: string;
-  type: 'image' | 'json' | 'csv' | 'folder-item';
+  type: "image" | "json" | "csv" | "folder-item";
 }
 
 interface UploadProps {
@@ -48,11 +64,13 @@ interface UploadProps {
 export default function NFTUploadAdvanced({
   collectionAddress,
   candyMachineAddress,
-  onSuccess // Changed from onUploadComplete
+  onSuccess, // Changed from onUploadComplete
 }: UploadProps) {
-  const [uploadType, setUploadType] = useState<'json' | 'csv' | 'folder' | 'images'>('images');
+  const [uploadType, setUploadType] = useState<
+    "json" | "csv" | "folder" | "images"
+  >("images");
   const [isUploading, setIsUploading] = useState(false); // Declared isUploading once
-  
+
   // File states
   const [folderFiles, setFolderFiles] = useState<File[]>([]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -66,20 +84,23 @@ export default function NFTUploadAdvanced({
 
   // New state for basic metadata generation
   const [generateMetadata, setGenerateMetadata] = useState(true);
-  const [baseName, setBaseName] = useState('NFT');
-  const [defaultDescription, setDefaultDescription] = useState('A unique digital collectible from the Zuno collection.');
-  const [defaultAttributes, setDefaultAttributes] = useState<NFTAttribute[]>(
-    [{ trait_type: 'Collection', value: 'My Collection' }]
+  const [baseName, setBaseName] = useState("NFT");
+  const [defaultDescription, setDefaultDescription] = useState(
+    "A unique digital collectible from the Zuno collection."
   );
+  const [defaultAttributes, setDefaultAttributes] = useState<NFTAttribute[]>([
+    { trait_type: "Collection", value: "My Collection" },
+  ]);
 
   const addDefaultAttribute = () => {
-    setDefaultAttributes([...defaultAttributes, { trait_type: '', value: '' }]);
+    setDefaultAttributes([...defaultAttributes, { trait_type: "", value: "" }]);
   };
 
   const removeDefaultAttribute = (index: number) => {
-    setDefaultAttributes(defaultAttributes.filter((_: NFTAttribute, i: number) => i !== index));
+    setDefaultAttributes(
+      defaultAttributes.filter((_: NFTAttribute, i: number) => i !== index)
+    );
   };
-
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
@@ -107,29 +128,35 @@ export default function NFTUploadAdvanced({
 
   const generatePreview = useCallback(async () => {
     setPreview([]);
-    if (uploadType === 'images' && imageFiles.length > 0) {
-      const newPreview: PreviewItem[] = await Promise.all(imageFiles.map(async (file: File) => ({
-        url: URL.createObjectURL(file),
-        name: file.name,
-        type: 'image', // Explicitly set type to 'image'
-      })));
+    if (uploadType === "images" && imageFiles.length > 0) {
+      const newPreview: PreviewItem[] = await Promise.all(
+        imageFiles.map(async (file: File) => ({
+          url: URL.createObjectURL(file),
+          name: file.name,
+          type: "image", // Explicitly set type to 'image'
+        }))
+      );
       setPreview(newPreview);
-    } else if (uploadType === 'json' && jsonFile.length > 0) {
-      const newPreview: PreviewItem[] = await Promise.all(jsonFile.map(async (file: File) => ({
-        url: URL.createObjectURL(file),
-        name: file.name,
-        type: 'json', // Explicitly set type to 'json'
-      })));
+    } else if (uploadType === "json" && jsonFile.length > 0) {
+      const newPreview: PreviewItem[] = await Promise.all(
+        jsonFile.map(async (file: File) => ({
+          url: URL.createObjectURL(file),
+          name: file.name,
+          type: "json", // Explicitly set type to 'json'
+        }))
+      );
       setPreview(newPreview);
-    } else if (uploadType === 'csv' && csvFile) {
+    } else if (uploadType === "csv" && csvFile) {
       // For CSV, we might just show a summary or the first few lines
-      setPreview([{ url: '#', name: csvFile.name, type: 'csv' }]); // Explicitly set type to 'csv'
-    } else if (uploadType === 'folder' && folderFiles.length > 0) {
-      const newPreview: PreviewItem[] = await Promise.all(folderFiles.map(async (file: File) => ({
-        url: URL.createObjectURL(file),
-        name: file.name,
-        type: 'folder-item', // Explicitly set type to 'folder-item'
-      })));
+      setPreview([{ url: "#", name: csvFile.name, type: "csv" }]); // Explicitly set type to 'csv'
+    } else if (uploadType === "folder" && folderFiles.length > 0) {
+      const newPreview: PreviewItem[] = await Promise.all(
+        folderFiles.map(async (file: File) => ({
+          url: URL.createObjectURL(file),
+          name: file.name,
+          type: "folder-item", // Explicitly set type to 'folder-item'
+        }))
+      );
       setPreview(newPreview);
     }
   }, [uploadType, imageFiles, jsonFile, csvFile, folderFiles]);
@@ -137,7 +164,6 @@ export default function NFTUploadAdvanced({
   useEffect(() => {
     // generatePreview(); // Removed, as preview is now updated after upload
   }, []); // Empty dependency array, runs only once on mount
-
 
   const handleUpload = useCallback(async () => {
     setIsUploading(true);
@@ -147,35 +173,37 @@ export default function NFTUploadAdvanced({
     let processedNftData: NFTUploadConfig[] = []; // This will hold our final NFT data with resolved imageUris
 
     // Define a concurrency limit for image uploads
-    const IMAGE_UPLOAD_CONCURRENCY_LIMIT = 5; 
+    const IMAGE_UPLOAD_CONCURRENCY_LIMIT = 5;
 
     // Helper function to upload an image and return its URI
     const uploadImage = async (file: File): Promise<string> => {
       const imageFormData = new FormData();
-      imageFormData.append('file', file);
-      imageFormData.append('name', file.name);
-      imageFormData.append('type', file.type);
-      
-      const imageResponse = await fetch('/api/upload/image', {
-        method: 'POST',
-        body: imageFormData
+      imageFormData.append("file", file);
+      imageFormData.append("name", file.name);
+      imageFormData.append("type", file.type);
+
+      const imageResponse = await fetch("/api/upload/image", {
+        method: "POST",
+        body: imageFormData,
       });
-      
+
       if (!imageResponse.ok) {
-        throw new Error('Failed to upload image: ' + (await imageResponse.json()).error);
+        throw new Error(
+          "Failed to upload image: " + (await imageResponse.json()).error
+        );
       }
-      
+
       const imageResult = await imageResponse.json();
       return imageResult.url;
     };
 
     try {
-    if (uploadType === 'images') {
-      if (imageFiles.length === 0) {
-        setUploadError('Please select image files.');
-        setIsUploading(false);
-        return;
-      }
+      if (uploadType === "images") {
+        if (imageFiles.length === 0) {
+          setUploadError("Please select image files.");
+          setIsUploading(false);
+          return;
+        }
 
         // Process images in parallel batches
         const imageUploadPromises: Promise<void>[] = [];
@@ -183,189 +211,239 @@ export default function NFTUploadAdvanced({
           const file = imageFiles[i];
           const nftName = `${baseName} #${i + 1}`;
 
-          imageUploadPromises.push((async () => {
-            const imageUri = await uploadImage(file);
-            processedNftData.push({
-              name: nftName,
-              description: generateMetadata ? defaultDescription : '',
-              imageUri: imageUri,
-              attributes: generateMetadata ? defaultAttributes.filter(attr => attr.trait_type && attr.value) : [],
-            });
-          })());
+          imageUploadPromises.push(
+            (async () => {
+              const imageUri = await uploadImage(file);
+              processedNftData.push({
+                name: nftName,
+                description: generateMetadata ? defaultDescription : "",
+                imageUri: imageUri,
+                attributes: generateMetadata
+                  ? defaultAttributes.filter(
+                      (attr) => attr.trait_type && attr.value
+                    )
+                  : [],
+              });
+            })()
+          );
 
           // If we hit the concurrency limit or it's the last image, await the current batch
-          if ((i + 1) % IMAGE_UPLOAD_CONCURRENCY_LIMIT === 0 || i === imageFiles.length - 1) {
+          if (
+            (i + 1) % IMAGE_UPLOAD_CONCURRENCY_LIMIT === 0 ||
+            i === imageFiles.length - 1
+          ) {
             await Promise.all(imageUploadPromises);
             imageUploadPromises.length = 0; // Clear the array for the next batch
           }
         }
-    } else if (uploadType === 'json') {
-      if (jsonFile.length === 0) {
-        setUploadError('Please upload JSON files.');
-        setIsUploading(false);
-        return;
-      }
+      } else if (uploadType === "json") {
+        if (jsonFile.length === 0) {
+          setUploadError("Please upload JSON files.");
+          setIsUploading(false);
+          return;
+        }
 
         const imageFileMap = new Map<string, File>();
-        imageFiles.forEach(file => imageFileMap.set(file.name.split('.')[0].toLowerCase(), file));
+        imageFiles.forEach((file) =>
+          imageFileMap.set(file.name.split(".")[0].toLowerCase(), file)
+        );
 
         const jsonProcessingPromises: Promise<void>[] = [];
-      for (const file of jsonFile) {
-          jsonProcessingPromises.push((async () => {
-        const content = await file.text();
-        const metadata: NFTMetadata = JSON.parse(content);
-            const baseFileName = file.name.replace('.json', '').toLowerCase();
+        for (const file of jsonFile) {
+          jsonProcessingPromises.push(
+            (async () => {
+              const content = await file.text();
+              const metadata: NFTMetadata = JSON.parse(content);
+              const baseFileName = file.name.replace(".json", "").toLowerCase();
 
-            let imageUriToUse: string | undefined;
+              let imageUriToUse: string | undefined;
 
-            const matchingImageFile = imageFileMap.get(baseFileName);
-            if (matchingImageFile) {
-              imageUriToUse = await uploadImage(matchingImageFile);
-            } else if (metadata.image) {
-              imageUriToUse = metadata.image;
-            } else {
-              console.warn(`NFT ${metadata.name || file.name} has no image file and no image URI in metadata.`);
-              imageUriToUse = '/placeholder.svg';
-            }
+              const matchingImageFile = imageFileMap.get(baseFileName);
+              if (matchingImageFile) {
+                imageUriToUse = await uploadImage(matchingImageFile);
+              } else if (metadata.image) {
+                imageUriToUse = metadata.image;
+              } else {
+                console.warn(
+                  `NFT ${
+                    metadata.name || file.name
+                  } has no image file and no image URI in metadata.`
+                );
+                imageUriToUse = "/placeholder.svg";
+              }
 
-            processedNftData.push({
-          name: metadata.name || file.name.replace('.json', ''),
-              description: metadata.description || '',
-              imageUri: imageUriToUse,
-              attributes: metadata.attributes || [],
-        });
-          })());
-      }
+              processedNftData.push({
+                name: metadata.name || file.name.replace(".json", ""),
+                description: metadata.description || "",
+                imageUri: imageUriToUse,
+                attributes: metadata.attributes || [],
+              });
+            })()
+          );
+        }
         await Promise.all(jsonProcessingPromises);
+      } else if (uploadType === "csv") {
+        if (!csvFile) {
+          setUploadError("Please upload a CSV file.");
+          setIsUploading(false);
+          return;
+        }
 
-    } else if (uploadType === 'csv') {
-      if (!csvFile) {
-        setUploadError('Please upload a CSV file.');
-        setIsUploading(false);
-        return;
-      }
-
-      const csvText = await csvFile.text();
-      const lines = csvText.split('\n').filter((line: string) => line.trim() !== '');
-      if (lines.length <= 1) {
-        setUploadError('CSV file is empty or has no data rows.');
-        setIsUploading(false);
-        return;
-      }
-      const headers = lines[0].split(',').map((h: string) => h.trim());
+        const csvText = await csvFile.text();
+        const lines = csvText
+          .split("\n")
+          .filter((line: string) => line.trim() !== "");
+        if (lines.length <= 1) {
+          setUploadError("CSV file is empty or has no data rows.");
+          setIsUploading(false);
+          return;
+        }
+        const headers = lines[0].split(",").map((h: string) => h.trim());
         const imageFileMap = new Map<string, File>();
-        imageFiles.forEach(file => imageFileMap.set(file.name.split('.')[0].toLowerCase(), file));
+        imageFiles.forEach((file) =>
+          imageFileMap.set(file.name.split(".")[0].toLowerCase(), file)
+        );
 
         const csvProcessingPromises: Promise<void>[] = [];
-      for (let i = 1; i < lines.length; i++) {
-          csvProcessingPromises.push((async () => {
-        const values = lines[i].split(',').map((v: string) => v.trim());
-        const metadata: NFTMetadata = { attributes: [] };
-            let nftName = '';
-            let csvImageName: string | undefined;
-        for (let j = 0; j < headers.length; j++) {
-          const header = headers[j];
-          const value = values[j];
-              if (header === 'name') nftName = value;
-          else if (header === 'description') metadata.description = value;
-              else if (header === 'image' || header === 'image_uri') csvImageName = value;
-          else if (header.startsWith('trait_type:')) {
-            metadata.attributes?.push({ trait_type: header.split(':')[1], value });
-          } else {
-            metadata[header] = value;
+        for (let i = 1; i < lines.length; i++) {
+          csvProcessingPromises.push(
+            (async () => {
+              const values = lines[i].split(",").map((v: string) => v.trim());
+              const metadata: NFTMetadata = { attributes: [] };
+              let nftName = "";
+              let csvImageName: string | undefined;
+              for (let j = 0; j < headers.length; j++) {
+                const header = headers[j];
+                const value = values[j];
+                if (header === "name") nftName = value;
+                else if (header === "description") metadata.description = value;
+                else if (header === "image" || header === "image_uri")
+                  csvImageName = value;
+                else if (header.startsWith("trait_type:")) {
+                  metadata.attributes?.push({
+                    trait_type: header.split(":")[1],
+                    value,
+                  });
+                } else {
+                  metadata[header] = value;
+                }
+              }
+
+              if (!nftName) {
+                console.warn(`Skipping CSV row ${i + 1} due to missing name.`);
+                return; // Skip this NFT
+              }
+
+              let imageUriToUse: string | undefined;
+              if (csvImageName) {
+                const baseCsvImageName = csvImageName
+                  .split(".")[0]
+                  .toLowerCase();
+                const matchingImageFile = imageFileMap.get(baseCsvImageName);
+                if (matchingImageFile) {
+                  imageUriToUse = await uploadImage(matchingImageFile);
+                } else {
+                  imageUriToUse = csvImageName;
+                }
+              } else {
+                console.warn(
+                  `NFT ${nftName} from CSV has no specified image filename or URI.`
+                );
+                imageUriToUse = "/placeholder.svg";
+              }
+
+              processedNftData.push({
+                name: nftName,
+                description: metadata.description || "",
+                imageUri: imageUriToUse,
+                attributes: metadata.attributes || [],
+              });
+            })()
+          );
+        }
+        await Promise.all(csvProcessingPromises);
+      } else if (uploadType === "folder") {
+        if (folderFiles.length === 0) {
+          setUploadError("Please select a folder.");
+          setIsUploading(false);
+          return;
+        }
+
+        const imageMap = new Map<string, File>();
+        const jsonMap = new Map<string, NFTMetadata>();
+
+        for (const file of folderFiles) {
+          const fileName = file.name.toLowerCase();
+          const baseFileName = fileName.substring(0, fileName.lastIndexOf("."));
+          if (fileName.endsWith(".json")) {
+            const content = await file.text();
+            jsonMap.set(baseFileName, JSON.parse(content));
+          } else if (
+            fileName.endsWith(".png") ||
+            fileName.endsWith(".jpg") ||
+            fileName.endsWith(".jpeg") ||
+            fileName.endsWith(".gif") ||
+            fileName.endsWith(".webp")
+          ) {
+            imageMap.set(baseFileName, file);
           }
         }
 
-            if (!nftName) {
-          console.warn(`Skipping CSV row ${i + 1} due to missing name.`);
-              return; // Skip this NFT
-            }
-
-            let imageUriToUse: string | undefined;
-            if (csvImageName) {
-              const baseCsvImageName = csvImageName.split('.')[0].toLowerCase();
-              const matchingImageFile = imageFileMap.get(baseCsvImageName);
-              if (matchingImageFile) {
-                imageUriToUse = await uploadImage(matchingImageFile);
-              } else {
-                imageUriToUse = csvImageName;
-              }
-            } else {
-              console.warn(`NFT ${nftName} from CSV has no specified image filename or URI.`);
-              imageUriToUse = '/placeholder.svg';
-            }
-
-            processedNftData.push({
-              name: nftName,
-              description: metadata.description || '',
-              imageUri: imageUriToUse,
-              attributes: metadata.attributes || [],
-            });
-          })());
-        }
-        await Promise.all(csvProcessingPromises);
-
-    } else if (uploadType === 'folder') {
-      if (folderFiles.length === 0) {
-        setUploadError('Please select a folder.');
-        setIsUploading(false);
-        return;
-      }
-
-      const imageMap = new Map<string, File>();
-      const jsonMap = new Map<string, NFTMetadata>();
-
-      for (const file of folderFiles) {
-        const fileName = file.name.toLowerCase();
-        const baseFileName = fileName.substring(0, fileName.lastIndexOf('.'));
-        if (fileName.endsWith('.json')) {
-          const content = await file.text();
-          jsonMap.set(baseFileName, JSON.parse(content));
-          } else if (fileName.endsWith('.png') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.gif') || fileName.endsWith('.webp')) {
-          imageMap.set(baseFileName, file);
-        }
-      }
-
         const folderProcessingPromises: Promise<void>[] = [];
         for (const [baseFileName, imageFile] of imageMap.entries()) {
-            folderProcessingPromises.push((async () => {
-        const metadata = jsonMap.get(baseFileName) || {};
+          folderProcessingPromises.push(
+            (async () => {
+              const metadata = jsonMap.get(baseFileName) || {};
 
-                const imageUri = await uploadImage(imageFile);
+              const imageUri = await uploadImage(imageFile);
 
-                processedNftData.push({
-                    name: metadata.name || imageFile.name.replace(/\.(png|jpg|gif|jpeg|webp)$/i, ''),
-                    description: metadata.description || '',
-                    imageUri: imageUri,
-                    attributes: metadata.attributes || [],
-                });
-            })());
+              processedNftData.push({
+                name:
+                  metadata.name ||
+                  imageFile.name.replace(/\.(png|jpg|gif|jpeg|webp)$/i, ""),
+                description: metadata.description || "",
+                imageUri: imageUri,
+                attributes: metadata.attributes || [],
+              });
+            })()
+          );
         }
         await Promise.all(folderProcessingPromises);
 
         if (processedNftData.length === 0) {
-          setUploadError('No valid image or JSON files found in the folder after processing.');
-        setIsUploading(false);
-        return;
+          setUploadError(
+            "No valid image or JSON files found in the folder after processing."
+          );
+          setIsUploading(false);
+          return;
+        }
       }
-    }
 
       if (processedNftData.length === 0) {
-        setUploadError('No NFTs to upload after processing.');
+        setUploadError("No NFTs to upload after processing.");
         setIsUploading(false);
         return;
       }
-      
-      // After all processing, update the preview with the uploaded image URIs
-      setPreview(processedNftData.map(nft => ({
-        url: nft.imageUri || '/placeholder.svg',
-        name: nft.name,
-        type: 'image',
-      })));
 
-      const response = await fetch('/api/enhanced/upload-advanced', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      // After all processing, update the preview with the uploaded image URIs
+      setPreview(
+        processedNftData.map((nft) => ({
+          url: nft.imageUri || "/placeholder.svg",
+          name: nft.name,
+          type: "image",
+        }))
+      );
+
+      console.log("Sending upload request with:", {
+        collectionAddress,
+        candyMachineAddress,
+        nftsCount: processedNftData.length,
+        firstNft: processedNftData[0],
+      });
+
+      const response = await fetch("/api/enhanced/upload-advanced", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           collectionAddress,
           candyMachineAddress,
@@ -376,7 +454,7 @@ export default function NFTUploadAdvanced({
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || 'Upload failed');
+        throw new Error(result.error || "Upload failed");
       }
 
       setUploadSuccess(`Successfully uploaded ${result.uploadedCount} NFTs!`);
@@ -387,19 +465,30 @@ export default function NFTUploadAdvanced({
       setCsvFile(null);
       setFolderFiles([]);
       // setPreview([]); // Removed, as preview is updated from processedNftData
-      setDefaultAttributes([{
-        trait_type: 'Collection', value: 'My Collection'
-      }]);
+      setDefaultAttributes([
+        {
+          trait_type: "Collection",
+          value: "My Collection",
+        },
+      ]);
       setGenerateMetadata(true);
-      setBaseName('NFT');
-      setDefaultDescription('A unique digital collectible from the Zuno collection.');
+      setBaseName("NFT");
+      setDefaultDescription(
+        "A unique digital collectible from the Zuno collection."
+      );
       toast.success(`Successfully uploaded ${result.uploadedCount} NFTs!`);
-    } catch (err: unknown) { // Change type to unknown
-      console.error('Upload error:', err);
-      let errorMessage = 'An unexpected error occurred during upload.';
+    } catch (err: unknown) {
+      // Change type to unknown
+      console.error("Upload error:", err);
+      let errorMessage = "An unexpected error occurred during upload.";
       if (err instanceof Error) {
         errorMessage = err.message;
-      } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: string }).message === 'string') {
+      } else if (
+        typeof err === "object" &&
+        err !== null &&
+        "message" in err &&
+        typeof (err as { message: string }).message === "string"
+      ) {
         errorMessage = (err as { message: string }).message;
       }
       setUploadError(errorMessage);
@@ -407,42 +496,73 @@ export default function NFTUploadAdvanced({
     } finally {
       setIsUploading(false);
     }
-  }, [uploadType, imageFiles, jsonFile, csvFile, folderFiles, collectionAddress, candyMachineAddress, onSuccess, baseName, generateMetadata, defaultDescription, defaultAttributes]);
+  }, [
+    uploadType,
+    imageFiles,
+    jsonFile,
+    csvFile,
+    folderFiles,
+    collectionAddress,
+    candyMachineAddress,
+    onSuccess,
+    baseName,
+    generateMetadata,
+    defaultDescription,
+    defaultAttributes,
+  ]);
 
   return (
     <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-purple-500/20 text-white">
-      <h3 className="text-2xl font-bold mb-6 text-white">Advanced NFT Uploader</h3>
+      <h3 className="text-2xl font-bold mb-6 text-white">
+        Advanced NFT Uploader
+      </h3>
 
       {/* Upload Type Selector */}
       <div className="mb-8 flex space-x-4 border-b border-gray-700 pb-4">
         <button
-          onClick={() => setUploadType('images')}
+          onClick={() => setUploadType("images")}
           className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${uploadType === 'images' ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}
+            ${
+              uploadType === "images"
+                ? "bg-purple-600 text-white shadow-lg"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+            }
           `}
         >
           <Image size={18} /> Upload Images
         </button>
         <button
-          onClick={() => setUploadType('json')}
+          onClick={() => setUploadType("json")}
           className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${uploadType === 'json' ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}
+            ${
+              uploadType === "json"
+                ? "bg-purple-600 text-white shadow-lg"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+            }
           `}
         >
           <FileJson size={18} /> Upload JSON
         </button>
         <button
-          onClick={() => setUploadType('csv')}
+          onClick={() => setUploadType("csv")}
           className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${uploadType === 'csv' ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}
+            ${
+              uploadType === "csv"
+                ? "bg-purple-600 text-white shadow-lg"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+            }
           `}
         >
           <FileText size={18} /> Upload CSV
         </button>
         <button
-          onClick={() => setUploadType('folder')}
+          onClick={() => setUploadType("folder")}
           className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${uploadType === 'folder' ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}
+            ${
+              uploadType === "folder"
+                ? "bg-purple-600 text-white shadow-lg"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+            }
           `}
         >
           <Folder size={18} /> Upload Folder
@@ -450,10 +570,12 @@ export default function NFTUploadAdvanced({
       </div>
 
       {/* Upload Type Specific UI */}
-      {uploadType === 'images' && (
+      {uploadType === "images" && (
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium mb-2 text-black">Select Images</label>
+            <label className="block text-sm font-medium mb-2 text-black">
+              Select Images
+            </label>
             <input
               type="file"
               accept="image/png, image/jpeg, image/gif"
@@ -466,7 +588,9 @@ export default function NFTUploadAdvanced({
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-black">Base Name</label>
+            <label className="block text-sm font-medium mb-2 text-black">
+              Base Name
+            </label>
             <input
               type="text"
               value={baseName}
@@ -483,14 +607,23 @@ export default function NFTUploadAdvanced({
               onChange={(e) => setGenerateMetadata(e.target.checked)}
               className="form-checkbox h-4 w-4 text-purple-600 rounded border-gray-700 bg-gray-800 focus:ring-purple-500"
             />
-            <label htmlFor="generateMetadata" className="ml-2 text-sm text-black">Generate Basic Metadata</label>
+            <label
+              htmlFor="generateMetadata"
+              className="ml-2 text-sm text-black"
+            >
+              Generate Basic Metadata
+            </label>
           </div>
 
           {generateMetadata && (
             <div className="space-y-4 pt-4 border-t border-gray-700 mt-6">
-              <h4 className="text-lg font-semibold text-black">Default Metadata for all NFTs</h4>
+              <h4 className="text-lg font-semibold text-black">
+                Default Metadata for all NFTs
+              </h4>
               <div>
-                <label className="block text-sm font-medium mb-2 text-black">Description</label>
+                <label className="block text-sm font-medium mb-2 text-black">
+                  Description
+                </label>
                 <textarea
                   value={defaultDescription}
                   onChange={(e) => setDefaultDescription(e.target.value)}
@@ -500,40 +633,51 @@ export default function NFTUploadAdvanced({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-black">Default Attributes</label>
+                <label className="block text-sm font-medium mb-2 text-black">
+                  Default Attributes
+                </label>
                 <div className="space-y-2">
-                  {defaultAttributes.map((trait: NFTAttribute, index: number) => (
-                    <div key={index} className="flex items-center space-x-2 bg-gray-800 p-2 rounded-lg border border-gray-700">
-                      <input
-                        type="text"
-                        value={trait.trait_type}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const updated = [...defaultAttributes];
-                          updated[index].trait_type = e.target.value;
-                          setDefaultAttributes(updated);
-                        }}
-                        placeholder="Trait Type (e.g., Background)"
-                        className="flex-1 px-3 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
-                      />
-                      <input
-                        type="text"
-                        value={trait.value}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const updated = [...defaultAttributes];
-                          updated[index].value = e.target.value;
-                          setDefaultAttributes(updated);
-                        }}
-                        placeholder="Trait Value (e.g., Blue)"
-                        className="flex-1 px-3 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
-                      />
-                      <button
-                        onClick={() => removeDefaultAttribute(index)}
-                        className="text-red-400 hover:text-red-300 p-1"
+                  {defaultAttributes.map(
+                    (trait: NFTAttribute, index: number) => (
+                      <div
+                        key={index}
+                        className="flex items-center space-x-2 bg-gray-800 p-2 rounded-lg border border-gray-700"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                        <input
+                          type="text"
+                          value={trait.trait_type}
+                          onChange={(
+                            e: React.ChangeEvent<HTMLInputElement>
+                          ) => {
+                            const updated = [...defaultAttributes];
+                            updated[index].trait_type = e.target.value;
+                            setDefaultAttributes(updated);
+                          }}
+                          placeholder="Trait Type (e.g., Background)"
+                          className="flex-1 px-3 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
+                        />
+                        <input
+                          type="text"
+                          value={trait.value}
+                          onChange={(
+                            e: React.ChangeEvent<HTMLInputElement>
+                          ) => {
+                            const updated = [...defaultAttributes];
+                            updated[index].value = e.target.value;
+                            setDefaultAttributes(updated);
+                          }}
+                          placeholder="Trait Value (e.g., Blue)"
+                          className="flex-1 px-3 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
+                        />
+                        <button
+                          onClick={() => removeDefaultAttribute(index)}
+                          className="text-red-400 hover:text-red-300 p-1"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )
+                  )}
                   <button
                     onClick={addDefaultAttribute}
                     className="w-full text-purple-400 hover:text-purple-300 border border-dashed border-gray-700 rounded-lg py-2 flex items-center justify-center gap-2 transition-colors"
@@ -547,7 +691,7 @@ export default function NFTUploadAdvanced({
         </div>
       )}
 
-      {uploadType === 'json' && (
+      {uploadType === "json" && (
         <div className="space-y-6">
           <div className="relative border-2 border-dashed border-gray-700 rounded-lg p-6 text-center">
             <input
@@ -558,14 +702,22 @@ export default function NFTUploadAdvanced({
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
             <FileJson size={32} className="mx-auto mb-3 text-purple-400" />
-            <p className="text-lg font-semibold mb-1 text-black">Drag & Drop JSON files here, or click to browse</p>
-            <p className="text-sm text-black">Ensure each JSON file corresponds to an NFT metadata.</p>
-            {jsonFile.length > 0 && <p className="mt-3 text-black">Selected: {jsonFile.length} JSON files</p>}
+            <p className="text-lg font-semibold mb-1 text-black">
+              Drag & Drop JSON files here, or click to browse
+            </p>
+            <p className="text-sm text-black">
+              Ensure each JSON file corresponds to an NFT metadata.
+            </p>
+            {jsonFile.length > 0 && (
+              <p className="mt-3 text-black">
+                Selected: {jsonFile.length} JSON files
+              </p>
+            )}
           </div>
         </div>
       )}
 
-      {uploadType === 'csv' && (
+      {uploadType === "csv" && (
         <div className="space-y-6">
           <div className="relative border-2 border-dashed border-gray-700 rounded-lg p-6 text-center">
             <input
@@ -575,20 +727,29 @@ export default function NFTUploadAdvanced({
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
             <FileText size={32} className="mx-auto mb-3 text-purple-400" />
-            <p className="text-lg font-semibold mb-1 text-black">Drag & Drop CSV file here, or click to browse</p>
-            <p className="text-sm text-black">CSV should contain NFT metadata (name, description, attributes).</p>
-            {csvFile && <p className="mt-3 text-black">Selected: {csvFile.name}</p>}
+            <p className="text-lg font-semibold mb-1 text-black">
+              Drag & Drop CSV file here, or click to browse
+            </p>
+            <p className="text-sm text-black">
+              CSV should contain NFT metadata (name, description, attributes).
+            </p>
+            {csvFile && (
+              <p className="mt-3 text-black">Selected: {csvFile.name}</p>
+            )}
           </div>
           <div className="bg-gray-800 p-4 rounded-lg flex items-start space-x-3 text-sm text-black border border-gray-700">
             <Info size={20} className="text-purple-400 flex-shrink-0 mt-0.5" />
             <p>
-              Your CSV should have a &apos;name&apos; column and optionally &apos;description&apos;, &apos;image_uri&apos;. For attributes, use columns like &apos;trait_type:Background&apos;, &apos;value:Blue&apos;.
+              Your CSV should have a &apos;name&apos; column and optionally
+              &apos;description&apos;, &apos;image_uri&apos;. For attributes,
+              use columns like &apos;trait_type:Background&apos;,
+              &apos;value:Blue&apos;.
             </p>
           </div>
         </div>
       )}
 
-      {uploadType === 'folder' && (
+      {uploadType === "folder" && (
         <div className="space-y-6">
           <div className="relative border-2 border-dashed border-gray-700 rounded-lg p-6 text-center">
             <input
@@ -600,9 +761,18 @@ export default function NFTUploadAdvanced({
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
             <Folder size={32} className="mx-auto mb-3 text-purple-400" />
-            <p className="text-lg font-semibold mb-1 text-black">Drag & Drop NFT Folder here, or click to browse</p>
-            <p className="text-sm text-black">Upload a folder containing images and corresponding JSON metadata files.</p>
-            {folderFiles.length > 0 && <p className="mt-3 text-black">Selected: {folderFiles.length} files in folder</p>}
+            <p className="text-lg font-semibold mb-1 text-black">
+              Drag & Drop NFT Folder here, or click to browse
+            </p>
+            <p className="text-sm text-black">
+              Upload a folder containing images and corresponding JSON metadata
+              files.
+            </p>
+            {folderFiles.length > 0 && (
+              <p className="mt-3 text-black">
+                Selected: {folderFiles.length} files in folder
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -610,11 +780,22 @@ export default function NFTUploadAdvanced({
       {/* Preview Section */}
       {preview.length > 0 && (
         <div className="mt-10 p-6 bg-gray-900 rounded-xl border border-gray-700">
-          <h4 className="text-xl font-bold mb-4 text-white">Preview ({preview.length} NFTs)</h4>
+          <h4 className="text-xl font-bold mb-4 text-white">
+            Preview ({preview.length} NFTs)
+          </h4>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {preview.map((img: PreviewItem, index: number) => (
-              <div key={index} className="relative group rounded-lg overflow-hidden border border-gray-800">
-                <OptimizedImage src={img.url} alt={img.name} width={128} height={128} className="w-full h-32 object-cover" />
+              <div
+                key={index}
+                className="relative group rounded-lg overflow-hidden border border-gray-800"
+              >
+                <OptimizedImage
+                  src={img.url}
+                  alt={img.name}
+                  width={128}
+                  height={128}
+                  className="w-full h-32 object-cover"
+                />
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                   <span className="text-white text-xs p-1 text-center truncate w-full">
                     {img.name}
@@ -629,12 +810,16 @@ export default function NFTUploadAdvanced({
       {/* Upload Button */}
       <button
         onClick={handleUpload}
-        disabled={isUploading || (
-          uploadType === 'images' ? imageFiles.length === 0 :
-          uploadType === 'json' ? jsonFile.length === 0 :
-          uploadType === 'csv' ? !csvFile :
-          folderFiles.length === 0
-        )}
+        disabled={
+          isUploading ||
+          (uploadType === "images"
+            ? imageFiles.length === 0
+            : uploadType === "json"
+            ? jsonFile.length === 0
+            : uploadType === "csv"
+            ? !csvFile
+            : folderFiles.length === 0)
+        }
         className="w-full mt-10 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-bold text-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg"
       >
         {isUploading ? (
@@ -643,7 +828,9 @@ export default function NFTUploadAdvanced({
             Uploading...
           </span>
         ) : (
-          <span className="text-white">Upload NFTs ({preview.length} items)</span>
+          <span className="text-white">
+            Upload NFTs ({preview.length} items)
+          </span>
         )}
       </button>
 
@@ -659,11 +846,11 @@ export default function NFTUploadAdvanced({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // Add these type declarations for TypeScript
-declare module 'react' {
+declare module "react" {
   interface InputHTMLAttributes<T> extends AriaAttributes, DOMAttributes<T> {
     webkitdirectory?: string;
     directory?: string;

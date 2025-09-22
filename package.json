@@ -15,6 +15,7 @@
     "clean-install-win": "rmdir /s /q node_modules && del package-lock.json && npm cache clean --force && npm install --legacy-peer-deps"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@irys/sdk": "^0.2.11",
     "@metaplex-foundation/mpl-candy-machine": "^6.1.0",
     "@metaplex-foundation/mpl-core": "^1.7.0",
@@ -31,6 +32,7 @@
     "@solana/web3.js": "^1.78.4",
     "@supabase/supabase-js": "^2.33.1",
     "@tanstack/react-query": "^4.32.6",
+    "@tanstack/react-virtual": "^3.13.12",
     "@upstash/redis": "1.35.3",
     "arweave": "^1.13.7",
     "bs58": "^5.0.0",

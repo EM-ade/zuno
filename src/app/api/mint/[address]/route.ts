@@ -72,12 +72,12 @@ export async function GET(
         .eq("collection_id", collection.id)
         .order("start_time", { ascending: true });
 
-      // Get minted count from items using is_minted field
+      // Get minted count from items using minted field (correct column name)
       const { count: mintedCount } = await supabaseServer
         .from("items")
         .select("*", { count: "exact", head: true })
         .eq("collection_id", collection.id)
-        .eq("is_minted", true);
+        .eq("minted", true);
 
       const { count: totalItems } = await supabaseServer
         .from("items")

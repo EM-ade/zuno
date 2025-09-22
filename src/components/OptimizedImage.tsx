@@ -1,10 +1,10 @@
-'use client'
-import { useState, useEffect } from 'react'
-import Image, { ImageProps, StaticImageData } from 'next/image'
+"use client";
+import { useState, useEffect } from "react";
+import Image, { ImageProps, StaticImageData } from "next/image";
 
 interface OptimizedImageProps extends ImageProps {
-  placeholderSrc?: string // Optional prop for a custom placeholder
-  loading?: 'eager' | 'lazy' // Optional prop to control loading behavior
+  placeholderSrc?: string; // Optional prop for a custom placeholder
+  loading?: "eager" | "lazy"; // Optional prop to control loading behavior
 }
 
 const OptimizedImage: React.FC<OptimizedImageProps> = ({
@@ -12,17 +12,17 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
   alt,
   width = 300,
   height = 300,
-  className = '',
+  className = "",
   priority = false,
-  loading = 'lazy',
+  loading = "lazy",
   quality = 75,
-  sizes = '100vw',
-  placeholderSrc = '/placeholder.svg', // Use local SVG as default placeholder
+  sizes = "100vw",
+  placeholderSrc = "/placeholder.svg", // Use local SVG as default placeholder
   ...props
 }) => {
   const [imageSrc, setImageSrc] = useState<string>(placeholderSrc); // Change type to string
-  const [isLoading, setIsLoading] = useState(true)
-  const [hasError, setHasError] = useState(false)
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     if (!src) {
@@ -30,15 +30,25 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
       return;
     }
 
-    const resolvedSrc = typeof src === 'string' ? src : (src as StaticImageData).src; // Resolve src to string
+    const resolvedSrc =
+      typeof src === "string" ? src : (src as StaticImageData).src; // Resolve src to string
     if (resolvedSrc === placeholderSrc) {
       setIsLoading(false);
       return;
     }
 
+    // Handle URL encoding for IPFS URLs with spaces
+    const encodedSrc =
+      resolvedSrc.includes("/ipfs/") && resolvedSrc.includes(" ")
+        ? resolvedSrc
+            .split("/")
+            .map((part, index) => (index > 4 ? encodeURIComponent(part) : part))
+            .join("/")
+        : resolvedSrc;
+
     const img = new window.Image();
     img.onload = () => {
-      setImageSrc(resolvedSrc); // Use resolvedSrc
+      setImageSrc(encodedSrc); // Use encodedSrc
       setIsLoading(false);
       setHasError(false);
     };
@@ -46,28 +56,57 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
       setHasError(true);
       setIsLoading(false);
     };
-    img.src = resolvedSrc; // Use the resolved string src
+    img.src = encodedSrc; // Use the encoded src
   }, [src, placeholderSrc]);
+
+  // Check if the image source is from an unconfigured hostname
+  const isUnconfiguredHostname =
+    typeof imageSrc === "string" &&
+    imageSrc.includes("mypinata.cloud") &&
+    !imageSrc.includes("crimson-peaceful-platypus-428.mypinata.cloud") &&
+    !imageSrc.includes("teal-magnetic-hare-735.mypinata.cloud");
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
-      <Image
-        src={imageSrc} // Image component can take a string here
-        alt={alt}
-        width={width}
-        height={height}
-        priority={priority}
-        {...(!priority && imageSrc !== placeholderSrc && { loading: loading })} // Conditionally apply loading
-        className={`transition-opacity duration-300 ${
-          isLoading ? 'opacity-50' : 'opacity-100'
-        } ${hasError ? 'grayscale' : ''}`}
-        style={{
-          objectFit: 'cover',
-          width: '100%',
-          height: '100%',
-        }}
-        {...props}
-      />
+      {isUnconfiguredHostname ? (
+        // Use regular img tag for unconfigured hostnames
+        <img
+          src={imageSrc}
+          alt={alt}
+          width={width}
+          height={height}
+          className={`transition-opacity duration-300 ${
+            isLoading ? "opacity-50" : "opacity-100"
+          } ${hasError ? "grayscale" : ""}`}
+          loading={loading}
+          style={{
+            objectFit: "cover",
+            width: "100%",
+            height: "100%",
+          }}
+          {...(props as any)}
+        />
+      ) : (
+        // Use Next.js Image for configured hostnames
+        <Image
+          src={imageSrc} // Image component can take a string here
+          alt={alt}
+          width={width}
+          height={height}
+          priority={priority}
+          {...(!priority &&
+            imageSrc !== placeholderSrc && { loading: loading })} // Conditionally apply loading
+          className={`transition-opacity duration-300 ${
+            isLoading ? "opacity-50" : "opacity-100"
+          } ${hasError ? "grayscale" : ""}`}
+          style={{
+            objectFit: "cover",
+            width: "100%",
+            height: "100%",
+          }}
+          {...props}
+        />
+      )}
 
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
@@ -83,7 +122,7 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default OptimizedImage
+export default OptimizedImage;

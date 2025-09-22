@@ -267,9 +267,16 @@ export default function MintPage() {
       };
 
       setLoadingProgress(40);
-      setLoadingSubtitle("Requesting batch transaction from server...");
+      setLoadingSubtitle(
+        batchMintBody.quantity === 1
+          ? "Requesting mint transaction from server..."
+          : "Requesting batch transaction from server..."
+      );
 
-      const response = await fetch("/api/mint/batch", {
+      // Use simple mint for single NFTs, batch for multiple
+      const endpoint =
+        batchMintBody.quantity === 1 ? "/api/mint/simple" : "/api/mint/batch";
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(batchMintBody),
@@ -310,7 +317,13 @@ export default function MintPage() {
       setLoadingSubtitle("Waiting for blockchain confirmation...");
 
       // Confirm the transaction
-      await connection.confirmTransaction(signature, "confirmed");
+      await connection.confirmTransaction(
+        {
+          signature: signature.toString(),
+          ...(await connection.getLatestBlockhash()),
+        },
+        "confirmed"
+      );
       console.log("Batch transaction confirmed:", signature);
 
       setLoadingProgress(100);
@@ -333,7 +346,10 @@ export default function MintPage() {
         idempotencyKey: idempotencyKey,
       };
 
-      const completeResponse = await fetch("/api/mint/batch", {
+      // Use the same endpoint for completion as was used for creation
+      const completionEndpoint =
+        batchMintBody.quantity === 1 ? "/api/mint/simple" : "/api/mint/batch";
+      const completeResponse = await fetch(completionEndpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(putBody),
@@ -438,6 +454,17 @@ export default function MintPage() {
     1,
     Math.min(10, remainingSupply, phaseLimit)
   );
+
+  // Debug logging for quantity limits
+  console.log("Quantity calculation:", {
+    remainingSupply,
+    phaseLimit,
+    maxMintQuantity,
+    totalSupply: collection?.total_supply,
+    currentMintedCount,
+    activePhase: activePhase?.name,
+    phaseMintLimit: activePhase?.mint_limit,
+  });
 
   useEffect(() => {
     setMintQuantity((q) => Math.min(Math.max(1, q), maxMintQuantity));
@@ -808,39 +835,59 @@ export default function MintPage() {
               ) : (
                 <>
                   {/* Quantity Selector */}
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-lg font-medium text-gray-800">
-                      Quantity:
-                    </span>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() =>
-                          setMintQuantity((q) => Math.max(1, q - 1))
-                        }
-                        className="px-3 py-1 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300"
-                        disabled={
-                          mintQuantity <= 1 || mintRequestStatus !== "idle"
-                        }
-                      >
-                        -
-                      </button>
-                      <span className="text-xl font-bold text-gray-900">
-                        {mintQuantity}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-lg font-medium text-gray-800">
+                        Quantity:
                       </span>
-                      <button
-                        onClick={() =>
-                          setMintQuantity((q) =>
-                            Math.min(maxMintQuantity, q + 1)
-                          )
-                        }
-                        className="px-3 py-1 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300"
-                        disabled={
-                          mintQuantity >= maxMintQuantity ||
-                          mintRequestStatus !== "idle"
-                        }
-                      >
-                        +
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() =>
+                            setMintQuantity((q) => Math.max(1, q - 1))
+                          }
+                          className="px-3 py-1 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={
+                            mintQuantity <= 1 || mintRequestStatus !== "idle"
+                          }
+                        >
+                          -
+                        </button>
+                        <span className="text-xl font-bold text-gray-900 min-w-[2rem] text-center">
+                          {mintQuantity}
+                        </span>
+                        <button
+                          onClick={() =>
+                            setMintQuantity((q) =>
+                              Math.min(maxMintQuantity, q + 1)
+                            )
+                          }
+                          className="px-3 py-1 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={
+                            mintQuantity >= maxMintQuantity ||
+                            mintRequestStatus !== "idle"
+                          }
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    {/* Show max quantity info */}
+                    <div className="text-sm text-gray-600 text-center">
+                      Max: {maxMintQuantity}
+                      {maxMintQuantity === 1 && (
+                        <span className="ml-1">
+                          {remainingSupply <= 1
+                            ? "(Last NFT)"
+                            : activePhase?.mint_limit === 1
+                            ? "(Phase limit)"
+                            : "(Limited)"}
+                        </span>
+                      )}
+                      {remainingSupply > 1 && maxMintQuantity > 1 && (
+                        <span className="ml-1">
+                          • {remainingSupply} remaining
+                        </span>
+                      )}
                     </div>
                   </div>
 

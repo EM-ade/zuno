@@ -4,7 +4,7 @@
  * Uses latest UMI and MPL Core with controlled complexity
  */
 
-import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
   keypairIdentity,
   generateSigner,
@@ -18,9 +18,9 @@ import {
   type Umi,
   type PublicKey, // UMI's PublicKey type
   type Signer,
-} from '@metaplex-foundation/umi';
-import { MerkleTree } from 'merkletreejs';
-import { keccak256 } from 'js-sha3';
+} from "@metaplex-foundation/umi";
+import { MerkleTree } from "merkletreejs";
+import { keccak256 } from "js-sha3";
 import {
   createCollectionV1,
   createV1,
@@ -30,8 +30,8 @@ import {
   ruleSet,
   type CollectionV1,
   type AssetV1,
-  updateCollectionV1
-} from '@metaplex-foundation/mpl-core';
+  updateCollectionV1,
+} from "@metaplex-foundation/mpl-core";
 import {
   create as createCandyMachine,
   mplCandyMachine,
@@ -39,19 +39,25 @@ import {
   mintV1,
   fetchCandyMachine,
   type CandyMachine,
-  type GuardSet
-} from '@metaplex-foundation/mpl-core-candy-machine';
-import { pinataService } from './pinata-service';
-import { envConfig } from '../config/env';
-import bs58 from 'bs58';
-import { format, parseISO } from 'date-fns';
-import { Connection, TransactionInstruction, TransactionMessage, VersionedTransaction, PublicKey as SolanaWeb3PublicKey } from '@solana/web3.js'; // Added and updated imports, renamed PublicKey to SolanaWeb3PublicKey
+  type GuardSet,
+} from "@metaplex-foundation/mpl-core-candy-machine";
+import { pinataService } from "./pinata-service";
+import { envConfig } from "../config/env";
+import bs58 from "bs58";
+import { format, parseISO } from "date-fns";
+import {
+  Connection,
+  TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
+  PublicKey as SolanaWeb3PublicKey,
+} from "@solana/web3.js"; // Added and updated imports, renamed PublicKey to SolanaWeb3PublicKey
 
 // Phase configuration for minting
 export interface MintPhase {
   id?: string; // Add id
   name: string;
-  phase_type: 'og' | 'whitelist' | 'public' | 'custom'; // Add phase_type
+  phase_type: "og" | "whitelist" | "public" | "custom"; // Add phase_type
   startDate?: Date | string; // Make optional
   endDate?: Date | string;
   start_time: string; // Add this property
@@ -116,9 +122,12 @@ export class MetaplexEnhancedService {
   private umi: Umi;
 
   constructor() {
-    console.log('Initializing MetaplexEnhancedService constructor...');
-    console.log('envConfig.solanaRpcUrl:', envConfig.solanaRpcUrl);
-    console.log('envConfig.serverWalletPrivateKey:', envConfig.serverWalletPrivateKey);
+    console.log("Initializing MetaplexEnhancedService constructor...");
+    console.log("envConfig.solanaRpcUrl:", envConfig.solanaRpcUrl);
+    console.log(
+      "envConfig.serverWalletPrivateKey:",
+      envConfig.serverWalletPrivateKey
+    );
 
     this.umi = createUmi(envConfig.solanaRpcUrl)
       .use(mplCore())
@@ -128,17 +137,22 @@ export class MetaplexEnhancedService {
     const privateKey = bs58.decode(envConfig.serverWalletPrivateKey);
     const keypair = this.umi.eddsa.createKeypairFromSecretKey(privateKey);
     this.umi.use(keypairIdentity(keypair));
-    console.log('UMI identity public key:', this.umi.identity.publicKey.toString());
+    console.log(
+      "UMI identity public key:",
+      this.umi.identity.publicKey.toString()
+    );
   }
 
   private generateMerkleRoot(wallets: string[]): Uint8Array {
-    const leaves = wallets.map(wallet => Buffer.from(keccak256(wallet), 'hex'));
+    const leaves = wallets.map((wallet) =>
+      Buffer.from(keccak256(wallet), "hex")
+    );
     const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
-    return Buffer.from(tree.getRoot().toString('hex'), 'hex');
+    return Buffer.from(tree.getRoot().toString("hex"), "hex");
   }
 
   private async sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // The `withTxRetry` method is designed for server-side transactions.
@@ -151,48 +165,71 @@ export class MetaplexEnhancedService {
   ): Promise<{ signature: Uint8Array }> {
     for (let i = 0; i < attempts; i++) {
       try {
-        if ('build' in builderOrSigner) {
-          console.log(`Simulating transaction (attempt ${i + 1}/${attempts})...`);
-          const builtTransaction = await (builderOrSigner as TransactionBuilder).build(this.umi);
+        if ("build" in builderOrSigner) {
+          console.log(
+            `Simulating transaction (attempt ${i + 1}/${attempts})...`
+          );
+          const builtTransaction = await (
+            builderOrSigner as TransactionBuilder
+          ).build(this.umi);
           const connection = new Connection(envConfig.solanaRpcUrl);
 
           let instructions: TransactionInstruction[] = [];
-          
+
           // Type-safe transaction parsing
-          if ('items' in builtTransaction && Array.isArray(builtTransaction.items)) {
-            instructions = builtTransaction.items.map((ix: {
-              programId: { toString(): string };
-              keys: Array<{
-                pubkey: { toString(): string };
-                isSigner: boolean;
-                isWritable: boolean;
-              }>;
-              data: Uint8Array;
-            }) => new TransactionInstruction({
-              programId: new SolanaWeb3PublicKey(ix.programId.toString()),
-              keys: ix.keys.map((k) => ({
-                pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
-                isSigner: k.isSigner,
-                isWritable: k.isWritable
-              })),
-              data: Buffer.from(ix.data)
-            }));
+          if (
+            "items" in builtTransaction &&
+            Array.isArray(builtTransaction.items)
+          ) {
+            instructions = builtTransaction.items.map(
+              (ix: {
+                programId: { toString(): string };
+                keys: Array<{
+                  pubkey: { toString(): string };
+                  isSigner: boolean;
+                  isWritable: boolean;
+                }>;
+                data: Uint8Array;
+              }) =>
+                new TransactionInstruction({
+                  programId: new SolanaWeb3PublicKey(ix.programId.toString()),
+                  keys: ix.keys.map((k) => ({
+                    pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
+                    isSigner: k.isSigner,
+                    isWritable: k.isWritable,
+                  })),
+                  data: Buffer.from(ix.data),
+                })
+            );
           }
 
-          const { blockhash } = await connection.getLatestBlockhash('finalized');
+          const { blockhash } = await connection.getLatestBlockhash(
+            "finalized"
+          );
           const messageV0 = new TransactionMessage({
-            payerKey: new SolanaWeb3PublicKey(this.umi.identity.publicKey.toString()),
+            payerKey: new SolanaWeb3PublicKey(
+              this.umi.identity.publicKey.toString()
+            ),
             recentBlockhash: blockhash,
             instructions,
           }).compileToV0Message();
           const versionedTx = new VersionedTransaction(messageV0);
 
-          const simulationResult = await connection.simulateTransaction(versionedTx);
+          const simulationResult = await connection.simulateTransaction(
+            versionedTx
+          );
 
           if (simulationResult.value.err) {
-            console.error(`Simulation failed on attempt ${i + 1}/${attempts}:`, simulationResult.value.err);
+            console.error(
+              `Simulation failed on attempt ${i + 1}/${attempts}:`,
+              simulationResult.value.err
+            );
             if (i === attempts - 1) {
-              throw new Error(`Transaction simulation failed after ${attempts} attempts: ${JSON.stringify(simulationResult.value.err)}`);
+              throw new Error(
+                `Transaction simulation failed after ${attempts} attempts: ${JSON.stringify(
+                  simulationResult.value.err
+                )}`
+              );
             }
             const delay = initialDelay * Math.pow(2, i);
             console.log(`Retrying simulation in ${delay / 1000} seconds...`);
@@ -202,22 +239,28 @@ export class MetaplexEnhancedService {
           console.log(`Simulation successful on attempt ${i + 1}/${attempts}.`);
         }
 
-        console.log(`Sending and confirming transaction (attempt ${i + 1}/${attempts})...`);
+        console.log(
+          `Sending and confirming transaction (attempt ${i + 1}/${attempts})...`
+        );
         return await fn(builderOrSigner);
-
       } catch (error: unknown) {
         const isLastAttempt = i === attempts - 1;
-        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-        console.warn(`Transaction attempt ${i + 1}/${attempts} failed: ${errorMessage}`);
+        const errorMessage =
+          error instanceof Error ? error.message : "An unknown error occurred";
+        console.warn(
+          `Transaction attempt ${i + 1}/${attempts} failed: ${errorMessage}`
+        );
         if (isLastAttempt) {
-          throw new Error(`Failed to send and confirm transaction after ${attempts} attempts: ${errorMessage}`);
+          throw new Error(
+            `Failed to send and confirm transaction after ${attempts} attempts: ${errorMessage}`
+          );
         }
         const delay = initialDelay * Math.pow(2, i);
         console.log(`Retrying in ${delay / 1000} seconds...`);
         await this.sleep(delay);
       }
     }
-    throw new Error('Unexpected error in withTxRetry function');
+    throw new Error("Unexpected error in withTxRetry function");
   }
 
   /**
@@ -225,26 +268,33 @@ export class MetaplexEnhancedService {
    */
   async createEnhancedCollection(config: EnhancedCollectionConfig) {
     try {
-      console.log('Creating enhanced collection:', config.name);
+      console.log("Creating enhanced collection:", config.name);
 
       // Step 1: Upload collection image if provided
       let collectionImageUri = config.imageUri;
       if (config.imageFile) {
-        console.log('Uploading collection image to Pinata...');
-        const fileBuffer = config.imageFile instanceof File
-          ? Buffer.from(await config.imageFile.arrayBuffer())
-          : config.imageFile;
-        const fileName = config.imageFile instanceof File
-          ? config.imageFile.name
-          : `collection-${Date.now()}.png`;
-        const contentType = config.imageFile instanceof File
-          ? config.imageFile.type
-          : 'image/png';
-        collectionImageUri = await pinataService.uploadFile(fileBuffer, fileName, contentType);
+        console.log("Uploading collection image to Pinata...");
+        const fileBuffer =
+          config.imageFile instanceof File
+            ? Buffer.from(await config.imageFile.arrayBuffer())
+            : config.imageFile;
+        const fileName =
+          config.imageFile instanceof File
+            ? config.imageFile.name
+            : `collection-${Date.now()}.png`;
+        const contentType =
+          config.imageFile instanceof File
+            ? config.imageFile.type
+            : "image/png";
+        collectionImageUri = await pinataService.uploadFile(
+          fileBuffer,
+          fileName,
+          contentType
+        );
       }
 
       if (!collectionImageUri) {
-        collectionImageUri = 'https://placeholder.com/collection-image.png';
+        collectionImageUri = "https://placeholder.com/collection-image.png";
       }
 
       // Step 2: Prepare collection metadata
@@ -254,22 +304,24 @@ export class MetaplexEnhancedService {
         symbol: config.symbol,
         image: collectionImageUri,
         attributes: [
-          { trait_type: 'Collection Type', value: 'Zuno Enhanced Collection' },
-          { trait_type: 'Creator', value: config.creatorWallet },
-          { trait_type: 'Total Supply', value: config.totalSupply.toString() },
-          { trait_type: 'Base Price', value: `${config.price} SOL` }
+          { trait_type: "Collection Type", value: "Zuno Enhanced Collection" },
+          { trait_type: "Creator", value: config.creatorWallet },
+          { trait_type: "Total Supply", value: config.totalSupply.toString() },
+          { trait_type: "Base Price", value: `${config.price} SOL` },
         ],
         properties: {
-          files: [{ uri: collectionImageUri, type: 'image/png' }],
-          category: 'image',
-          creators: [{ address: config.creatorWallet, share: 100 }]
+          files: [{ uri: collectionImageUri, type: "image/png" }],
+          category: "image",
+          creators: [{ address: config.creatorWallet, share: 100 }],
         },
         seller_fee_basis_points: (config.royaltyPercentage || 5) * 100,
-        external_url: 'https://zunoagent.xyz'
+        external_url: "https://zunoagent.xyz",
       };
 
       // Step 3: Upload metadata to IPFS
-      const collectionMetadataUri = await pinataService.uploadJSON(collectionMetadata);
+      const collectionMetadataUri = await pinataService.uploadJSON(
+        collectionMetadata
+      );
 
       // Step 4: Prepare on-chain transactions as a single batch
       const collectionMint = generateSigner(this.umi);
@@ -280,17 +332,23 @@ export class MetaplexEnhancedService {
       let builder = transactionBuilder();
 
       // Instruction 1: Create the collection
-      builder = builder.add(createCollectionV1(this.umi, {
-        collection: collectionMint,
-        name: config.name,
-        uri: collectionMetadataUri,
-        updateAuthority: this.umi.identity.publicKey
-      }));
+      builder = builder.add(
+        createCollectionV1(this.umi, {
+          collection: collectionMint,
+          name: config.name,
+          uri: collectionMetadataUri,
+          updateAuthority: this.umi.identity.publicKey,
+        })
+      );
 
       // Instruction 2 (optional): Create the candy machine
       if (config.phases && config.phases.length > 0) {
         candyMachineId = candyMachine.publicKey;
-        const guards = this.createGuardsFromPhases(config.phases, config.creatorWallet, config.price);
+        const guards = this.createGuardsFromPhases(
+          config.phases,
+          config.creatorWallet,
+          config.price
+        );
 
         // Await the candy machine builder before adding it
         const candyMachineBuilder = await createCandyMachine(this.umi, {
@@ -301,27 +359,31 @@ export class MetaplexEnhancedService {
           authority: this.umi.identity.publicKey,
           isMutable: true,
           configLineSettings: some({
-            prefixName: '',
+            prefixName: "",
             nameLength: 32,
-            prefixUri: '',
+            prefixUri: "",
             uriLength: 200,
-            isSequential: false
+            isSequential: false,
           }),
-          guards
+          guards,
         });
 
         builder = builder.add(candyMachineBuilder);
       }
 
-      // Step 5: Send the single, combined transaction
-      console.log('Sending combined transaction for collection and candy machine...');
-      const result = await this.withTxRetry(builder, (b) => b.sendAndConfirm(this.umi, {
-        confirm: { commitment: 'finalized' }
-      }));
+      // Step 5: Set blockhash and send the transaction
+      console.log("Setting blockhash and sending combined transaction...");
+      builder = await builder.setLatestBlockhash(this.umi);
 
-      console.log('Collection created:', collectionMint.publicKey);
+      const result = await this.withTxRetry(builder, (b) =>
+        b.sendAndConfirm(this.umi, {
+          confirm: { commitment: "finalized" },
+        })
+      );
+
+      console.log("Collection created:", collectionMint.publicKey);
       if (candyMachineId) {
-        console.log('Candy machine created:', candyMachineId);
+        console.log("Candy machine created:", candyMachineId);
       }
 
       return {
@@ -334,12 +396,15 @@ export class MetaplexEnhancedService {
         phases: config.phases,
         creatorWallet: config.creatorWallet,
         totalSupply: config.totalSupply,
-        price: config.price
+        price: config.price,
       };
-
     } catch (error) {
-      console.error('Error creating enhanced collection:', error);
-      throw new Error(`Failed to create collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error creating enhanced collection:", error);
+      throw new Error(
+        `Failed to create collection: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -368,7 +433,7 @@ export class MetaplexEnhancedService {
       const startDate = parseISO(firstPhase.start_time);
 
       guards.startDate = some({
-        date: dateTime(startDate)
+        date: dateTime(startDate),
       });
     }
 
@@ -377,7 +442,7 @@ export class MetaplexEnhancedService {
       const endDate = parseISO(lastPhase.end_time);
 
       guards.endDate = some({
-        date: dateTime(endDate)
+        date: dateTime(endDate),
       });
     }
 
@@ -386,7 +451,7 @@ export class MetaplexEnhancedService {
     if (mintPrice > 0) {
       guards.solPayment = some({
         lamports: sol(mintPrice),
-        destination: publicKey(creatorWallet)
+        destination: publicKey(creatorWallet),
       });
     }
 
@@ -394,18 +459,22 @@ export class MetaplexEnhancedService {
     if (firstPhase.mint_limit !== undefined && firstPhase.mint_limit > 0) {
       guards.mintLimit = some({
         id: 1,
-        limit: firstPhase.mint_limit
+        limit: firstPhase.mint_limit,
       });
     } else {
       // Default mint limit if not specified
       guards.mintLimit = some({
         id: 1,
-        limit: 5 // Default limit per wallet
+        limit: 5, // Default limit per wallet
       });
     }
 
     // Add allow list if defined in the first phase
-    if (firstPhase.phase_type === 'whitelist' && firstPhase.allowed_wallets && firstPhase.allowed_wallets.length > 0) {
+    if (
+      firstPhase.phase_type === "whitelist" &&
+      firstPhase.allowed_wallets &&
+      firstPhase.allowed_wallets.length > 0
+    ) {
       // For simplicity, we are assuming a single allow list for the first phase
       // Advanced scenarios might require a more complex guard setup for multiple allow lists
       guards.allowList = some({
@@ -436,23 +505,28 @@ export class MetaplexEnhancedService {
   async createCandyMachineMintTransaction(
     candyMachineAddress: string,
     buyerWallet: string,
-    quantity: number = 1,
-  ): Promise<{ transactionBase64: string, nftMintAddress: string }> {
+    quantity: number = 1
+  ): Promise<{ transactionBase64: string; nftMintAddress: string }> {
     try {
-      console.log(`Generating mint transaction for ${quantity} NFTs from candy machine ${candyMachineAddress} for ${buyerWallet}`);
+      console.log(
+        `Generating mint transaction for ${quantity} NFTs from candy machine ${candyMachineAddress} for ${buyerWallet}`
+      );
 
-      const candyMachine = await fetchCandyMachine(this.umi, publicKey(candyMachineAddress));
-      console.log('Fetched Candy Machine:', candyMachine);
+      const candyMachine = await fetchCandyMachine(
+        this.umi,
+        publicKey(candyMachineAddress)
+      );
+      console.log("Fetched Candy Machine:", candyMachine);
 
       const nftMint = generateSigner(this.umi);
-      console.log('Buyer Wallet:', buyerWallet);
+      console.log("Buyer Wallet:", buyerWallet);
 
       // Create the mint instruction
       const mintInstruction = mintV1(this.umi, {
         candyMachine: publicKey(candyMachineAddress),
         collection: publicKey(candyMachine.collectionMint.toString()),
         asset: nftMint,
-        owner: publicKey(buyerWallet)
+        owner: publicKey(buyerWallet),
       });
 
       // Create transaction builder and add the instruction
@@ -462,32 +536,40 @@ export class MetaplexEnhancedService {
       mintBuilder = await mintBuilder.setLatestBlockhash(this.umi);
 
       const builtTransaction = await mintBuilder.build(this.umi);
-      
+
       // Convert UMI transaction to web3.js VersionedTransaction
       const connection = new Connection(envConfig.solanaRpcUrl);
-      const { blockhash } = await connection.getLatestBlockhash('finalized');
-      
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
+
       // Extract instructions from UMI transaction
       const instructions: TransactionInstruction[] = [];
-      
-      if ('items' in builtTransaction && Array.isArray(builtTransaction.items)) {
-        instructions.push(...builtTransaction.items.map((ix: {
-          programId: { toString(): string };
-          keys: Array<{
-            pubkey: { toString(): string };
-            isSigner: boolean;
-            isWritable: boolean;
-          }>;
-          data: Uint8Array;
-        }) => new TransactionInstruction({
-          programId: new SolanaWeb3PublicKey(ix.programId.toString()),
-          keys: ix.keys.map((k) => ({
-            pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
-            isSigner: k.isSigner,
-            isWritable: k.isWritable
-          })),
-          data: Buffer.from(ix.data)
-        })));
+
+      if (
+        "items" in builtTransaction &&
+        Array.isArray(builtTransaction.items)
+      ) {
+        instructions.push(
+          ...builtTransaction.items.map(
+            (ix: {
+              programId: { toString(): string };
+              keys: Array<{
+                pubkey: { toString(): string };
+                isSigner: boolean;
+                isWritable: boolean;
+              }>;
+              data: Uint8Array;
+            }) =>
+              new TransactionInstruction({
+                programId: new SolanaWeb3PublicKey(ix.programId.toString()),
+                keys: ix.keys.map((k) => ({
+                  pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
+                  isSigner: k.isSigner,
+                  isWritable: k.isWritable,
+                })),
+                data: Buffer.from(ix.data),
+              })
+          )
+        );
       }
 
       // Create versioned transaction message
@@ -498,18 +580,20 @@ export class MetaplexEnhancedService {
       }).compileToV0Message();
 
       const versionedTx = new VersionedTransaction(messageV0);
-      
-      // Serialize the versioned transaction
-      const transactionBase64 = Buffer.from(versionedTx.serialize()).toString('base64');
 
-      console.log('Unsigned mint transaction generated.');
+      // Serialize the versioned transaction
+      const transactionBase64 = Buffer.from(versionedTx.serialize()).toString(
+        "base64"
+      );
+
+      console.log("Unsigned mint transaction generated.");
 
       return {
         transactionBase64,
         nftMintAddress: nftMint.publicKey.toString(),
       };
     } catch (error) {
-      console.error('Error generating candy machine mint transaction:', error);
+      console.error("Error generating candy machine mint transaction:", error);
       throw error;
     }
   }
@@ -529,14 +613,24 @@ export class MetaplexEnhancedService {
     }>
   ) {
     try {
-      console.log(`Preparing to create ${nfts.length} NFTs for user ${buyerWallet} in collection ${collectionAddress}`);
+      console.log(
+        `Preparing to create ${nfts.length} NFTs for user ${buyerWallet} in collection ${collectionAddress}`
+      );
 
       const BATCH_CREATE_SIZE = 5; // Number of NFTs to create in one transaction
-      const transactionsToSign: { transactionBase64: string, nftMintAddress: string, name: string }[] = [];
+      const transactionsToSign: {
+        transactionBase64: string;
+        nftMintAddress: string;
+        name: string;
+      }[] = [];
 
       for (let i = 0; i < nfts.length; i += BATCH_CREATE_SIZE) {
         const chunk = nfts.slice(i, i + BATCH_CREATE_SIZE);
-        console.log(`Processing NFT creation batch ${i / BATCH_CREATE_SIZE + 1} of ${Math.ceil(nfts.length / BATCH_CREATE_SIZE)}...`);
+        console.log(
+          `Processing NFT creation batch ${
+            i / BATCH_CREATE_SIZE + 1
+          } of ${Math.ceil(nfts.length / BATCH_CREATE_SIZE)}...`
+        );
 
         const transactionPromises = chunk.map(async (nft) => {
           const nftMetadata = {
@@ -545,9 +639,9 @@ export class MetaplexEnhancedService {
             image: nft.imageUri,
             attributes: nft.attributes || [],
             properties: {
-              files: [{ uri: nft.imageUri, type: 'image/png' }],
-              category: 'image'
-            }
+              files: [{ uri: nft.imageUri, type: "image/png" }],
+              category: "image",
+            },
           };
 
           // Upload metadata to IPFS
@@ -563,7 +657,7 @@ export class MetaplexEnhancedService {
             owner: publicKey(buyerWallet), // The user owns the NFT
             authority: this.umi.identity, // The server's wallet signs to create it
             payer: this.umi.identity, // Use the server's identity as payer
-            plugins: []
+            plugins: [],
           });
 
           return { builder, assetSigner, nft, metadataUri };
@@ -578,7 +672,7 @@ export class MetaplexEnhancedService {
           batchBuilder = batchBuilder.add(builder);
           assetSigners.push(assetSigner);
         }
-        
+
         // Set the latest blockhash
         await batchBuilder.setLatestBlockhash(this.umi);
 
@@ -586,27 +680,31 @@ export class MetaplexEnhancedService {
         const builtTransaction = await batchBuilder.build(this.umi);
 
         // Convert to base64 for client consumption
-        const transactionBase64 = Buffer.from(builtTransaction.serializedMessage).toString('base64');
-        
+        const transactionBase64 = Buffer.from(
+          builtTransaction.serializedMessage
+        ).toString("base64");
+
         // Add all NFTs in this batch to the list
         resolvedTransactionData.forEach(({ assetSigner, nft }) => {
-            transactionsToSign.push({
-                transactionBase64,
-                nftMintAddress: assetSigner.publicKey.toString(),
-                name: nft.name,
-            });
+          transactionsToSign.push({
+            transactionBase64,
+            nftMintAddress: assetSigner.publicKey.toString(),
+            name: nft.name,
+          });
         });
       }
 
       // Return the list of unsigned transactions for the client to process
       return transactionsToSign;
-
     } catch (error) {
-      console.error('Error creating NFTs for user:', error);
-      throw new Error(`Failed to create NFTs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error creating NFTs for user:", error);
+      throw new Error(
+        `Failed to create NFTs: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
-
 
   /**
    * Transfer update authority to creator (industry standard)
@@ -616,22 +714,23 @@ export class MetaplexEnhancedService {
     newAuthority: string
   ) {
     try {
-      console.log(`Transferring update authority of ${collectionAddress} to ${newAuthority}`);
+      console.log(
+        `Transferring update authority of ${collectionAddress} to ${newAuthority}`
+      );
 
       const builder = await updateCollectionV1(this.umi, {
         collection: publicKey(collectionAddress),
-        newUpdateAuthority: publicKey(newAuthority)
+        newUpdateAuthority: publicKey(newAuthority),
       });
 
       const result = await builder.sendAndConfirm(this.umi, {
-        confirm: { commitment: 'finalized' }
+        confirm: { commitment: "finalized" },
       });
 
-      console.log('Update authority transferred successfully');
+      console.log("Update authority transferred successfully");
       return bs58.encode(result.signature);
-
     } catch (error) {
-      console.error('Error transferring authority:', error);
+      console.error("Error transferring authority:", error);
       throw error;
     }
   }
@@ -641,21 +740,23 @@ export class MetaplexEnhancedService {
    */
   async getCollectionDetails(collectionAddress: string) {
     try {
-      const collection = await fetchCollectionV1(this.umi, publicKey(collectionAddress));
+      const collection = await fetchCollectionV1(
+        this.umi,
+        publicKey(collectionAddress)
+      );
 
       if (!collection) {
-        throw new Error('Collection not found');
+        throw new Error("Collection not found");
       }
 
       return {
         address: collectionAddress,
         name: collection.name,
         uri: collection.uri,
-        updateAuthority: collection.updateAuthority
+        updateAuthority: collection.updateAuthority,
       };
-
     } catch (error) {
-      console.error('Error fetching collection:', error);
+      console.error("Error fetching collection:", error);
       throw error;
     }
   }
@@ -675,7 +776,9 @@ export class MetaplexEnhancedService {
     }>
   ): Promise<NFTUploadServiceResult> {
     try {
-      console.log(`Uploading ${nfts.length} NFTs to collection ${collectionAddress}`);
+      console.log(
+        `Uploading ${nfts.length} NFTs to collection ${collectionAddress}`
+      );
 
       const uploadedNFTs: UploadedNFTResult[] = [];
 
@@ -686,20 +789,25 @@ export class MetaplexEnhancedService {
         // Upload image if provided
         let imageUri = nft.imageUri;
         if (nft.imageFile) {
-          const fileBuffer = nft.imageFile instanceof File
-            ? Buffer.from(await nft.imageFile.arrayBuffer())
-            : nft.imageFile;
-          const fileName = nft.imageFile instanceof File
-            ? nft.imageFile.name
-            : `nft-${i + 1}-${Date.now()}.png`;
-          const contentType = nft.imageFile instanceof File
-            ? nft.imageFile.type
-            : 'image/png';
-          imageUri = await pinataService.uploadFile(fileBuffer, fileName, contentType);
+          const fileBuffer =
+            nft.imageFile instanceof File
+              ? Buffer.from(await nft.imageFile.arrayBuffer())
+              : nft.imageFile;
+          const fileName =
+            nft.imageFile instanceof File
+              ? nft.imageFile.name
+              : `nft-${i + 1}-${Date.now()}.png`;
+          const contentType =
+            nft.imageFile instanceof File ? nft.imageFile.type : "image/png";
+          imageUri = await pinataService.uploadFile(
+            fileBuffer,
+            fileName,
+            contentType
+          );
         }
 
         if (!imageUri) {
-          imageUri = 'https://placeholder.com/nft-image.png';
+          imageUri = "https://placeholder.com/nft-image.png";
         }
 
         // Create metadata
@@ -709,10 +817,10 @@ export class MetaplexEnhancedService {
           image: imageUri,
           attributes: nft.attributes || [],
           properties: {
-            files: [{ uri: imageUri, type: 'image/png' }],
-            category: 'image'
+            files: [{ uri: imageUri, type: "image/png" }],
+            category: "image",
           },
-          external_url: 'https://zunoagent.xyz'
+          external_url: "https://zunoagent.xyz",
         };
 
         // Upload metadata to IPFS
@@ -723,7 +831,7 @@ export class MetaplexEnhancedService {
           metadataUri,
           imageUri,
           index: i,
-          attributes: nft.attributes
+          attributes: nft.attributes,
         });
       }
 
@@ -732,11 +840,10 @@ export class MetaplexEnhancedService {
       return {
         success: true,
         uploadedCount: uploadedNFTs.length,
-        nfts: uploadedNFTs
+        nfts: uploadedNFTs,
       };
-
     } catch (error) {
-      console.error('Error uploading NFTs to collection:', error);
+      console.error("Error uploading NFTs to collection:", error);
       throw error;
     }
   }
@@ -744,13 +851,3 @@ export class MetaplexEnhancedService {
 
 // Singleton instance
 export const metaplexEnhancedService = new MetaplexEnhancedService();
-
-
-
-
-
-
-
-
-
-

@@ -15,7 +15,7 @@ export default function Footer() {
               <div className="flex items-center justify-center gap-3">
                 {/* Discord */}
                 <a
-                  href="#"
+                  href="https://discord.gg/8QsgedDkmP"
                   className="h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-orange-500 flex items-center justify-center shadow-sm"
                   aria-label="Discord"
                 >
@@ -25,7 +25,7 @@ export default function Footer() {
                 </a>
                 {/* Twitter/X */}
                 <a
-                  href="#"
+                  href="https://x.com/Zuno_agent?t=8JmHH-lKNuR51niHPjxZYA&s=09"
                   className="h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-sky-500 flex items-center justify-center shadow-sm"
                   aria-label="Twitter"
                 >

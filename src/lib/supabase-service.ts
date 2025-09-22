@@ -33,7 +33,7 @@ export interface ItemRecord {
   item_index?: number | null;
   owner_wallet?: string | null;
   mint_signature?: string | null;
-  is_minted?: boolean;
+  minted?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -305,7 +305,7 @@ export class SupabaseService {
     mintSignature?: string
   ) {
     const updateData: Partial<ItemRecord> = {
-      is_minted: minted, // Use the new, definitive flag
+      minted: minted, // Use the minted column
       owner_wallet: minted ? ownerWallet : null,
       mint_signature: minted ? mintSignature : null,
       updated_at: new Date().toISOString(),
@@ -337,14 +337,14 @@ export class SupabaseService {
       .select("*", { count: "exact" })
       .eq("collection_id", collectionId);
 
-    // Filter by minted status using is_minted
+    // Filter by minted status using minted column
     if (filters?.minted !== undefined) {
       if (filters.minted) {
-        // Get minted items (is_minted is true)
-        query = query.eq("is_minted", true);
+        // Get minted items (minted is true)
+        query = query.eq("minted", true);
       } else {
-        // Get unminted items (is_minted is false)
-        query = query.eq("is_minted", false);
+        // Get unminted items (minted is false)
+        query = query.eq("minted", false);
       }
     }
 
@@ -573,7 +573,7 @@ export class SupabaseService {
         .from("items")
         .select("*")
         .eq("collection_id", collectionId)
-        .eq("is_minted", false)
+        .eq("minted", false)
         .is("owner_wallet", null)
         .limit(quantity)
         .order("item_index", { ascending: true });
@@ -604,7 +604,7 @@ export class SupabaseService {
           updated_at: new Date().toISOString(),
         })
         .in("id", itemIds)
-        .eq("is_minted", false)
+        .eq("minted", false)
         .is("owner_wallet", null);
 
       if (error) {
@@ -637,7 +637,7 @@ export class SupabaseService {
       const { data: updatedItems, error: itemsError } = await supabaseServer
         .from("items")
         .update({
-          is_minted: true,
+          minted: true,
           owner_wallet: buyerWallet,
           mint_signature: transactionSignature,
           updated_at: new Date().toISOString(),

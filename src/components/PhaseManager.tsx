@@ -46,8 +46,6 @@ export default function PhaseManager({
     Phase & {
       startDate: string;
       startTime: string;
-      endDate: string;
-      endTime: string;
     }
   >({
     // Extended state for separate date/time inputs
@@ -60,21 +58,15 @@ export default function PhaseManager({
     allowed_wallets: [],
     startDate: today,
     startTime: currentTime,
-    endDate: today,
-    endTime: currentTime,
   });
-
-  const [walletInput, setWalletInput] = useState("");
 
   // Helper function to determine phase status
   const getPhaseStatus = (phase: Phase) => {
     const now = new Date();
     const startTime = new Date(phase.start_time);
-    const endTime = phase.end_time ? new Date(phase.end_time) : null;
 
     if (now < startTime) return "upcoming";
-    if (endTime && now > endTime) return "ended";
-    return "live";
+    return "live"; // No end time, so phases are either upcoming or live
   };
 
   // Helper function to format time
@@ -105,16 +97,11 @@ export default function PhaseManager({
         ? new Date(`${newPhase.startDate}T${newPhase.startTime}`).toISOString()
         : new Date().toISOString(); // Fallback if not provided
 
-    const endDateTime =
-      newPhase.endDate && newPhase.endTime
-        ? new Date(`${newPhase.endDate}T${newPhase.endTime}`).toISOString()
-        : undefined; // Keep undefined if not provided
-
     const phase: Phase = {
       ...newPhase,
       id: Date.now().toString(),
       start_time: startDateTime,
-      end_time: endDateTime,
+      end_time: undefined, // No end time needed
       allowed_wallets: newPhase.allowed_wallets?.length
         ? newPhase.allowed_wallets
         : undefined,
@@ -132,10 +119,8 @@ export default function PhaseManager({
       allowed_wallets: [],
       startDate: today,
       startTime: currentTime,
-      endDate: today,
-      endTime: currentTime,
     });
-    setWalletInput("");
+
     setShowAddPhase(false);
   };
 
@@ -143,31 +128,8 @@ export default function PhaseManager({
     setPhases(phases.filter((p) => p.id !== id));
   };
 
-  const addWallet = () => {
-    if (walletInput && walletInput.length === 44) {
-      setNewPhase({
-        ...newPhase,
-        allowed_wallets: [...(newPhase.allowed_wallets || []), walletInput],
-      });
-      setWalletInput("");
-    } else {
-      alert("Please enter a valid Solana wallet address");
-    }
-  };
-
-  const removeWallet = (wallet: string) => {
-    setNewPhase({
-      ...newPhase,
-      allowed_wallets: newPhase.allowed_wallets?.filter((w) => w !== wallet),
-    });
-  };
-
   const applyTemplate = (template: (typeof phaseTemplates)[0]) => {
     const start = new Date();
-    const end =
-      template.duration > 0
-        ? new Date(start.getTime() + template.duration * 60 * 60 * 1000)
-        : undefined;
 
     setNewPhase((prev) => ({
       ...prev,
@@ -175,7 +137,7 @@ export default function PhaseManager({
       phase_type: template.phase_type,
       price: template.price,
       start_time: start.toISOString(),
-      end_time: end?.toISOString(),
+      end_time: undefined, // No end time needed
       mint_limit: template.phase_type === "public" ? undefined : 100,
       allowed_wallets: [],
       // Set separate date and time for template application
@@ -185,14 +147,6 @@ export default function PhaseManager({
         minute: "2-digit",
         hour12: false,
       }),
-      endDate: end ? end.toISOString().split("T")[0] : today,
-      endTime: end
-        ? end.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })
-        : currentTime,
     }));
   };
 
@@ -241,7 +195,7 @@ export default function PhaseManager({
       {/* Existing phases - mobile optimized */}
       {phases.length > 0 && (
         <div className="space-y-3">
-          {phases.map((phase, index) => (
+          {phases.map((phase) => (
             <div
               key={phase.id}
               className="bg-black/20 backdrop-blur-md rounded-xl border border-white/10 p-4"
@@ -408,36 +362,6 @@ export default function PhaseManager({
                         setNewPhase((prev) => ({
                           ...prev,
                           startTime: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-200 mb-2">
-                    End Date & Time (Optional)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="date"
-                      value={newPhase.endDate}
-                      onChange={(e) =>
-                        setNewPhase((prev) => ({
-                          ...prev,
-                          endDate: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                    />
-                    <input
-                      type="time"
-                      value={newPhase.endTime}
-                      onChange={(e) =>
-                        setNewPhase((prev) => ({
-                          ...prev,
-                          endTime: e.target.value,
                         }))
                       }
                       className="w-full px-3 py-3 bg-black/30 border border-white/20 rounded-xl text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
