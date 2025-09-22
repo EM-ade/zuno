@@ -1,33 +1,39 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import React, { lazy, Suspense } from 'react';
-import { FileText, Download, Info } from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import { NFTUploadServiceResult, UploadedNFTResult } from '@/lib/metaplex-enhanced';
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import React, { lazy, Suspense } from "react";
+import { FileText, Download, Info } from "lucide-react";
+import { toast } from "react-hot-toast";
+import {
+  NFTUploadServiceResult,
+  UploadedNFTResult,
+} from "@/lib/metaplex-enhanced";
 
-const LazyNFTUploadAdvanced = lazy(() => import('@/components/NFTUploadAdvanced'));
+const LazyNFTUploadAdvanced = lazy(
+  () => import("@/components/NFTUploadAdvanced")
+);
 
 function UploadNFTsPageContent() {
   const searchParams = useSearchParams();
-  const [collectionAddress, setCollectionAddress] = useState('');
-  const [candyMachineAddress, setCandyMachineAddress] = useState('');
-  const [uploadResults, setUploadResults] = useState<NFTUploadServiceResult | null>(null);
+  const [collectionAddress, setCollectionAddress] = useState("");
+  const [candyMachineAddress, setCandyMachineAddress] = useState("");
+  const [uploadResults, setUploadResults] =
+    useState<NFTUploadServiceResult | null>(null);
 
   useEffect(() => {
     // Get collection address from URL params if available
-    const collection = searchParams.get('collection');
-    const candyMachine = searchParams.get('candyMachine');
-    
+    const collection = searchParams.get("collection");
+    const candyMachine = searchParams.get("candyMachine");
+
     if (collection) setCollectionAddress(collection);
     if (candyMachine) setCandyMachineAddress(candyMachine);
   }, [searchParams]);
 
   const handleUploadSuccess = (result: NFTUploadServiceResult) => {
     setUploadResults(result);
-    toast.success('NFTs uploaded successfully!');
+    toast.success("NFTs uploaded successfully!");
   };
 
   // Example files for download
@@ -41,8 +47,8 @@ function UploadNFTsPageContent() {
           { trait_type: "Background", value: "Blue" },
           { trait_type: "Eyes", value: "Laser" },
           { trait_type: "Mouth", value: "Smile" },
-          { trait_type: "Rarity", value: "Common" }
-        ]
+          { trait_type: "Rarity", value: "Common" },
+        ],
       },
       {
         name: "Cool NFT #2",
@@ -52,16 +58,18 @@ function UploadNFTsPageContent() {
           { trait_type: "Background", value: "Purple" },
           { trait_type: "Eyes", value: "Normal" },
           { trait_type: "Mouth", value: "Grin" },
-          { trait_type: "Rarity", value: "Rare" }
-        ]
-      }
+          { trait_type: "Rarity", value: "Rare" },
+        ],
+      },
     ];
-    
-    const blob = new Blob([JSON.stringify(example, null, 2)], { type: 'application/json' });
+
+    const blob = new Blob([JSON.stringify(example, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'nft-metadata-example.json';
+    a.download = "nft-metadata-example.json";
     a.click();
   };
 
@@ -71,12 +79,12 @@ Cool NFT #1,An awesome NFT from our collection,1.png,Blue,Laser,Smile,Common
 Cool NFT #2,Another awesome NFT,2.png,Purple,Normal,Grin,Rare
 Cool NFT #3,Yet another NFT,3.png,Green,Cyclops,Frown,Epic
 Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
-    
-    const blob = new Blob([csv], { type: 'text/csv' });
+
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'nft-metadata-example.csv';
+    a.download = "nft-metadata-example.csv";
     a.click();
   };
 
@@ -98,7 +106,9 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
               <h3 className="text-lg font-semibold mb-4">Collection Details</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Collection Address *</label>
+                  <label className="block text-sm font-medium mb-2">
+                    Collection Address *
+                  </label>
                   <input
                     type="text"
                     value={collectionAddress}
@@ -108,7 +118,9 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Candy Machine Address (Optional)</label>
+                  <label className="block text-sm font-medium mb-2">
+                    Candy Machine Address (Optional)
+                  </label>
                   <input
                     type="text"
                     value={candyMachineAddress}
@@ -134,19 +146,28 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
             {/* Upload Results */}
             {uploadResults && (
               <div className="mt-6 bg-green-900/20 border border-green-500/30 rounded-xl p-6">
-                <h3 className="text-lg font-semibold mb-4 text-green-400">Upload Successful!</h3>
-                <p className="mb-2">Uploaded {uploadResults.uploadedCount} NFTs</p>
+                <h3 className="text-lg font-semibold mb-4 text-green-400">
+                  Upload Successful!
+                </h3>
+                <p className="mb-2">
+                  Uploaded {uploadResults.uploadedCount} NFTs
+                </p>
                 <div className="max-h-48 overflow-y-auto">
-                  {uploadResults.nfts.slice(0, 10).map((nft: UploadedNFTResult, index: number) => (
-                    <div key={index} className="text-sm py-1 border-b border-green-500/20">
-                      <span className="font-medium">{nft.name}</span>
-                      {nft.nftAddress && (
-                        <span className="ml-2 text-xs text-gray-400">
-                          {nft.nftAddress.toString().slice(0, 8)}...
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                  {uploadResults.nfts
+                    .slice(0, 10)
+                    .map((nft: UploadedNFTResult, index: number) => (
+                      <div
+                        key={index}
+                        className="text-sm py-1 border-b border-green-500/20"
+                      >
+                        <span className="font-medium">{nft.name}</span>
+                        {nft.nftAddress && (
+                          <span className="ml-2 text-xs text-gray-400">
+                            {nft.nftAddress.toString().slice(0, 8)}...
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   {uploadResults.nfts.length > 10 && (
                     <p className="text-sm text-gray-400 mt-2">
                       ... and {uploadResults.nfts.length - 10} more
@@ -165,26 +186,44 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
                 <Info className="w-5 h-5 mr-2" />
                 Upload Formats
               </h3>
-              
+
               <div className="space-y-4 text-sm">
                 <div>
-                  <h4 className="font-medium text-purple-400 mb-1">Images Only</h4>
-                  <p className="text-gray-400">Upload multiple images. Add optional traits that apply to all NFTs.</p>
+                  <h4 className="font-medium text-purple-400 mb-1">
+                    Images Only
+                  </h4>
+                  <p className="text-gray-400">
+                    Upload multiple images. Add optional traits that apply to
+                    all NFTs.
+                  </p>
                 </div>
-                
+
                 <div>
-                  <h4 className="font-medium text-purple-400 mb-1">JSON + Images</h4>
-                  <p className="text-gray-400">Upload a JSON file with metadata array. Images matched by name or index.</p>
+                  <h4 className="font-medium text-purple-400 mb-1">
+                    JSON + Images
+                  </h4>
+                  <p className="text-gray-400">
+                    Upload a JSON file with metadata array. Images matched by
+                    name or index.
+                  </p>
                 </div>
-                
+
                 <div>
-                  <h4 className="font-medium text-purple-400 mb-1">CSV + Images</h4>
-                  <p className="text-gray-400">CSV with headers as trait types. Each row is an NFT.</p>
+                  <h4 className="font-medium text-purple-400 mb-1">
+                    CSV + Images
+                  </h4>
+                  <p className="text-gray-400">
+                    CSV with headers as trait types. Each row is an NFT.
+                  </p>
                 </div>
-                
+
                 <div>
-                  <h4 className="font-medium text-purple-400 mb-1">Folder Upload</h4>
-                  <p className="text-gray-400">Select folder with paired files (1.png + 1.json, etc.)</p>
+                  <h4 className="font-medium text-purple-400 mb-1">
+                    Folder Upload
+                  </h4>
+                  <p className="text-gray-400">
+                    Select folder with paired files (1.png + 1.json, etc.)
+                  </p>
                 </div>
               </div>
             </div>
@@ -192,7 +231,7 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
             {/* Download Examples */}
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-purple-500/20">
               <h3 className="text-lg font-semibold mb-4">Example Files</h3>
-              
+
               <div className="space-y-2">
                 <button
                   onClick={downloadExampleJSON}
@@ -201,7 +240,7 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
                   <FileText className="w-4 h-4 mr-2" />
                   Download JSON Example
                 </button>
-                
+
                 <button
                   onClick={downloadExampleCSV}
                   className="w-full px-4 py-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center"
@@ -215,7 +254,7 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
             {/* Tips */}
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-purple-500/20">
               <h3 className="text-lg font-semibold mb-4">💡 Tips</h3>
-              
+
               <ul className="space-y-2 text-sm text-gray-400">
                 <li>• Name files consistently (1.png, 2.png or by name)</li>
                 <li>• Optimize images before upload (max 2MB recommended)</li>
@@ -234,7 +273,13 @@ Cool NFT #4,The best NFT,4.png,Red,X-Ray,Laugh,Legendary`;
 
 export default function UploadNFTsPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      }
+    >
       <UploadNFTsPageContent />
     </Suspense>
   );
