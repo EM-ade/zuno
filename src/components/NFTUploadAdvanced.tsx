@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react"; // Added useEffect, useCallback
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Upload,
   FileJson,
@@ -14,15 +14,17 @@ import {
   AlertCircle,
   X,
   Info,
+  Camera,
+  Sparkles,
+  Grid3x3
 } from "lucide-react";
-import { toast } from "react-hot-toast"; // Added toast import
+import { toast } from "react-hot-toast";
 import OptimizedImage from "@/components/OptimizedImage";
 import {
   NFTUploadConfig,
   NFTUploadServiceResult,
 } from "@/lib/metaplex-enhanced";
-// Removed direct pinataService import - will use API route instead
-import { Buffer } from "buffer"; // Import Buffer
+import { Buffer } from "buffer";
 
 interface NFTAttribute {
   trait_type: string;
@@ -64,7 +66,7 @@ interface UploadProps {
 export default function NFTUploadAdvanced({
   collectionAddress,
   candyMachineAddress,
-  onSuccess, // Changed from onUploadComplete
+  onSuccess,
 }: UploadProps) {
   const [uploadType, setUploadType] = useState<
     "json" | "csv" | "folder" | "images"
@@ -512,339 +514,442 @@ export default function NFTUploadAdvanced({
   ]);
 
   return (
-    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-purple-500/20 text-white">
-      <h3 className="text-2xl font-bold mb-6 text-white">
-        Advanced NFT Uploader
-      </h3>
-
-      {/* Upload Type Selector */}
-      <div className="mb-8 flex space-x-4 border-b border-gray-700 pb-4">
-        <button
-          onClick={() => setUploadType("images")}
-          className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${
-              uploadType === "images"
-                ? "bg-purple-600 text-white shadow-lg"
-                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-            }
-          `}
-        >
-          <Image size={18} /> Upload Images
-        </button>
-        <button
-          onClick={() => setUploadType("json")}
-          className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${
-              uploadType === "json"
-                ? "bg-purple-600 text-white shadow-lg"
-                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-            }
-          `}
-        >
-          <FileJson size={18} /> Upload JSON
-        </button>
-        <button
-          onClick={() => setUploadType("csv")}
-          className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${
-              uploadType === "csv"
-                ? "bg-purple-600 text-white shadow-lg"
-                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-            }
-          `}
-        >
-          <FileText size={18} /> Upload CSV
-        </button>
-        <button
-          onClick={() => setUploadType("folder")}
-          className={`px-5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2
-            ${
-              uploadType === "folder"
-                ? "bg-purple-600 text-white shadow-lg"
-                : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-            }
-          `}
-        >
-          <Folder size={18} /> Upload Folder
-        </button>
-      </div>
-
-      {/* Upload Type Specific UI */}
-      {uploadType === "images" && (
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-black">
-              Select Images
-            </label>
-            <input
-              type="file"
-              accept="image/png, image/jpeg, image/gif"
-              multiple
-              onChange={handleFileChange}
-              className="w-full px-4 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-500 file:text-white hover:file:bg-purple-600"
-            />
-            <p className="mt-2 text-sm text-black">
-              {imageFiles.length} images selected. Max 100 images per upload.
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 sm:p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center space-x-3 bg-white rounded-2xl px-6 py-3 shadow-lg border border-gray-200 mb-4">
+            <Sparkles className="w-6 h-6 text-purple-600" />
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Advanced NFT Uploader
+            </h2>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-black">
-              Base Name
-            </label>
-            <input
-              type="text"
-              value={baseName}
-              onChange={(e) => setBaseName(e.target.value)}
-              placeholder="e.g., My NFT"
-              className="w-full px-4 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
-            />
-          </div>
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="generateMetadata"
-              checked={generateMetadata}
-              onChange={(e) => setGenerateMetadata(e.target.checked)}
-              className="form-checkbox h-4 w-4 text-purple-600 rounded border-gray-700 bg-gray-800 focus:ring-purple-500"
-            />
-            <label
-              htmlFor="generateMetadata"
-              className="ml-2 text-sm text-black"
-            >
-              Generate Basic Metadata
-            </label>
-          </div>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            Upload your NFT collection with multiple formats: individual images, JSON metadata, CSV batch files, or complete folders.
+          </p>
+        </div>
 
-          {generateMetadata && (
-            <div className="space-y-4 pt-4 border-t border-gray-700 mt-6">
-              <h4 className="text-lg font-semibold text-black">
-                Default Metadata for all NFTs
-              </h4>
-              <div>
-                <label className="block text-sm font-medium mb-2 text-black">
-                  Description
+        {/* Upload Type Selector */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {[
+            { key: 'images', label: 'Images Only', icon: Camera, desc: 'Upload images and auto-generate metadata' },
+            { key: 'json', label: 'JSON Files', icon: FileJson, desc: 'Upload metadata JSON files' },
+            { key: 'csv', label: 'CSV Metadata', icon: FileText, desc: 'Batch upload with CSV file' },
+            { key: 'folder', label: 'Folder Upload', icon: Folder, desc: 'Upload entire folder structure' }
+          ].map((type) => {
+            const Icon = type.icon;
+            return (
+              <button
+                key={type.key}
+                onClick={() => setUploadType(type.key as any)}
+                className={`group relative p-6 rounded-2xl border-2 transition-all duration-300 text-left ${
+                  uploadType === type.key
+                    ? 'border-blue-500 bg-blue-50 shadow-lg transform -translate-y-1'
+                    : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 transition-colors ${
+                  uploadType === type.key
+                    ? 'bg-blue-100 text-blue-600'
+                    : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200'
+                }`}>
+                  <Icon className="w-6 h-6" />
+                </div>
+                <h3 className={`font-semibold mb-2 transition-colors ${
+                  uploadType === type.key ? 'text-blue-900' : 'text-gray-900'
+                }`}>
+                  {type.label}
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed">{type.desc}</p>
+                {uploadType === type.key && (
+                  <div className="absolute top-4 right-4 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-white" />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Upload Content Area */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8">
+          {/* Upload Type Specific UI */}
+          {uploadType === "images" && (
+            <div className="space-y-6">
+              {/* File Upload Area */}
+              <div className="relative">
+                <label className="block text-sm font-medium mb-4 text-gray-900">
+                  Select Images for Your Collection
                 </label>
-                <textarea
-                  value={defaultDescription}
-                  onChange={(e) => setDefaultDescription(e.target.value)}
-                  placeholder="e.g., A unique digital collectible from the Zuno collection."
-                  rows={3}
-                  className="w-full px-4 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
-                />
+                <div className="relative border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/gif, image/webp"
+                    multiple
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <Camera className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-lg font-semibold mb-2 text-gray-900">
+                    Drag & Drop images here, or click to browse
+                  </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Supports PNG, JPEG, GIF, and WebP formats
+                  </p>
+                  {imageFiles.length > 0 && (
+                    <div className="inline-flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                      <span className="text-blue-900 font-medium">
+                        {imageFiles.length} images selected
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-2 text-black">
-                  Default Attributes
-                </label>
-                <div className="space-y-2">
-                  {defaultAttributes.map(
-                    (trait: NFTAttribute, index: number) => (
-                      <div
-                        key={index}
-                        className="flex items-center space-x-2 bg-gray-800 p-2 rounded-lg border border-gray-700"
-                      >
+
+              {/* Generate Metadata Section */}
+              <div className="bg-gray-50 rounded-2xl p-6">
+                <div className="flex items-center mb-4">
+                  <input
+                    type="checkbox"
+                    id="generateMetadata"
+                    checked={generateMetadata}
+                    onChange={(e) => setGenerateMetadata(e.target.checked)}
+                    className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                  />
+                  <label
+                    htmlFor="generateMetadata"
+                    className="ml-3 text-base font-medium text-gray-900"
+                  >
+                    Auto-generate metadata for NFTs
+                  </label>
+                </div>
+
+                {generateMetadata && (
+                  <div className="space-y-6 pt-4 border-t border-gray-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-900">
+                          Base Name Pattern
+                        </label>
                         <input
                           type="text"
-                          value={trait.trait_type}
-                          onChange={(
-                            e: React.ChangeEvent<HTMLInputElement>
-                          ) => {
-                            const updated = [...defaultAttributes];
-                            updated[index].trait_type = e.target.value;
-                            setDefaultAttributes(updated);
-                          }}
-                          placeholder="Trait Type (e.g., Background)"
-                          className="flex-1 px-3 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
+                          value={baseName}
+                          onChange={(e) => setBaseName(e.target.value)}
+                          placeholder="e.g., My NFT"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
-                        <input
-                          type="text"
-                          value={trait.value}
-                          onChange={(
-                            e: React.ChangeEvent<HTMLInputElement>
-                          ) => {
-                            const updated = [...defaultAttributes];
-                            updated[index].value = e.target.value;
-                            setDefaultAttributes(updated);
-                          }}
-                          placeholder="Trait Value (e.g., Blue)"
-                          className="flex-1 px-3 py-2 bg-black text-black rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-700"
+                        <p className="text-xs text-gray-500 mt-1">
+                          Will be numbered: {baseName} #1, {baseName} #2, etc.
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-900">
+                          Default Description
+                        </label>
+                        <textarea
+                          value={defaultDescription}
+                          onChange={(e) => setDefaultDescription(e.target.value)}
+                          placeholder="Describe your NFT collection..."
+                          rows={3}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                         />
+                      </div>
+                    </div>
+
+                    {/* Attributes Section */}
+                    <div>
+                      <label className="block text-sm font-medium mb-3 text-gray-900">
+                        Default Attributes
+                      </label>
+                      <div className="space-y-3">
+                        {defaultAttributes.map((trait: NFTAttribute, index: number) => (
+                          <div
+                            key={index}
+                            className="flex items-center space-x-3 bg-white p-4 rounded-xl border border-gray-200"
+                          >
+                            <input
+                              type="text"
+                              value={trait.trait_type}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                const updated = [...defaultAttributes];
+                                updated[index].trait_type = e.target.value;
+                                setDefaultAttributes(updated);
+                              }}
+                              placeholder="Trait Type (e.g., Background)"
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <input
+                              type="text"
+                              value={trait.value}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                const updated = [...defaultAttributes];
+                                updated[index].value = e.target.value;
+                                setDefaultAttributes(updated);
+                              }}
+                              placeholder="Trait Value (e.g., Blue)"
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <button
+                              onClick={() => removeDefaultAttribute(index)}
+                              className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
                         <button
-                          onClick={() => removeDefaultAttribute(index)}
-                          className="text-red-400 hover:text-red-300 p-1"
+                          onClick={addDefaultAttribute}
+                          className="w-full text-blue-600 hover:text-blue-700 border-2 border-dashed border-blue-300 hover:border-blue-400 rounded-xl py-3 flex items-center justify-center gap-2 transition-all duration-200"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Plus className="w-4 h-4" />
+                          Add Attribute
                         </button>
                       </div>
-                    )
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Other upload types with modern design */}
+          {uploadType === "json" && (
+            <div className="space-y-6">
+              <div className="relative">
+                <label className="block text-sm font-medium mb-4 text-gray-900">
+                  Upload JSON Metadata Files
+                </label>
+                <div className="relative border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors">
+                  <input
+                    type="file"
+                    accept=".json"
+                    multiple
+                    onChange={handleJsonFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <FileJson className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-lg font-semibold mb-2 text-gray-900">
+                    Drag & Drop JSON files here, or click to browse
+                  </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Each JSON file should contain NFT metadata
+                  </p>
+                  {jsonFile.length > 0 && (
+                    <div className="inline-flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                      <span className="text-blue-900 font-medium">
+                        {jsonFile.length} JSON files selected
+                      </span>
+                    </div>
                   )}
-                  <button
-                    onClick={addDefaultAttribute}
-                    className="w-full text-purple-400 hover:text-purple-300 border border-dashed border-gray-700 rounded-lg py-2 flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <Plus size={16} /> Add Attribute
-                  </button>
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 rounded-2xl p-6 border border-blue-200">
+                <div className="flex items-start space-x-3">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-blue-900 font-medium mb-2">JSON Format Requirements</h4>
+                    <p className="text-blue-800 text-sm leading-relaxed">
+                      Each JSON file should contain: name, description, image URI, and attributes array.
+                      Make sure image URIs are accessible or upload images separately first.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {uploadType === "json" && (
-        <div className="space-y-6">
-          <div className="relative border-2 border-dashed border-gray-700 rounded-lg p-6 text-center">
-            <input
-              type="file"
-              accept=".json"
-              multiple
-              onChange={handleJsonFileChange}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-            <FileJson size={32} className="mx-auto mb-3 text-purple-400" />
-            <p className="text-lg font-semibold mb-1 text-black">
-              Drag & Drop JSON files here, or click to browse
-            </p>
-            <p className="text-sm text-black">
-              Ensure each JSON file corresponds to an NFT metadata.
-            </p>
-            {jsonFile.length > 0 && (
-              <p className="mt-3 text-black">
-                Selected: {jsonFile.length} JSON files
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {uploadType === "csv" && (
-        <div className="space-y-6">
-          <div className="relative border-2 border-dashed border-gray-700 rounded-lg p-6 text-center">
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleCsvFileChange}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-            <FileText size={32} className="mx-auto mb-3 text-purple-400" />
-            <p className="text-lg font-semibold mb-1 text-black">
-              Drag & Drop CSV file here, or click to browse
-            </p>
-            <p className="text-sm text-black">
-              CSV should contain NFT metadata (name, description, attributes).
-            </p>
-            {csvFile && (
-              <p className="mt-3 text-black">Selected: {csvFile.name}</p>
-            )}
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg flex items-start space-x-3 text-sm text-black border border-gray-700">
-            <Info size={20} className="text-purple-400 flex-shrink-0 mt-0.5" />
-            <p>
-              Your CSV should have a &apos;name&apos; column and optionally
-              &apos;description&apos;, &apos;image_uri&apos;. For attributes,
-              use columns like &apos;trait_type:Background&apos;,
-              &apos;value:Blue&apos;.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {uploadType === "folder" && (
-        <div className="space-y-6">
-          <div className="relative border-2 border-dashed border-gray-700 rounded-lg p-6 text-center">
-            <input
-              type="file"
-              webkitdirectory="true"
-              directory="true"
-              multiple
-              onChange={handleFolderChange}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-            <Folder size={32} className="mx-auto mb-3 text-purple-400" />
-            <p className="text-lg font-semibold mb-1 text-black">
-              Drag & Drop NFT Folder here, or click to browse
-            </p>
-            <p className="text-sm text-black">
-              Upload a folder containing images and corresponding JSON metadata
-              files.
-            </p>
-            {folderFiles.length > 0 && (
-              <p className="mt-3 text-black">
-                Selected: {folderFiles.length} files in folder
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Preview Section */}
-      {preview.length > 0 && (
-        <div className="mt-10 p-6 bg-gray-900 rounded-xl border border-gray-700">
-          <h4 className="text-xl font-bold mb-4 text-white">
-            Preview ({preview.length} NFTs)
-          </h4>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {preview.map((img: PreviewItem, index: number) => (
-              <div
-                key={index}
-                className="relative group rounded-lg overflow-hidden border border-gray-800"
-              >
-                <OptimizedImage
-                  src={img.url}
-                  alt={img.name}
-                  width={128}
-                  height={128}
-                  className="w-full h-32 object-cover"
-                />
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                  <span className="text-white text-xs p-1 text-center truncate w-full">
-                    {img.name}
-                  </span>
+          {uploadType === "csv" && (
+            <div className="space-y-6">
+              <div className="relative">
+                <label className="block text-sm font-medium mb-4 text-gray-900">
+                  Upload CSV Metadata File
+                </label>
+                <div className="relative border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-purple-400 transition-colors">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleCsvFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-lg font-semibold mb-2 text-gray-900">
+                    Drag & Drop CSV file here, or click to browse
+                  </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    CSV should contain NFT metadata in structured format
+                  </p>
+                  {csvFile && (
+                    <div className="inline-flex items-center space-x-2 bg-purple-50 border border-purple-200 rounded-xl px-4 py-2">
+                      <CheckCircle className="w-5 h-5 text-purple-600" />
+                      <span className="text-purple-900 font-medium">
+                        {csvFile.name} selected
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              
+              <div className="bg-purple-50 rounded-2xl p-6 border border-purple-200">
+                <div className="flex items-start space-x-3">
+                  <Info className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-purple-900 font-medium mb-2">CSV Format Requirements</h4>
+                    <p className="text-purple-800 text-sm leading-relaxed mb-3">
+                      Your CSV should have columns: 'name', 'description', 'image_uri' (optional).
+                      For attributes, use columns like 'trait_type:Background' and 'value:Blue'.
+                    </p>
+                    <div className="bg-white rounded-lg p-3 border border-purple-200">
+                      <p className="text-xs text-purple-700 font-mono">
+                        Example: name,description,trait_type:Background,value:Red
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-      {/* Upload Button */}
-      <button
-        onClick={handleUpload}
-        disabled={
-          isUploading ||
-          (uploadType === "images"
-            ? imageFiles.length === 0
-            : uploadType === "json"
-            ? jsonFile.length === 0
-            : uploadType === "csv"
-            ? !csvFile
-            : folderFiles.length === 0)
-        }
-        className="w-full mt-10 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-bold text-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg"
-      >
-        {isUploading ? (
-          <span className="flex items-center justify-center text-white">
-            <Loader2 className="animate-spin mr-3 text-white" />
-            Uploading...
-          </span>
-        ) : (
-          <span className="text-white">
-            Upload NFTs ({preview.length} items)
-          </span>
-        )}
-      </button>
+          {uploadType === "folder" && (
+            <div className="space-y-6">
+              <div className="relative">
+                <label className="block text-sm font-medium mb-4 text-gray-900">
+                  Upload Complete Folder
+                </label>
+                <div className="relative border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-blue-400 transition-colors">
+                  <input
+                    type="file"
+                    // @ts-ignore
+                    webkitdirectory=""
+                    multiple
+                    onChange={handleFolderChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <Folder className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-lg font-semibold mb-2 text-gray-900">
+                    Click to select a folder
+                  </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Folder should contain matching image and JSON files
+                  </p>
+                  {folderFiles.length > 0 && (
+                    <div className="inline-flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                      <span className="text-blue-900 font-medium">
+                        {folderFiles.length} files in folder
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 rounded-2xl p-6 border border-blue-200">
+                <div className="flex items-start space-x-3">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-blue-900 font-medium mb-2">Folder Structure Requirements</h4>
+                    <p className="text-blue-800 text-sm leading-relaxed mb-3">
+                      Folder should contain pairs of files with matching names:
+                    </p>
+                    <div className="bg-white rounded-lg p-3 border border-blue-200">
+                      <p className="text-xs text-blue-700 font-mono mb-1">• image1.png + image1.json</p>
+                      <p className="text-xs text-blue-700 font-mono mb-1">• image2.png + image2.json</p>
+                      <p className="text-xs text-blue-700 font-mono">• etc...</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-      {uploadError && (
-        <div className="mt-4 text-red-500 text-center text-sm p-3 bg-red-900/20 border border-red-700 rounded-lg">
-          {uploadError}
-        </div>
-      )}
+          {/* Upload Button */}
+          {((uploadType === "images" && imageFiles.length > 0) ||
+            (uploadType === "json" && jsonFile.length > 0) ||
+            (uploadType === "csv" && csvFile) ||
+            (uploadType === "folder" && folderFiles.length > 0)) && (
+            <div className="pt-8 border-t border-gray-200 mt-8">
+              <button
+                onClick={handleUpload}
+                disabled={isUploading}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 px-6 rounded-2xl font-semibold text-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
+              >
+                {isUploading ? (
+                  <span className="flex items-center justify-center space-x-3">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span>Uploading NFTs...</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center space-x-3">
+                    <Upload className="w-6 h-6" />
+                    <span>
+                      Upload {uploadType === "images" ? imageFiles.length :
+                             uploadType === "json" ? jsonFile.length :
+                             uploadType === "csv" ? "CSV" :
+                             folderFiles.length} NFTs to Collection
+                    </span>
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
 
-      {uploadSuccess && (
-        <div className="mt-4 text-green-500 text-center text-sm p-3 bg-green-900/20 border border-green-700 rounded-lg">
-          {uploadSuccess}
+          {/* Status Messages */}
+          {uploadError && (
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start space-x-3">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-red-800 font-medium">Upload Failed</h4>
+                <p className="text-red-700 text-sm mt-1">{uploadError}</p>
+              </div>
+            </div>
+          )}
+
+          {uploadSuccess && (
+            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-start space-x-3">
+              <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-green-800 font-medium">Upload Successful!</h4>
+                <p className="text-green-700 text-sm mt-1">{uploadSuccess}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Preview Grid */}
+          {preview.length > 0 && (
+            <div className="mt-8 pt-8 border-t border-gray-200">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">Preview</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {preview.slice(0, 12).map((item, index) => (
+                  <div key={index} className="bg-gray-50 rounded-xl p-3 text-center">
+                    {item.type === "image" ? (
+                      <OptimizedImage
+                        src={item.url}
+                        alt={item.name}
+                        width={120}
+                        height={120}
+                        className="w-full h-24 object-cover rounded-lg mb-2"
+                      />
+                    ) : (
+                      <div className="w-full h-24 bg-gray-200 rounded-lg flex items-center justify-center mb-2">
+                        <FileJson className="w-8 h-8 text-gray-400" />
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-600 truncate">{item.name}</p>
+                  </div>
+                ))}
+                {preview.length > 12 && (
+                  <div className="bg-gray-100 rounded-xl p-3 flex items-center justify-center">
+                    <span className="text-sm text-gray-500">+{preview.length - 12} more</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

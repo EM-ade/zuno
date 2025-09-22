@@ -65,18 +65,16 @@ export default function Marketplace() {
       const response = await fetch('/api/marketplace/collections')
       const data = await response.json()
       
-      console.log('Marketplace data:', data)
-      
-      // Compute status based on phases
+      // Compute status based on phases and minting progress
       const collectionsWithStatus = data.collections.map((collection: Collection) => {
         const now = new Date()
         let computedStatus: 'live' | 'upcoming' | 'ended' = 'upcoming'
         
-        // Check if sold out
+        // Check if sold out first (takes priority)
         if (collection.minted_count >= collection.total_supply) {
           computedStatus = 'ended'
         }
-        // Check phases
+        // Check if collection has phases
         else if (collection.phases && collection.phases.length > 0) {
           const activePhase = collection.phases.find((phase: Phase) => {
             const startTime = new Date(phase.start_time)
@@ -93,13 +91,29 @@ export default function Marketplace() {
             computedStatus = futurePhase ? 'upcoming' : 'ended'
           }
         }
-        // No phases means it's draft/upcoming
+        // No phases - use database status as fallback
         else {
-          computedStatus = 'upcoming'
+          // If collection is marked as active/live, it should be live
+          if (collection.status === 'active' || collection.status === 'live') {
+            computedStatus = 'live'
+          } else if (collection.status === 'draft') {
+            computedStatus = 'upcoming'
+          } else if (collection.status === 'completed' || collection.status === 'sold_out') {
+            computedStatus = 'ended'
+          }
         }
         
         return { ...collection, computed_status: computedStatus }
       })
+      
+      console.log('Collections with computed status:', collectionsWithStatus.map((c: Collection) => ({
+        name: c.name,
+        db_status: c.status,
+        computed_status: c.computed_status,
+        minted: c.minted_count,
+        total: c.total_supply,
+        phases: c.phases?.length || 0
+      })))
       
       setCollections(collectionsWithStatus)
     } catch (error) {
@@ -155,8 +169,9 @@ export default function Marketplace() {
     setFilteredCollections(filtered)
   }
 
-  const getStatusBadge = (status: string, mintedCount: number, totalSupply: number) => {
-    const progress = (mintedCount / totalSupply) * 100
+  const getStatusBadge = (collection: Collection) => {
+    const progress = (collection.minted_count / collection.total_supply) * 100
+    const status = collection.computed_status || collection.status
 
     switch (status) {
       case 'live':
@@ -165,12 +180,13 @@ export default function Marketplace() {
             Live • {progress.toFixed(0)}% minted
           </span>
         )
-      case 'draft':
+      case 'upcoming':
         return (
           <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-            Coming Soon
+            Upcoming
           </span>
         )
+      case 'ended':
       case 'sold_out':
         return (
           <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
@@ -352,8 +368,11 @@ export default function Marketplace() {
 function CollectionCard({ collection }: { collection: Collection }) {
   const mintProgress = (collection.minted_count / collection.total_supply) * 100
 
-  const getStatusBadge = (status: string, mintedCount: number, totalSupply: number) => {
-    const progress = (mintedCount / totalSupply) * 100
+  const getStatusBadge = (collection: Collection) => {
+    const progress = (collection.minted_count / collection.total_supply) * 100
+    
+    // Use computed_status instead of raw database status
+    const status = collection.computed_status || collection.status
     
     // Check if sold out first (100% minted)
     if (progress >= 100) {
@@ -364,10 +383,27 @@ function CollectionCard({ collection }: { collection: Collection }) {
       )
     }
     
-    // Check status from marketplace API mapping
+    // Use computed status for proper filtering
     switch (status) {
       case 'live':
-      case 'approved':
+        return (
+          <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+            Live • {progress.toFixed(0)}% minted
+          </span>
+        )
+      case 'upcoming':
+        return (
+          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+            Upcoming
+          </span>
+        )
+      case 'ended':
+        return (
+          <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
+            Sold Out
+          </span>
+        )
+      // Fallback for database status
       case 'active':
         return (
           <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
@@ -375,18 +411,9 @@ function CollectionCard({ collection }: { collection: Collection }) {
           </span>
         )
       case 'draft':
-      case 'pending':
-      case 'upcoming':
         return (
           <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-            Coming Soon
-          </span>
-        )
-      case 'completed':
-      case 'sold_out':
-        return (
-          <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
-            Sold Out
+            Upcoming
           </span>
         )
       default:
@@ -420,7 +447,7 @@ function CollectionCard({ collection }: { collection: Collection }) {
           
           {/* Status Badge */}
           <div className="absolute top-3 left-3">
-            {getStatusBadge(collection.status, collection.minted_count, collection.total_supply)}
+            {getStatusBadge(collection)}
           </div>
 
           {/* Chain Badge */}
@@ -457,11 +484,15 @@ function CollectionCard({ collection }: { collection: Collection }) {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <div className="text-gray-500">Floor Price</div>
-              <div className="font-semibold text-black">{collection.floor_price > 0 ? `${collection.floor_price} SOL` : '0.1 SOL'}</div>
+              <div className="font-semibold text-black">
+                {collection.floor_price > 0 ? `${collection.floor_price} SOL` : '--'}
+              </div>
             </div>
             <div>
               <div className="text-gray-500">Volume</div>
-              <div className="font-semibold text-black">{collection.volume > 0 ? `${collection.volume} SOL` : '--'}</div>
+              <div className="font-semibold text-black">
+                {collection.volume > 0 ? `${collection.volume} SOL` : '--'}
+              </div>
             </div>
           </div>
         </div>

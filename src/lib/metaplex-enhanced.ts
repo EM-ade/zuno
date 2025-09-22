@@ -518,6 +518,19 @@ export class MetaplexEnhancedService {
       );
       console.log("Fetched Candy Machine:", candyMachine);
 
+      // Get collection data to determine pricing
+      const collectionAddress = candyMachine.collectionMint.toString();
+      const { supabaseServer } = await import('@/lib/supabase-service');
+      const { data: collection } = await supabaseServer
+        .from('collections')
+        .select('price, creator_wallet')
+        .eq('collection_mint_address', collectionAddress)
+        .single();
+
+      if (!collection) {
+        throw new Error('Collection not found in database');
+      }
+
       const nftMint = generateSigner(this.umi);
       console.log("Buyer Wallet:", buyerWallet);
 
@@ -572,6 +585,78 @@ export class MetaplexEnhancedService {
         );
       }
 
+      // Add payment transfers if there's a price
+      if (collection.price > 0) {
+        const { SystemProgram } = await import('@solana/web3.js');
+        const LAMPORTS_PER_SOL = 1000000000;
+        
+        // Calculate creator payment (80% of NFT price)
+        const creatorPayment = collection.price * 0.8;
+        const creatorPaymentLamports = Math.floor(creatorPayment * LAMPORTS_PER_SOL);
+        
+        // Add payment to creator
+        instructions.push(
+          SystemProgram.transfer({
+            fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
+            toPubkey: new SolanaWeb3PublicKey(collection.creator_wallet),
+            lamports: creatorPaymentLamports,
+          })
+        );
+        
+        // Platform gets 20% of NFT price
+        const platformPayment = collection.price * 0.2;
+        const platformPaymentLamports = Math.floor(platformPayment * LAMPORTS_PER_SOL);
+        
+        // Add payment to platform
+        instructions.push(
+          SystemProgram.transfer({
+            fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
+            toPubkey: new SolanaWeb3PublicKey(envConfig.platformWallet),
+            lamports: platformPaymentLamports,
+          })
+        );
+        
+        console.log(`Added payment transfers: ${creatorPayment} SOL to creator, ${platformPayment} SOL to platform`);
+      }
+
+      // Add fixed platform fee ($1.25 in SOL)
+      const { SystemProgram } = await import('@solana/web3.js');
+      const LAMPORTS_PER_SOL = 1000000000;
+      const PLATFORM_FEE_USD = 1.25;
+      
+      // Get current SOL price for platform fee calculation
+      try {
+        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+        const data = await response.json();
+        const solPrice = data.solana.usd;
+        const platformFeeSol = PLATFORM_FEE_USD / solPrice;
+        const platformFeeLamports = Math.floor(platformFeeSol * LAMPORTS_PER_SOL);
+        
+        // Add fixed platform fee transfer
+        instructions.push(
+          SystemProgram.transfer({
+            fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
+            toPubkey: new SolanaWeb3PublicKey(envConfig.platformWallet),
+            lamports: platformFeeLamports,
+          })
+        );
+        
+        console.log(`Added platform fee: $${PLATFORM_FEE_USD} (${platformFeeSol} SOL)`);
+      } catch (error) {
+        console.error('Failed to fetch SOL price for platform fee, skipping platform fee transfer:', error);
+      }
+
+      // Add memo instruction for transparency
+      const memoInstruction = new TransactionInstruction({
+        keys: [],
+        programId: new SolanaWeb3PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+        data: Buffer.from(
+          `Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? "s" : ""} - Total: ${collection.price || 0} SOL`,
+          "utf8"
+        ),
+      });
+      instructions.push(memoInstruction);
+
       // Create versioned transaction message
       const messageV0 = new TransactionMessage({
         payerKey: new SolanaWeb3PublicKey(buyerWallet),
@@ -586,7 +671,7 @@ export class MetaplexEnhancedService {
         "base64"
       );
 
-      console.log("Unsigned mint transaction generated.");
+      console.log("Unsigned mint transaction generated with payment transfers.");
 
       return {
         transactionBase64,

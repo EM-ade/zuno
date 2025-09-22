@@ -54,14 +54,53 @@ export async function GET(request: NextRequest) {
     // 2. If not in cache, fetch from Supabase
     const offset = (page - 1) * limit;
 
-    // Use the enhanced materialized view for better performance
-    let query = supabaseServer
-      .from("collection_stats_enhanced")
-      .select("*", { count: "exact" });
+    // Try using materialized view first, fallback to regular table if it fails
+    let query;
+    let useMaterializedView = true;
+    
+    try {
+      // Try materialized view first
+      query = supabaseServer.from("collection_stats_enhanced").select(
+        "*",
+        { count: "exact" }
+      );
+    } catch (error) {
+      console.log('Materialized view not available, using regular collections table');
+      useMaterializedView = false;
+      // Fallback to regular collections table
+      query = supabaseServer.from("collections").select(
+        "*",
+        { count: "exact" }
+      );
+    }
 
-    // Apply filters using computed_status for better performance
-    if (status) {
-      query = query.eq("computed_status", status);
+    // Apply filters based on whether we're using materialized view or not
+    if (status && status !== "all") {
+      if (useMaterializedView) {
+        // Use computed_status from materialized view
+        if (status === "live") {
+          query = query.eq("computed_status", "live");
+        } else if (status === "upcoming") {
+          query = query.eq("computed_status", "upcoming");
+        } else if (status === "ended") {
+          query = query.eq("computed_status", "ended");
+        } else if (status === "sold_out") {
+          query = query.eq("computed_status", "sold_out");
+        } else {
+          query = query.eq("status", status);
+        }
+      } else {
+        // Use regular status mapping for collections table
+        if (status === "live") {
+          query = query.in("status", ["active", "live"]);
+        } else if (status === "upcoming") {
+          query = query.eq("status", "draft");
+        } else if (status === "sold_out") {
+          query = query.eq("status", "sold_out");
+        } else {
+          query = query.eq("status", status);
+        }
+      }
     }
     if (search) {
       const searchTerm = `%${search.toLowerCase()}%`;
@@ -83,6 +122,104 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("Error fetching collections from Supabase:", error);
+      
+      // If materialized view failed, try fallback to regular table
+      if (useMaterializedView) {
+        console.log('Materialized view query failed, trying regular collections table...');
+        try {
+          const fallbackQuery = supabaseServer.from("collections").select(
+            "*",
+            { count: "exact" }
+          );
+          
+          // Apply basic status filters for fallback
+          if (status && status !== "all") {
+            if (status === "live") {
+              fallbackQuery.in("status", ["active", "live"]);
+            } else if (status === "upcoming") {
+              fallbackQuery.eq("status", "draft");
+            } else {
+              fallbackQuery.eq("status", status);
+            }
+          }
+          
+          if (search) {
+            const searchTerm = `%${search.toLowerCase()}%`;
+            fallbackQuery.or(
+              `name.ilike.${searchTerm},description.ilike.${searchTerm}`
+            );
+          }
+          if (creator) {
+            fallbackQuery.eq("creator_wallet", creator);
+          }
+          
+          fallbackQuery.order(sortBy, { ascending: sortOrder === "asc" });
+          fallbackQuery.range(offset, offset + limit - 1);
+          
+          const fallbackResult = await fallbackQuery;
+          
+          if (fallbackResult.error) {
+            throw fallbackResult.error;
+          }
+          
+          // Process fallback data
+          const fallbackCollections = fallbackResult.data || [];
+          const fallbackFormattedCollections = fallbackCollections.map((c: any) => ({
+            ...c,
+            image_uri: c.image_uri ? resolveImageUrl(c.image_uri) : null,
+            progress: c.total_supply > 0 ? Math.min(100, Math.round((c.minted_count / c.total_supply) * 100)) : 0,
+            mintUrl: `/mint/${c.collection_mint_address || c.candy_machine_id}`,
+            displayPrice: `${c.price || 0} SOL`,
+            displaySupply: `${c.minted_count || 0}/${c.total_supply}`,
+            isSoldOut: (c.minted_count || 0) >= c.total_supply,
+            status: c.status,
+            computed_status: c.minted_count >= c.total_supply ? 'sold_out' : 
+                            c.status === 'active' ? 'live' : 
+                            c.status === 'draft' ? 'upcoming' : 'ended',
+            items_count: c.total_supply || 0,
+            volume: 0,
+            floor_price: c.price || 0,
+            unique_holders: c.minted_count || 0,
+            actual_minted_count: c.minted_count || 0,
+            progress_percentage: c.total_supply > 0 ? Math.round((c.minted_count / c.total_supply) * 100) : 0
+          }));
+          
+          const fallbackResponseData = JSON.stringify({
+            success: true,
+            collections: fallbackFormattedCollections,
+            pagination: {
+              total: fallbackResult.count,
+              page,
+              limit,
+              totalPages: Math.ceil((fallbackResult.count || 0) / limit),
+            },
+            meta: {
+              timestamp: Date.now(),
+              source: 'fallback_collections_table'
+            },
+          });
+          
+          await redis.setex(cacheKey, CACHE_TTL, fallbackResponseData);
+          console.log(`Fallback data cached for key: ${cacheKey}`);
+          
+          return new Response(fallbackResponseData, {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+          
+        } catch (fallbackError) {
+          console.error('Fallback query also failed:', fallbackError);
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Failed to fetch collections",
+              details: `Primary query failed: ${error.message}. Fallback also failed: ${(fallbackError as Error).message}`,
+            },
+            { status: 500 }
+          );
+        }
+      }
+      
       return NextResponse.json(
         {
           success: false,
@@ -94,47 +231,43 @@ export async function GET(request: NextRequest) {
     }
 
     const formattedCollections = (collections || []).map(
-      (
-        c: CollectionRecord & {
-          mint_phases: Array<{ start_time: string; end_time: string | null }>;
-        }
-      ) => {
-        const latestPhase = c.mint_phases?.[0]; // Assuming mint_phases is ordered or we take the first
-        const collectionWithDates = {
-          ...c,
-          start_date: latestPhase?.start_time,
-          end_date: latestPhase?.end_time,
-        };
-
+      (c: any) => {
+        // Handle both materialized view data and regular collections data
+        const isFromMaterializedView = useMaterializedView && c.computed_status !== undefined;
+        
         return {
-          ...collectionWithDates,
-          image_uri: collectionWithDates.image_uri
-            ? resolveImageUrl(collectionWithDates.image_uri)
+          ...c,
+          image_uri: c.image_uri
+            ? resolveImageUrl(c.image_uri)
             : null,
-          progress:
-            collectionWithDates.total_supply > 0
-              ? Math.min(
-                  100,
-                  Math.round(
-                    (collectionWithDates.minted_count /
-                      collectionWithDates.total_supply) *
-                      100
-                  )
-                )
+          progress: isFromMaterializedView 
+            ? Math.min(100, Math.round(c.progress_percentage || 0))
+            : c.total_supply > 0 
+              ? Math.min(100, Math.round((c.minted_count / c.total_supply) * 100))
               : 0,
           mintUrl: `/mint/${
-            collectionWithDates.collection_mint_address ||
-            collectionWithDates.candy_machine_id
+            c.collection_mint_address ||
+            c.candy_machine_id
           }`,
-          displayPrice: `${collectionWithDates.price} SOL`,
-          displaySupply: `${collectionWithDates.minted_count || 0}/${
-            collectionWithDates.total_supply
-          }`,
-          isSoldOut:
-            (collectionWithDates.minted_count || 0) >=
-            collectionWithDates.total_supply,
-          status: getCollectionStatus(collectionWithDates), // Pass typed collection
-          timeLeft: calculateTimeLeft(collectionWithDates), // Pass typed collection
+          displayPrice: `${c.price || 0} SOL`,
+          displaySupply: isFromMaterializedView
+            ? `${c.actual_minted_count || c.minted_count || 0}/${c.total_supply}`
+            : `${c.minted_count || 0}/${c.total_supply}`,
+          isSoldOut: isFromMaterializedView
+            ? (c.actual_minted_count || c.minted_count || 0) >= c.total_supply
+            : (c.minted_count || 0) >= c.total_supply,
+          status: isFromMaterializedView 
+            ? (c.computed_status || getCollectionStatus(c))
+            : getCollectionStatus(c),
+          timeLeft: calculateTimeLeft(c),
+          // Include the enhanced stats (use defaults if not from materialized view)
+          items_count: c.items_count || c.total_supply || 0,
+          volume: c.volume || 0,
+          floor_price: c.floor_price || c.price || 0,
+          unique_holders: c.unique_holders || 0,
+          actual_minted_count: c.actual_minted_count || c.minted_count || 0,
+          progress_percentage: c.progress_percentage || 
+            (c.total_supply > 0 ? Math.round((c.minted_count / c.total_supply) * 100) : 0)
         };
       }
     );
@@ -150,6 +283,7 @@ export async function GET(request: NextRequest) {
       },
       meta: {
         timestamp: Date.now(),
+        source: useMaterializedView ? 'materialized_view' : 'collections_table'
       },
     });
 

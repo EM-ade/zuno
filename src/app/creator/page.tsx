@@ -1,11 +1,11 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useWallet } from '@solana/wallet-adapter-react'
-import { useWalletModal } from '@solana/wallet-adapter-react-ui'
+import { Plus } from 'lucide-react' // Import Plus icon
 import OptimizedImage from '@/components/OptimizedImage'
 import PageHeader from '@/components/PageHeader'
 import { memo } from 'react'; // Import memo
+import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
 
 interface TopCollection {
   name: string
@@ -60,8 +60,7 @@ interface Collection {
 type Tab = 'collections' | 'analytics' | 'earnings'
 
 export default function CreatorDashboard() {
-  const { publicKey } = useWallet()
-  const { setVisible } = useWalletModal()
+  const { publicKey } = useWalletConnection() // Use custom hook
   const [activeTab, setActiveTab] = useState<Tab>('collections')
   const [collections, setCollections] = useState<Collection[]>([])
   const [analytics, setAnalytics] = useState<CreatorAnalytics | null>(null)
@@ -140,7 +139,7 @@ export default function CreatorDashboard() {
   // if specific authenticated content is needed. For now, we'll render dashboard content.
   
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <PageHeader 
         title="Creator Dashboard" 
         showCreateButton={true} 
@@ -149,80 +148,136 @@ export default function CreatorDashboard() {
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
-          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
-            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Collections</div>
-            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalCollections}</div>
+        {/* Enhanced Stats Overview */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
+          <div className="group relative bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 hover:border-blue-200">
+            <div className="absolute top-4 right-4 w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <div className="text-sm font-medium text-gray-500 mb-2">Collections</div>
+            <div className="text-3xl font-bold text-gray-900 mb-1">{stats.totalCollections}</div>
+            <div className="text-xs text-green-600 font-medium">+{collections.filter(c => new Date(c.created_at) > new Date(Date.now() - 30*24*60*60*1000)).length} this month</div>
           </div>
-          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
-            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Total Volume</div>
-            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalVolume.toFixed(2)} SOL</div>
+          
+          <div className="group relative bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 hover:border-green-200">
+            <div className="absolute top-4 right-4 w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-200 transition-colors">
+              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </div>
+            <div className="text-sm font-medium text-gray-500 mb-2">Total Volume</div>
+            <div className="text-3xl font-bold text-gray-900 mb-1">{stats.totalVolume.toFixed(2)}</div>
+            <div className="text-xs text-gray-500 font-medium">SOL traded</div>
           </div>
-          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
-            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Earnings</div>
-            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalEarnings.toFixed(2)} SOL</div>
+          
+          <div className="group relative bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 hover:border-purple-200">
+            <div className="absolute top-4 right-4 w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+              </svg>
+            </div>
+            <div className="text-sm font-medium text-gray-500 mb-2">Earnings</div>
+            <div className="text-3xl font-bold text-gray-900 mb-1">{stats.totalEarnings.toFixed(2)}</div>
+            <div className="text-xs text-gray-500 font-medium">SOL earned</div>
           </div>
-          <div className="bg-white rounded-lg p-3 sm:p-4 md:p-6 shadow-sm">
-            <div className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Items Created</div>
-            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">{stats.totalItems}</div>
+          
+          <div className="group relative bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 hover:border-orange-200">
+            <div className="absolute top-4 right-4 w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+              <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div className="text-sm font-medium text-gray-500 mb-2">Items Created</div>
+            <div className="text-3xl font-bold text-gray-900 mb-1">{stats.totalItems}</div>
+            <div className="text-xs text-gray-500 font-medium">NFTs minted</div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white rounded-lg shadow-sm">
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-4 sm:space-x-6 md:space-x-8 px-3 sm:px-4 md:px-6 overflow-x-auto">
+        {/* Enhanced Tabs */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="border-b border-gray-200 bg-gray-50">
+            <nav className="flex space-x-1 px-6 overflow-x-auto">
               {[
-                { key: 'collections', label: 'Collections', count: collections.length },
-                { key: 'analytics', label: 'Analytics' },
-                { key: 'earnings', label: 'Earnings' }
+                { key: 'collections', label: 'Collections', count: collections.length, icon: '🎨' },
+                { key: 'analytics', label: 'Analytics', icon: '📊' },
+                { key: 'earnings', label: 'Earnings', icon: '💰' }
               ].map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key as Tab)}
-                  className={`py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
+                  className={`group relative flex items-center space-x-2 py-4 px-4 border-b-3 font-medium text-sm whitespace-nowrap transition-all duration-200 ${
                     activeTab === tab.key
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-500 text-blue-600 bg-blue-50'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-white'
                   }`}
                 >
-                  <span className="block sm:inline">{tab.label}</span>
+                  <span className="text-lg">{tab.icon}</span>
+                  <span>{tab.label}</span>
                   {tab.count !== undefined && (
-                    <span className="ml-1 sm:ml-2 bg-gray-100 text-gray-900 py-0.5 px-1.5 sm:px-2.5 rounded-full text-xs">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      activeTab === tab.key 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200'
+                    }`}>
                       {tab.count}
                     </span>
+                  )}
+                  {/* Active indicator */}
+                  {activeTab === tab.key && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t"></div>
                   )}
                 </button>
               ))}
             </nav>
           </div>
 
-          <div className="p-3 sm:p-4 md:p-6">
+          <div className="p-8">
             {activeTab === 'collections' && (
               <div>
                 {loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <div className="relative">
+                      <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600"></div>
+                      <div className="absolute inset-0 rounded-full bg-blue-50 opacity-20"></div>
+                    </div>
+                    <p className="text-gray-500 mt-4 font-medium">Loading your collections...</p>
                   </div>
                 ) : collections.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
+                  <div className="text-center py-16">
+                    <div className="relative mx-auto w-24 h-24 mb-6">
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl transform rotate-6"></div>
+                      <div className="relative bg-white rounded-2xl p-6 shadow-lg border border-gray-200 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                      </div>
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No collections yet</h3>
-                    <p className="text-gray-500 mb-6">Create your first NFT collection to get started.</p>
-                    <Link
-                      href="/creator/create"
-                      className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Create Collection
-                    </Link>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-3">Create Your First Collection</h3>
+                    <p className="text-gray-500 mb-8 max-w-md mx-auto leading-relaxed">Start your NFT journey by creating your first collection. Design unique digital assets and share them with the world.</p>
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                      <Link
+                        href="/creator/create"
+                        className="group relative bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-2xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      >
+                        <span className="relative z-10 flex items-center justify-center space-x-2">
+                          <span>🎨</span>
+                          <span>Create Collection</span>
+                        </span>
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-700 to-purple-700 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      </Link>
+                      <Link
+                        href="/marketplace"
+                        className="border-2 border-gray-200 text-gray-600 px-8 py-4 rounded-2xl hover:border-gray-300 hover:text-gray-700 transition-all duration-300 font-semibold flex items-center justify-center space-x-2"
+                      >
+                        <span>🔍</span>
+                        <span>Explore Marketplace</span>
+                      </Link>
+                    </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {collections.map((collection) => (
                       <CollectionCard key={collection.id} collection={collection} />
                     ))}
@@ -465,6 +520,18 @@ export default function CreatorDashboard() {
               </div>
             )}
           </div>
+              
+          {/* Floating Action Button for Quick Create */}
+          <Link
+            href="/creator/create"
+            className="fixed bottom-8 right-8 group bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-2xl shadow-2xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:-translate-y-1 hover:shadow-3xl z-50"
+          >
+            <div className="flex items-center space-x-3">
+              <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
+              <span className="hidden sm:block font-semibold">Create Collection</span>
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-700 to-purple-700 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          </Link>
         </div>
       </div>
     </div>
@@ -521,87 +588,119 @@ const CollectionCard = memo(function CollectionCard({ collection }: CollectionCa
   const mintProgress = (collection.minted_count / collection.total_supply) * 100
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-      <div className="aspect-square relative">
+    <div className="group bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-gray-300 transition-all duration-300 transform hover:-translate-y-1">
+      <div className="aspect-square relative overflow-hidden">
         {collection.image_uri ? (
           <OptimizedImage
             src={collection.image_uri}
             alt={collection.name}
             width={400}
             height={400}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         ) : (
-          <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-            <svg className="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-purple-50 opacity-50"></div>
+            <svg className="relative w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
         )}
         <div className="absolute top-3 right-3">
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(collection.status)}`}>
-            {collection.status === 'active' ? 'Live' :
-             collection.status === 'draft' ? 'Draft' :
-             collection.status === 'completed' ? 'Completed' :
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm border ${
+            collection.status === 'active' ? 'bg-green-100/90 text-green-800 border-green-200' :
+            collection.status === 'draft' ? 'bg-blue-100/90 text-blue-800 border-blue-200' :
+            collection.status === 'completed' ? 'bg-purple-100/90 text-purple-800 border-purple-200' :
+            'bg-gray-100/90 text-gray-800 border-gray-200'
+          }`}>
+            {collection.status === 'active' ? '🟢 Live' :
+             collection.status === 'draft' ? '🔵 Draft' :
+             collection.status === 'completed' ? '🟣 Completed' :
              collection.status.replace('_', ' ')}
           </span>
         </div>
-      </div>
-      
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="font-semibold text-gray-900 truncate">{collection.name}</h3>
-          <span className="text-sm text-gray-500">{collection.symbol}</span>
-        </div>
         
-        <p className="text-sm text-gray-600 mb-3 line-clamp-2">{collection.description}</p>
-        
-        <div className="space-y-2 mb-4">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-500">Minted</span>
-            <span className="font-medium">{collection.minted_count}/{collection.total_supply}</span>
+        {/* Progress overlay */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
+          <div className="flex items-center justify-between text-white text-sm">
+            <span className="font-medium">{mintProgress.toFixed(1)}% minted</span>
+            <span className="opacity-90">{collection.minted_count}/{collection.total_supply}</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-white/20 rounded-full h-1.5 mt-1">
             <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-white h-1.5 rounded-full transition-all duration-500"
               style={{ width: `${mintProgress}%` }}
             />
           </div>
         </div>
-        
-        <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-          <div>
-            <div className="text-gray-500">Floor Price</div>
-            <div className="font-medium">{collection.floor_price} SOL</div>
-          </div>
-          <div>
-            <div className="text-gray-500">Volume</div>
-            <div className="font-medium">{collection.volume} SOL</div>
+      </div>
+      
+      <div className="p-6">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-lg text-gray-900 truncate mb-1">{collection.name}</h3>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">{collection.symbol}</span>
+              <span className="text-xs text-gray-400">{new Date(collection.created_at).toLocaleDateString()}</span>
+            </div>
           </div>
         </div>
         
-        <div className="space-y-2">
+        <p className="text-sm text-gray-600 mb-4 line-clamp-2 leading-relaxed">{collection.description}</p>
+        
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-gray-50 rounded-xl p-3">
+            <div className="text-xs font-medium text-gray-500 mb-1">Floor Price</div>
+            <div className="text-lg font-bold text-gray-900">{collection.floor_price || '0'} <span className="text-sm font-medium text-gray-500">SOL</span></div>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3">
+            <div className="text-xs font-medium text-gray-500 mb-1">Volume</div>
+            <div className="text-lg font-bold text-gray-900">{collection.volume || '0'} <span className="text-sm font-medium text-gray-500">SOL</span></div>
+          </div>
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="space-y-3">
           {collection.status === 'draft' && (
             <button
               onClick={handleGoLive}
               disabled={updatingStatus}
-              className="w-full bg-green-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:from-green-600 hover:to-green-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
             >
-              {updatingStatus ? 'Going Live...' : 'Go Live 🚀'}
+              {updatingStatus ? (
+                <span className="flex items-center justify-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Going Live...</span>
+                </span>
+              ) : (
+                <span className="flex items-center justify-center space-x-2">
+                  <span>🚀</span>
+                  <span>Go Live</span>
+                </span>
+              )}
             </button>
           )}
-          <div className="flex space-x-2">
+          
+          <div className="grid grid-cols-2 gap-3">
             <Link
               href={`/creator/collections/${collection.id}`}
-              className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors text-center"
+              className="group relative bg-gray-100 text-gray-700 px-4 py-3 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all duration-200 text-center overflow-hidden"
             >
-              Manage
+              <span className="relative z-10 flex items-center justify-center space-x-1">
+                <span>⚙️</span>
+                <span>Manage</span>
+              </span>
             </Link>
             <Link
               href={`/mint/${collection.candy_machine_id}`}
-              className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors text-center"
+              className="group relative bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-center overflow-hidden transform hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
             >
-              View Mint
+              <span className="relative z-10 flex items-center justify-center space-x-1">
+                <span>🌐</span>
+                <span>View Mint</span>
+              </span>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-700 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
             </Link>
           </div>
         </div>

@@ -5,11 +5,13 @@ import Link from "next/link";
 import Image from "next/image";
 import PageHeader from "@/components/PageHeader";
 import React, { lazy, Suspense } from "react"; // Import lazy and Suspense
+import { CheckCircle, Plus } from "lucide-react"; // Import icons
 import PhaseManager from "@/components/PhaseManager";
 import { Phase } from "@/types"; // Import Phase from central types file
 import { toast, Toaster } from "react-hot-toast";
 import { useWalletConnection } from "@/contexts/WalletConnectionProvider"; // Import custom hook
 import { NFTUploadServiceResult } from "@/lib/metaplex-enhanced"; // Corrected import path for NFTUploadServiceResult
+import LoadingOverlay from "@/components/LoadingOverlay"; // Import LoadingOverlay
 
 const LazyNFTUploadAdvanced = lazy(
   () => import("@/components/NFTUploadAdvanced")
@@ -49,6 +51,12 @@ export default function CreateCollection() {
     null
   );
   const [candyMachineId, setCandyMachineId] = useState<string | null>(null);
+  
+  // Loading overlay states
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingTitle, setLoadingTitle] = useState("");
+  const [loadingSubtitle, setLoadingSubtitle] = useState("");
 
   const [collectionData, setCollectionData] = useState<CollectionData>({
     name: "",
@@ -99,6 +107,10 @@ export default function CreateCollection() {
 
     setLoading(true);
     setCurrentStep("creating");
+    setShowLoadingOverlay(true);
+    setLoadingProgress(0);
+    setLoadingTitle("Creating Your Collection");
+    setLoadingSubtitle("Preparing collection data...");
 
     try {
       const formData = new FormData();
@@ -129,6 +141,15 @@ export default function CreateCollection() {
         formData.append("phases", JSON.stringify([defaultPhase]));
       }
 
+      // Simulate progress updates
+      setLoadingProgress(20);
+      setLoadingSubtitle("Uploading collection image...");
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setLoadingProgress(50);
+      setLoadingSubtitle("Creating collection on Solana...");
+
       // Create collection using enhanced API
       const response = await fetch("/api/enhanced/create-collection", {
         method: "POST",
@@ -141,17 +162,31 @@ export default function CreateCollection() {
         throw new Error(result.error || "Failed to create collection");
       }
 
+      setLoadingProgress(80);
+      setLoadingSubtitle("Finalizing collection setup...");
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setLoadingProgress(100);
+      setLoadingSubtitle("Collection created successfully!");
+
       console.log("Collection created:", result.collection.mintAddress);
       setCollectionAddress(result.collection.mintAddress);
       setCandyMachineId(result.collection.candyMachineId);
 
       toast.success("Collection created successfully!");
+      
+      // Wait a moment before transitioning
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setShowLoadingOverlay(false);
       setCurrentStep("upload-assets");
     } catch (error) {
       console.error("Failed to create collection:", error);
       toast.error(
         error instanceof Error ? error.message : "Failed to create collection"
       );
+      setShowLoadingOverlay(false);
       setCurrentStep("review");
     } finally {
       setLoading(false);
@@ -226,71 +261,70 @@ export default function CreateCollection() {
   const currentStepIndex = steps.findIndex((step) => step.key === currentStep);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <Toaster position="top-center" />
       <PageHeader title="Create Collection" />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        {/* Progress Steps - Mobile Responsive */}
-        <div className="mb-6 sm:mb-8">
-          {/* Mobile: Vertical Progress */}
-          <div className="sm:hidden space-y-3">
-            {steps.map((step, index) => (
-              <div key={step.key} className="flex items-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    index <= currentStepIndex
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 text-gray-600"
-                  }`}
-                >
-                  {index + 1}
-                </div>
-                <div className="ml-3 flex-1">
-                  <p className="text-sm font-medium text-gray-900">
-                    {step.title}
-                  </p>
-                  <p className="text-xs text-gray-500">{step.description}</p>
-                </div>
-                {index === currentStepIndex && (
-                  <div className="text-blue-600 text-sm font-medium">
-                    Current
-                  </div>
-                )}
-              </div>
-            ))}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Enhanced Progress Steps */}
+        <div className="mb-8">
+          {/* Mobile: Simplified Progress Bar */}
+          <div className="sm:hidden bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-600">Step {currentStepIndex + 1} of {steps.length}</span>
+              <span className="text-sm text-blue-600 font-medium">{Math.round(((currentStepIndex + 1) / steps.length) * 100)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+              <div 
+                className="bg-gradient-to-r from-blue-600 to-purple-600 h-2 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${((currentStepIndex + 1) / steps.length) * 100}%` }}
+              />
+            </div>
+            <div className="text-center">
+              <h3 className="font-semibold text-gray-900">{steps[currentStepIndex]?.title}</h3>
+              <p className="text-sm text-gray-600">{steps[currentStepIndex]?.description}</p>
+            </div>
           </div>
 
-          {/* Desktop: Horizontal Progress */}
-          <div className="hidden sm:flex items-center justify-between">
-            {steps.map((step, index) => (
-              <div key={step.key} className="flex items-center">
-                <div className="flex items-center">
+          {/* Desktop: Enhanced Horizontal Progress */}
+          <div className="hidden sm:block bg-white rounded-2xl p-6 shadow-lg border border-gray-200">
+            <div className="flex items-center justify-between relative">
+              {steps.map((step, index) => (
+                <div key={step.key} className="flex flex-col items-center relative z-10">
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-bold transition-all duration-300 transform ${
                       index <= currentStepIndex
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-200 text-gray-600"
+                        ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg scale-110"
+                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    } ${
+                      index === currentStepIndex ? "ring-4 ring-blue-200 animate-pulse" : ""
                     }`}
                   >
-                    {index + 1}
+                    {index < currentStepIndex ? (
+                      <CheckCircle className="w-6 h-6" />
+                    ) : (
+                      <span>{index + 1}</span>
+                    )}
                   </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-gray-900">
+                  <div className="mt-3 text-center">
+                    <p className={`text-sm font-medium ${
+                      index <= currentStepIndex ? "text-gray-900" : "text-gray-500"
+                    }`}>
                       {step.title}
                     </p>
-                    <p className="text-xs text-gray-500">{step.description}</p>
+                    <p className="text-xs text-gray-500 mt-1 max-w-24">{step.description}</p>
                   </div>
                 </div>
-                {index < steps.length - 1 && (
-                  <div
-                    className={`ml-4 w-8 lg:w-16 h-0.5 ${
-                      index < currentStepIndex ? "bg-blue-600" : "bg-gray-200"
-                    }`}
-                  />
-                )}
+              ))}
+              
+              {/* Progress Line */}
+              <div className="absolute top-6 left-6 right-6 h-1 bg-gray-200 rounded-full -z-0">
+                <div 
+                  className="h-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${(currentStepIndex / (steps.length - 1)) * 100}%` }}
+                />
               </div>
-            ))}
+            </div>
           </div>
         </div>
 
@@ -689,6 +723,18 @@ export default function CreateCollection() {
           </div>
         )}
       </div>
+      
+      {/* Loading Overlay */}
+      {showLoadingOverlay && (
+        <LoadingOverlay
+          title={loadingTitle}
+          subtitle={loadingSubtitle}
+          progress={loadingProgress}
+          isVisible={showLoadingOverlay}
+        />
+      )}
+      
+      <Toaster />
     </div>
   );
 }

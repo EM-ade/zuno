@@ -1,10 +1,10 @@
 'use client';
-
+'use client'
 import { useState, useEffect, useCallback } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
+import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
 
 interface UnmintedItem {
   id: string;
@@ -22,7 +22,7 @@ interface Collection {
 }
 
 export default function AdminDistributePage() {
-  const { publicKey } = useWallet();
+  const { publicKey } = useWalletConnection(); // Use custom hook
   const [adminSecret, setAdminSecret] = useState('');
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);

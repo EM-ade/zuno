@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import OptimizedImage from './OptimizedImage'
 
@@ -56,18 +56,18 @@ export default function FeaturedMint() {
 
   const loadFeaturedContent = async () => {
     try {
-      // Use marketplace API for consistency in status handling
-      const [collectionsResponse, nftsResponse] = await Promise.all([
-        fetch('/api/marketplace/collections?limit=50'),
-        fetch('/api/nfts/random?limit=4'),
-      ]);
-
+      setLoading(true)
+      
+      // Load collections first (faster, more important)
+      const collectionsResponse = await fetch('/api/marketplace/collections?limit=12')
+      
       if (collectionsResponse.ok) {
-        const data = await collectionsResponse.json();
-        const collections = data.collections || [];
+        const data = await collectionsResponse.json()
+        const collections = data.collections || []
 
-        // Process and sort collections for trending
-        const processedCollections = (collections as RawCollectionData[])
+        // Process collections more efficiently
+        const processedCollections = collections
+          .slice(0, 6) // Limit early to reduce processing
           .map((c: RawCollectionData): Collection => ({
             id: c.id,
             name: c.name,
@@ -78,38 +78,62 @@ export default function FeaturedMint() {
             minted_count: c.minted_count || 0,
             floor_price: c.floor_price || 0,
             volume: c.volume || 0,
-            status: c.status, // Already mapped by marketplace API
+            status: c.status,
             candy_machine_id: c.candy_machine_id,
             creator_wallet: c.creator_wallet,
           }))
-          .sort((a: Collection, b: Collection) => {
-            // Improved sorting: prioritize collections with activity
-            const aScore = (a.minted_count || 0) * 2 + (a.volume || 0) * 0.1 + (a.total_supply || 0) * 0.01;
-            const bScore = (b.minted_count || 0) * 2 + (b.volume || 0) * 0.1 + (b.total_supply || 0) * 0.01;
-            return bScore - aScore;
-          })
-          .slice(0, 6); // Limit to 6 featured collections
 
-        console.log('Featured collections loaded:', processedCollections.length, 'collections');
-        console.log('Collections by status:', {
-          live: processedCollections.filter((c: Collection) => c.status === 'live').length,
-          upcoming: processedCollections.filter((c: Collection) => c.status === 'upcoming').length,
-          sold_out: processedCollections.filter((c: Collection) => c.status === 'sold_out' || c.status === 'sold out').length,
-        });
-        setFeaturedCollections(processedCollections);
+        setFeaturedCollections(processedCollections)
+        setLoading(false) // Set loading false after collections load
+        
+        console.log('Featured collections loaded:', processedCollections.length, 'collections')
+      } else {
+        setLoading(false)
       }
 
-      if (nftsResponse.ok) {
-        const data = await nftsResponse.json();
-        const nfts = data.nfts || data;
-        setExploreNFTs(nfts);
-      }
+      // Load NFTs in background (non-blocking)
+      fetch('/api/nfts/random?limit=4')
+        .then(nftsResponse => {
+          if (nftsResponse.ok) {
+            return nftsResponse.json()
+          }
+          return null
+        })
+        .then(data => {
+          if (data) {
+            const nfts = data.nfts || data
+            setExploreNFTs(nfts)
+          }
+        })
+        .catch(error => {
+          console.warn('Error loading explore NFTs (non-critical):', error)
+        })
+        
     } catch (error) {
       console.error('Error loading featured content:', error)
-    } finally {
       setLoading(false)
     }
   }
+
+  // Memoize expensive computations
+  const filteredCollections = useMemo(() => {
+    return featuredCollections.filter(collection => {
+      const progress = (collection.minted_count / collection.total_supply) * 100
+      const isSoldOut = progress >= 100 || collection.status === 'completed' || collection.status === 'sold_out'
+      const status = isSoldOut ? 'sold_out' : collection.status
+      
+      switch (activeTab) {
+        case 'live':
+          return status === 'live' || status === 'active'
+        case 'upcoming':
+          return status === 'upcoming' || status === 'draft'
+        case 'ended':
+          return status === 'sold_out' || status === 'completed'
+        default:
+          return true
+      }
+    })
+  }, [featuredCollections, activeTab])
 
   const getStatusBadge = (collection: Collection) => {
     const progress = (collection.minted_count / collection.total_supply) * 100
@@ -121,20 +145,8 @@ export default function FeaturedMint() {
     if (collection.status === 'completed' || collection.status === 'sold_out') return 'sold out'
     
     // Status is already mapped by marketplace API, just return it
-    // marketplace API maps: active -> live, draft -> upcoming, completed -> sold_out
     return collection.status
   }
-
-  const filteredCollections = featuredCollections.filter(collection => {
-    const status = getStatusBadge(collection)
-    const shouldShow = activeTab === 'live' ? status === 'live' : 
-                      activeTab === 'upcoming' ? status === 'upcoming' :
-                      activeTab === 'ended' ? (status === 'sold out' || status === 'sold_out') : true
-    return shouldShow
-  })
-  
-  // Debug logging
-  console.log(`Active tab: ${activeTab}, Showing ${filteredCollections.length} of ${featuredCollections.length} collections`)
 
   return (
     <section className="w-full py-8 sm:py-10 md:py-12">
@@ -178,7 +190,7 @@ export default function FeaturedMint() {
             </div>
           ) : filteredCollections.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              {filteredCollections.map((collection, index) => {
+              {filteredCollections.slice(0, 6).map((collection, index) => {
                 const progress = (collection.minted_count / collection.total_supply) * 100
                 const status = getStatusBadge(collection)
                 const gradients = [
@@ -190,9 +202,7 @@ export default function FeaturedMint() {
                 const isSoldOut = status === 'sold out' || status === 'sold_out'
                 
                 const cardContent = (
-                  <div className={`bg-gradient-to-r ${gradients[index % 3]} rounded-xl p-3 sm:p-4 shadow-md hover:shadow-lg transition-shadow ${
-                    isSoldOut ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'
-                  }`}>
+                  <div className={`bg-gradient-to-r ${gradients[index % 3]} rounded-xl p-3 sm:p-4 shadow-md hover:shadow-lg transition-shadow ${isSoldOut ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'}`}>
                       <div className="flex items-start justify-between mb-2 gap-2">
                         <h2 className="text-sm sm:text-lg font-bold text-white truncate flex-1">{collection.name}</h2>
                         <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium flex-shrink-0 ${
@@ -214,8 +224,8 @@ export default function FeaturedMint() {
                             width={200}
                             height={128}
                             className="w-full h-full object-cover"
-                            priority={index < 6} // Set priority only for the first 6 featured collections
-                            loading={index < 6 ? 'eager' : 'lazy'} // Eager load first 6, lazy load others
+                            priority={index < 3} // Only prioritize first 3 images
+                            loading={index < 3 ? 'eager' : 'lazy'}
                             sizes="(max-width: 640px) 200px, (max-width: 768px) 300px, 400px"
                           />
                         ) : (
@@ -226,7 +236,7 @@ export default function FeaturedMint() {
                       {/* Progress Bar */}
                       <div className="mb-2 sm:mb-3">
                         <div className="flex justify-between items-center mb-1">
-                          <span className="text-white text-xs font-semibold">{progress.toFixed(0)}% minted</span>
+                          <span className="text-white text-xs font-semibold">{Math.round(progress)}% minted</span>
                           <span className="text-white text-xs font-bold">{collection.minted_count.toLocaleString()} / {collection.total_supply.toLocaleString()}</span>
                         </div>
                         <div className="w-full bg-white/30 rounded-full h-1.5 sm:h-2">
@@ -240,15 +250,15 @@ export default function FeaturedMint() {
                       {/* Mint Button */}
                       <button 
                         className={`w-full font-bold py-1.5 sm:py-2 px-3 sm:px-4 rounded-full text-xs sm:text-sm transition-colors backdrop-blur-sm ${
-                          status === 'sold out' || status === 'sold_out' 
+                          isSoldOut
                             ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed' 
                             : 'bg-white/20 hover:bg-white/30 text-white'
                         }`}
-                        disabled={status === 'sold out' || status === 'sold_out'}
+                        disabled={isSoldOut}
                       >
                         {status === 'live' ? 'Mint Now' : 
                          status === 'upcoming' ? 'Coming Soon' : 
-                         (status === 'sold out' || status === 'sold_out') ? 'Sold Out' : 'View Collection'}
+                         isSoldOut ? 'Sold Out' : 'View Collection'}
                       </button>
                     </div>
                 )

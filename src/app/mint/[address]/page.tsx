@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 
 import Link from "next/link";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useConnection } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui"; // Import useWalletModal
 import { Toaster, toast } from "react-hot-toast";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import OptimizedImage from "@/components/OptimizedImage";
@@ -64,7 +64,7 @@ export default function MintPage() {
     sendTransaction,
   } = useWalletConnection(); // Destructure sendTransaction
   const { connection } = useConnection();
-  const { setVisible } = useWalletModal();
+  const { setVisible } = useWalletModal(); // Get wallet modal controls
 
   const [collection, setCollection] = useState<Collection | null>(null);
   const [nftPreviews, setNftPreviews] = useState<NFTPreview[]>([]);
@@ -297,9 +297,12 @@ export default function MintPage() {
 
       const {
         transaction: transactionBase64,
-        mintAddresses,
+        nftMintAddress, // For simple mint, this is singular
         idempotencyKey,
       } = result;
+
+      // For simple mint, wrap single address in array for consistency
+      const mintAddresses = batchMintBody.quantity === 1 ? [nftMintAddress] : result.mintAddresses || [];
 
       // Deserialize the transaction
       const transactionBuffer = Buffer.from(transactionBase64, "base64");
@@ -343,6 +346,7 @@ export default function MintPage() {
         nftIds: mintAddresses,
         buyerWallet: publicKey.toString(),
         transactionSignature: signature.toString(),
+        reservationToken: idempotencyKey, // Use idempotencyKey as reservationToken
         idempotencyKey: idempotencyKey,
       };
 

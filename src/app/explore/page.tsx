@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { useWallet } from '@solana/wallet-adapter-react'
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import OptimizedImage from '@/components/OptimizedImage';
 import PageHeader from '@/components/PageHeader';
 import { memo } from 'react'; // Import memo from react
 import { resolveImageUrl } from '@/utils/resolveImageUrl'; // Import resolveImageUrl
+import { useWalletConnection } from '@/contexts/WalletConnectionProvider'; // Import custom hook
 
 type StatusTab = 'live' | 'upcoming' | 'ended';
 type DbStatus = 'active' | 'draft' | 'completed';
