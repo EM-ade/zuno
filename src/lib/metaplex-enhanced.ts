@@ -533,69 +533,27 @@ export class MetaplexEnhancedService {
 
       const nftMint = generateSigner(this.umi);
       console.log("Buyer Wallet:", buyerWallet);
+      console.log("Generated NFT Mint Address:", nftMint.publicKey.toString());
 
-      // Create the mint instruction
-      const mintInstruction = mintV1(this.umi, {
-        candyMachine: publicKey(candyMachineAddress),
-        collection: publicKey(candyMachine.collectionMint.toString()),
-        asset: nftMint,
-        owner: publicKey(buyerWallet),
-      });
-
-      // Create transaction builder and add the instruction
-      let mintBuilder = transactionBuilder().add(mintInstruction);
-
-      // Set the latest blockhash
-      mintBuilder = await mintBuilder.setLatestBlockhash(this.umi);
-
-      const builtTransaction = await mintBuilder.build(this.umi);
-
-      // Convert UMI transaction to web3.js VersionedTransaction
+      // Create a complete transaction using web3.js for better control
       const connection = new Connection(envConfig.solanaRpcUrl);
       const { blockhash } = await connection.getLatestBlockhash("finalized");
+      
+      const { Transaction, SystemProgram } = await import('@solana/web3.js');
+      const LAMPORTS_PER_SOL = 1000000000;
+      
+      const transaction = new Transaction();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = new SolanaWeb3PublicKey(buyerWallet);
 
-      // Extract instructions from UMI transaction
-      const instructions: TransactionInstruction[] = [];
-
-      if (
-        "items" in builtTransaction &&
-        Array.isArray(builtTransaction.items)
-      ) {
-        instructions.push(
-          ...builtTransaction.items.map(
-            (ix: {
-              programId: { toString(): string };
-              keys: Array<{
-                pubkey: { toString(): string };
-                isSigner: boolean;
-                isWritable: boolean;
-              }>;
-              data: Uint8Array;
-            }) =>
-              new TransactionInstruction({
-                programId: new SolanaWeb3PublicKey(ix.programId.toString()),
-                keys: ix.keys.map((k) => ({
-                  pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
-                  isSigner: k.isSigner,
-                  isWritable: k.isWritable,
-                })),
-                data: Buffer.from(ix.data),
-              })
-          )
-        );
-      }
-
-      // Add payment transfers if there's a price
+      // First, add payment transfers
       if (collection.price > 0) {
-        const { SystemProgram } = await import('@solana/web3.js');
-        const LAMPORTS_PER_SOL = 1000000000;
-        
         // Calculate creator payment (80% of NFT price)
         const creatorPayment = collection.price * 0.8;
         const creatorPaymentLamports = Math.floor(creatorPayment * LAMPORTS_PER_SOL);
         
         // Add payment to creator
-        instructions.push(
+        transaction.add(
           SystemProgram.transfer({
             fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
             toPubkey: new SolanaWeb3PublicKey(collection.creator_wallet),
@@ -608,7 +566,7 @@ export class MetaplexEnhancedService {
         const platformPaymentLamports = Math.floor(platformPayment * LAMPORTS_PER_SOL);
         
         // Add payment to platform
-        instructions.push(
+        transaction.add(
           SystemProgram.transfer({
             fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
             toPubkey: new SolanaWeb3PublicKey(envConfig.platformWallet),
@@ -620,11 +578,7 @@ export class MetaplexEnhancedService {
       }
 
       // Add fixed platform fee ($1.25 in SOL)
-      const { SystemProgram } = await import('@solana/web3.js');
-      const LAMPORTS_PER_SOL = 1000000000;
       const PLATFORM_FEE_USD = 1.25;
-      
-      // Get current SOL price for platform fee calculation
       try {
         const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
         const data = await response.json();
@@ -633,7 +587,7 @@ export class MetaplexEnhancedService {
         const platformFeeLamports = Math.floor(platformFeeSol * LAMPORTS_PER_SOL);
         
         // Add fixed platform fee transfer
-        instructions.push(
+        transaction.add(
           SystemProgram.transfer({
             fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
             toPubkey: new SolanaWeb3PublicKey(envConfig.platformWallet),
@@ -646,7 +600,53 @@ export class MetaplexEnhancedService {
         console.error('Failed to fetch SOL price for platform fee, skipping platform fee transfer:', error);
       }
 
+      // Now create the Candy Machine mint instruction using UMI
+      const mintInstruction = mintV1(this.umi, {
+        candyMachine: publicKey(candyMachineAddress),
+        collection: publicKey(candyMachine.collectionMint.toString()),
+        asset: nftMint,
+        owner: publicKey(buyerWallet),
+      });
+
+      // Build and extract the mint instruction from UMI
+      let mintBuilder = transactionBuilder().add(mintInstruction);
+      mintBuilder = await mintBuilder.setLatestBlockhash(this.umi);
+      const builtTransaction = await mintBuilder.build(this.umi);
+
+      // Extract and convert UMI instructions to web3.js format
+      if (
+        "items" in builtTransaction &&
+        Array.isArray(builtTransaction.items)
+      ) {
+        const convertedInstructions = builtTransaction.items.map(
+          (ix: {
+            programId: { toString(): string };
+            keys: Array<{
+              pubkey: { toString(): string };
+              isSigner: boolean;
+              isWritable: boolean;
+            }>;
+            data: Uint8Array;
+          }) => {
+            const { TransactionInstruction } = require('@solana/web3.js');
+            return new TransactionInstruction({
+              programId: new SolanaWeb3PublicKey(ix.programId.toString()),
+              keys: ix.keys.map((k) => ({
+                pubkey: new SolanaWeb3PublicKey(k.pubkey.toString()),
+                isSigner: k.isSigner,
+                isWritable: k.isWritable,
+              })),
+              data: Buffer.from(ix.data),
+            });
+          }
+        );
+        
+        // Add the converted mint instructions to the transaction
+        convertedInstructions.forEach(ix => transaction.add(ix));
+      }
+
       // Add memo instruction for transparency
+      const { TransactionInstruction } = await import('@solana/web3.js');
       const memoInstruction = new TransactionInstruction({
         keys: [],
         programId: new SolanaWeb3PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
@@ -655,23 +655,18 @@ export class MetaplexEnhancedService {
           "utf8"
         ),
       });
-      instructions.push(memoInstruction);
+      transaction.add(memoInstruction);
 
-      // Create versioned transaction message
-      const messageV0 = new TransactionMessage({
-        payerKey: new SolanaWeb3PublicKey(buyerWallet),
-        recentBlockhash: blockhash,
-        instructions,
-      }).compileToV0Message();
+      // Serialize the transaction
+      const transactionBase64 = transaction
+        .serialize({
+          requireAllSignatures: false,
+          verifySignatures: false,
+        })
+        .toString("base64");
 
-      const versionedTx = new VersionedTransaction(messageV0);
-
-      // Serialize the versioned transaction
-      const transactionBase64 = Buffer.from(versionedTx.serialize()).toString(
-        "base64"
-      );
-
-      console.log("Unsigned mint transaction generated with payment transfers.");
+      console.log("Complete mint transaction generated with payment transfers and NFT creation.");
+      console.log("Transaction will create NFT at address:", nftMint.publicKey.toString());
 
       return {
         transactionBase64,
