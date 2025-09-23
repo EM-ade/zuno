@@ -877,6 +877,189 @@ export class MetaplexEnhancedService {
       throw error;
     }
   }
+
+  /**
+   * Complete NFT minting flow: Payment → Create NFT → Transfer to user
+   * This is the main minting function that handles everything
+   */
+  async completeMintFlow(params: {
+    collectionAddress: string;
+    buyerWallet: string;
+    quantity: number;
+  }): Promise<{
+    success: boolean;
+    paymentTransaction?: string;
+    nftMintIds?: string[];
+    error?: string;
+    expectedTotal?: number;
+  }> {
+    try {
+      const { collectionAddress, buyerWallet, quantity } = params;
+      
+      console.log(`Starting complete mint flow for ${quantity} NFTs`);
+      console.log(`Collection: ${collectionAddress}`);
+      console.log(`Buyer: ${buyerWallet}`);
+
+      // Step 1: Generate payment transaction
+      const paymentResult = await this.createPaymentOnlyTransaction(
+        collectionAddress,
+        buyerWallet,
+        quantity
+      );
+
+      return {
+        success: true,
+        paymentTransaction: paymentResult.transactionBase64,
+        expectedTotal: paymentResult.expectedTotal,
+      };
+    } catch (error) {
+      console.error('Error in complete mint flow:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Create NFTs after payment confirmation
+   * This function is called after payment is confirmed on-chain
+   */
+  async createAndTransferNFTs(params: {
+    collectionAddress: string;
+    buyerWallet: string;
+    quantity: number;
+    paymentSignature: string;
+  }): Promise<{
+    success: boolean;
+    nftMintIds?: string[];
+    signature?: string;
+    error?: string;
+  }> {
+    try {
+      const { collectionAddress, buyerWallet, quantity, paymentSignature } = params;
+      
+      console.log(`Creating ${quantity} NFTs after payment confirmation`);
+      console.log(`Payment signature: ${paymentSignature}`);
+
+      // Get collection and available items from database
+      const { supabaseServer } = await import('@/lib/supabase-service');
+      
+      const { data: collection } = await supabaseServer
+        .from('collections')
+        .select('id, name, description, symbol, image_uri, creator_wallet')
+        .eq('collection_mint_address', collectionAddress)
+        .single();
+        
+      if (!collection) {
+        throw new Error('Collection not found');
+      }
+      
+      // Get available items for this collection
+      const { data: availableItems } = await supabaseServer
+        .from('items')
+        .select('*')
+        .eq('collection_id', collection.id)
+        .eq('minted', false)
+        .order('item_index')
+        .limit(quantity);
+      
+      if (!availableItems || availableItems.length < quantity) {
+        throw new Error(`Not enough unminted items available. Requested: ${quantity}, Available: ${availableItems?.length || 0}`);
+      }
+
+      const mintIds: string[] = [];
+      const nftSignatures: string[] = [];
+
+      // Create NFTs one by one to ensure success
+      for (let i = 0; i < quantity; i++) {
+        const item = availableItems[i];
+        
+        console.log(`Creating NFT ${i + 1}/${quantity}: ${item.name}`);
+        
+        // Generate new NFT signer
+        const assetSigner = generateSigner(this.umi);
+        
+        // Prepare NFT metadata
+        const nftMetadata = {
+          name: item.name,
+          description: collection.description || `${item.name} from ${collection.name} collection`,
+          symbol: collection.symbol || "ZUNO",
+          image: item.image_uri || collection.image_uri || "https://placeholder.com/nft-image.png",
+          attributes: item.attributes || [],
+          properties: {
+            files: [{
+              uri: item.image_uri || collection.image_uri || "https://placeholder.com/nft-image.png",
+              type: "image/png"
+            }],
+            category: "image",
+            creators: [{
+              address: collection.creator_wallet,
+              verified: true,
+              share: 100
+            }]
+          },
+          external_url: `https://zunoagent.xyz/collection/${collection.id}`,
+          seller_fee_basis_points: 500, // 5% royalty
+        };
+
+        // Upload metadata to IPFS
+        const metadataUri = await pinataService.uploadJSON(nftMetadata);
+        console.log(`Metadata uploaded for ${item.name}: ${metadataUri}`);
+
+        // Create NFT transaction
+        const createNftBuilder = transactionBuilder().add(
+          createV1(this.umi, {
+            asset: assetSigner,
+            collection: publicKey(collectionAddress),
+            name: item.name,
+            uri: metadataUri,
+            owner: publicKey(buyerWallet), // NFT goes directly to buyer
+          })
+        );
+
+        // Set blockhash before using withTxRetry
+        await createNftBuilder.setLatestBlockhash(this.umi);
+        
+        // Send transaction with retry logic
+        const result = await createNftBuilder.sendAndConfirm(this.umi, {
+          confirm: { commitment: "confirmed" },
+        });
+
+        const signature = bs58.encode(result.signature as Uint8Array);
+        mintIds.push(assetSigner.publicKey.toString());
+        nftSignatures.push(signature);
+        
+        console.log(`NFT created successfully: ${assetSigner.publicKey.toString()}`);
+        console.log(`Transaction signature: ${signature}`);
+        
+        // Mark item as minted in database
+        await supabaseServer
+          .from('items')
+          .update({ 
+            minted: true, 
+            nft_mint_address: assetSigner.publicKey.toString(),
+            minted_at: new Date().toISOString()
+          })
+          .eq('id', item.id);
+      }
+
+      console.log(`Successfully created ${mintIds.length} NFTs:`, mintIds);
+
+      return {
+        success: true,
+        nftMintIds: mintIds,
+        signature: nftSignatures[0], // Return first signature
+      };
+      
+    } catch (error) {
+      console.error('Error creating and transferring NFTs:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
 }
 
 // Singleton instance

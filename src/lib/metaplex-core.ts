@@ -1132,7 +1132,9 @@ export class MetaplexCoreService {
       );
       await connection.confirmTransaction(feeSignature, "finalized");
 
-      // Build the UMI transaction with latest blockhash before sending
+      // Build the UMI transaction with blockhash before sending
+      const { blockhash: nftBlockhash } = await connection.getLatestBlockhash();
+      umiTransaction = umiTransaction.setBlockhash(nftBlockhash);
       const builtUmiTransaction = await umiTransaction.build(this.umi);
 
       // Send the NFT creation transaction using UMI
@@ -1290,7 +1292,10 @@ export class MetaplexCoreService {
         mintIds.push(assetSigner.publicKey.toString());
       }
 
-      // Build the UMI transaction with latest blockhash before sending
+      // Build the UMI transaction with blockhash before sending
+      const connection = new Connection(envConfig.solanaRpcUrl);
+      const { blockhash } = await connection.getLatestBlockhash();
+      umiTransaction = umiTransaction.setBlockhash(blockhash);
       const builtUmiTransaction = await umiTransaction.build(this.umi);
 
       // Send the NFT creation transaction using UMI with explicit commitment
