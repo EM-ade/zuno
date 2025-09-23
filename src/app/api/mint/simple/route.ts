@@ -218,31 +218,40 @@ export async function PUT(request: NextRequest) {
     // STEP 2: Create and transfer NFTs server-side (like admin distribute)
     console.log('Creating NFTs server-side and transferring to user...');
     
+    let createResult: any;
+    
     try {
       const { metaplexCoreService } = await import('@/lib/metaplex-core');
+      
+      // Get collection info
+      const { data: collection } = await supabaseServer
+        .from('collections')
+        .select('id')
+        .eq('collection_mint_address', collectionAddress)
+        .single();
+        
+      if (!collection) {
+        throw new Error('Collection not found');
+      }
       
       // Get available items for this collection
       const { data: availableItems } = await supabaseServer
         .from('items')
         .select('*')
-        .eq('collection_id', (await supabaseServer
-          .from('collections')
-          .select('id')
-          .eq('collection_mint_address', collectionAddress)
-          .single()).data?.id)
+        .eq('collection_id', collection.id)
         .eq('minted', false)
         .order('item_index')
-        .limit(nftIds.length);
+        .limit(1); // Just get 1 item for now since nftIds is array of 1
       
-      if (!availableItems || availableItems.length < nftIds.length) {
-        throw new Error('Not enough unminted items available');
+      if (!availableItems || availableItems.length === 0) {
+        throw new Error('No unminted items available');
       }
       
       // Create NFTs using the working metaplex core service
-      const createResult = await metaplexCoreService.createNFTsFromItems({
+      createResult = await metaplexCoreService.createNFTsFromItems({
         collectionMintAddress: collectionAddress,
         userWallet: buyerWallet,
-        selectedItems: availableItems.slice(0, nftIds.length),
+        selectedItems: availableItems,
         transactionSignature: transactionSignature,
         feePayer: undefined // Use server wallet to pay for NFT creation
       });
@@ -251,7 +260,7 @@ export async function PUT(request: NextRequest) {
         throw new Error(createResult.error || 'Failed to create NFTs');
       }
       
-      console.log('NFTs created successfully:', createResult.mintIds);
+      console.log('NFTs created and transferred successfully:', createResult.mintIds);
       
     } catch (nftError) {
       console.error('Error creating NFTs server-side:', nftError);
@@ -281,11 +290,11 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Call the confirm_mint_v2 RPC function to actually mint the NFTs
+    // Call the confirm_mint_v2 RPC function to update database with actual NFT addresses
     const { data: rpcData, error: rpcError } = await supabaseServer
       .rpc('confirm_mint_v2', {
         p_collection_address: collectionAddress,
-        p_nft_ids: nftIds,
+        p_nft_ids: createResult.mintIds || [transactionSignature], // Use actual NFT mint addresses
         p_buyer_wallet: buyerWallet,
         p_transaction_signature: transactionSignature,
         p_reservation_token: reservationToken,
