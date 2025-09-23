@@ -86,7 +86,7 @@ async function serverCreateCollection(config: EnhancedCollectionConfig) {
           description: config.description,
           item_index: i + 1,
           minted: false,
-          is_minted: false
+          minted: false
         });
       }
       

@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
           .from("items")
           .select("*", { count: "exact", head: true })
           .eq("collection_id", collection.id)
-          .eq("is_minted", true);
+          .eq("minted", true);
 
         // Get mint phases for pricing
         const { data: phases } = await supabaseServer

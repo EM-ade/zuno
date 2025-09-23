@@ -1136,7 +1136,6 @@ export class MetaplexEnhancedService {
           .from('items')
           .update({ 
             minted: true,
-            is_minted: true, // Also update is_minted for consistency 
             nft_mint_address: assetSigner.publicKey.toString(),
             minted_at: new Date().toISOString(),
             owner_wallet: buyerWallet,
