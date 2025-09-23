@@ -1131,17 +1131,33 @@ export class MetaplexEnhancedService {
         console.log(`NFT created successfully: ${assetSigner.publicKey.toString()}`);
         console.log(`Transaction signature: ${signature}`);
         
-        // Mark item as minted in database
-        await supabaseServer
+        // Mark item as minted in database (using correct schema)
+        console.log(`Attempting to update item ${item.id} with owner wallet: ${buyerWallet}`);
+        
+        const updateData = { 
+          minted: true,
+          nft_address: assetSigner.publicKey.toString(),
+          owner_wallet: buyerWallet,
+          mint_signature: signature
+        };
+        
+        console.log(`Update data:`, updateData);
+        
+        const { data: updateResult, error: updateError } = await supabaseServer
           .from('items')
-          .update({ 
-            minted: true,
-            nft_mint_address: assetSigner.publicKey.toString(),
-            minted_at: new Date().toISOString(),
-            owner_wallet: buyerWallet,
-            mint_signature: signature
-          })
-          .eq('id', item.id);
+          .update(updateData)
+          .eq('id', item.id)
+          .select();
+          
+        if (updateError) {
+          console.error(`Failed to update minted status for item ${item.id}:`, updateError);
+          console.error(`Item ID: ${item.id}`);
+          console.error(`Buyer Wallet: ${buyerWallet}`);
+          throw new Error(`Failed to update minted status: ${updateError.message}`);
+        } else {
+          console.log(`Successfully updated minted status for item ${item.id}`);
+          console.log(`Update result:`, updateResult);
+        }
       }
 
       console.log(`Successfully created ${mintIds.length} NFTs:`, mintIds);
