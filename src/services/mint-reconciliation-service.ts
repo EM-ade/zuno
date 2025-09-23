@@ -13,12 +13,29 @@ interface ConfirmMintAtomicResult {
 // Platform fee: $1.25 in SOL (needed for re-calculating total_paid if re-inserting mint_transaction)
 const PLATFORM_FEE_USD = 1.25;
 
-// Get SOL price using our internal price oracle service
+// Get SOL price using our internal price oracle service with retry logic
 async function getSolPrice(): Promise<number> {
   try {
     const { priceOracle } = await import('@/lib/price-oracle');
-    const priceData = await priceOracle.getCurrentPrices();
-    return priceData.solPrice;
+    
+    // Ensure we wait for a valid price by retrying if needed
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second
+    
+    for (let i = 0; i < MAX_RETRIES; i++) {
+      const priceData = await priceOracle.getCurrentPrices();
+      // If we get a valid price, return it
+      if (priceData.solPrice > 0) {
+        return priceData.solPrice;
+      }
+      // If not, wait and retry
+      if (i < MAX_RETRIES - 1) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      }
+    }
+    
+    // If all retries failed, throw error to use fallback
+    throw new Error('Failed to get valid SOL price after retries');
   } catch (error) {
     console.error('Error fetching SOL price from oracle:', error);
     // Fallback to a default price if fetching fails

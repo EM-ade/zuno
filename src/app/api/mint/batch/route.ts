@@ -142,7 +142,6 @@ export async function POST(request: NextRequest) {
     // - 3 NFTs and above: process in batches of 3
     // - 2 NFTs: process in a single batch of 2
     // - 1 NFT: process as a single item
-    let itemsToProcess = availableItems;
     let batchSize = 1;
     
     if (quantity >= 3) {
@@ -159,18 +158,7 @@ export async function POST(request: NextRequest) {
       console.log(`Processing ${quantity} items in batches of ${batchSize} (frontend will handle actual batching)`);
     }
 
-    // Create batch mint transaction using metaplex core service
-    const transactionResult = await metaplexCoreService.createMintTransaction({
-      collectionAddress,
-      candyMachineId: candyMachineAddress,
-      buyerWallet,
-      items: availableItems,
-      price: nftPrice,
-      quantity,
-      platformFee: totalPlatformFee
-    })
-
-    // Reserve the items in database
+    // Reserve the items in database BEFORE creating the transaction
     const mintAddresses = availableItems.map(item => item.id)
     const reservationResult = await SupabaseService.reserveItemsForMinting(
       mintAddresses,
@@ -184,6 +172,17 @@ export async function POST(request: NextRequest) {
         error: 'Failed to reserve items for minting'
       }, { status: 500 })
     }
+
+    // Create batch mint transaction using metaplex core service
+    const transactionResult = await metaplexCoreService.createMintTransaction({
+      collectionAddress,
+      candyMachineId: candyMachineAddress,
+      buyerWallet,
+      items: availableItems,
+      price: nftPrice,
+      quantity,
+      platformFee: totalPlatformFee
+    })
 
     return NextResponse.json({
       success: true,

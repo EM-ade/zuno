@@ -637,7 +637,7 @@ export class SupabaseService {
         })
         .in("id", itemIds)
         .eq("minted", false) // Only reserve items that haven't been minted
-        .or("owner_wallet.is.null,updated_at.lt." + new Date(Date.now() - 10 * 60 * 1000).toISOString()); // Only reserve items that aren't reserved or were reserved more than 10 minutes ago
+        .is("owner_wallet", null); // Only reserve items that aren't already reserved
 
       if (error) {
         console.error("Error reserving items:", error);
@@ -675,7 +675,7 @@ export class SupabaseService {
           updated_at: new Date().toISOString(),
         })
         .in("id", itemIds)
-        .eq("mint_signature", idempotencyKey) // Match the temporary idempotency key
+        .eq("minted", false) // Only update items that haven't been minted yet
         .select();
 
       if (itemsError) {

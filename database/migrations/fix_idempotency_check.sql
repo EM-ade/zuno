@@ -1,7 +1,5 @@
--- Drop any existing conflicting functions and create a clean confirm_mint_v2 function
--- This avoids parameter type conflicts
-
-DROP FUNCTION IF EXISTS confirm_mint_v2(TEXT, TEXT[], TEXT, TEXT, TEXT, DECIMAL, DECIMAL, TEXT);
+-- Fix for idempotency check in confirm_mint_v2 function
+-- This removes the problematic idempotency check that was causing duplicate mints
 
 CREATE OR REPLACE FUNCTION confirm_mint_v2(
     p_collection_address TEXT,

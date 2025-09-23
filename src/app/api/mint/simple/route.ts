@@ -184,23 +184,6 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to get current SOL price for fee calculation' }, { status: 500 });
   }
 
-  // Check if this mint request already exists and is completed
-  const { data: existingRequest, error: fetchError } = await supabaseServer
-    .from('mint_requests')
-    .select('*')
-    .eq('idempotency_key', idempotencyKey)
-    .single();
-
-  if (fetchError && fetchError.code !== 'PGRST116') {
-    console.error('Error fetching existing mint request:', fetchError);
-    return NextResponse.json({ error: 'Database error' }, { status: 500 });
-  }
-
-  if (existingRequest?.status === 'completed') {
-    console.log('Mint request already completed, returning existing response');
-    return NextResponse.json(existingRequest.response_body || { success: true, message: 'Already completed' });
-  }
-
   try {
     if (!collectionAddress || !nftIds || !buyerWallet || !transactionSignature || !reservationToken) {
       console.error('Missing required fields:', { collectionAddress, nftIds, buyerWallet, transactionSignature, reservationToken });

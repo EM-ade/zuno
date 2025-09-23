@@ -840,8 +840,36 @@ export class MetaplexCoreService {
       // Create transaction with payment transfers
       const transaction = new Transaction();
 
-      // Use provided platform fee or calculate from $1.25 USD per NFT
-      const platformFeePerNft = params.platformFee || (await this.priceOracleService.usdtToSol(1.25));
+      // Use provided platform fee or calculate from $1.25 USD per NFT with retry logic
+      let platformFeePerNft = params.platformFee;
+      if (!platformFeePerNft) {
+        // Retry logic for price fetching
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY = 1000; // 1 second
+        
+        for (let i = 0; i < MAX_RETRIES; i++) {
+          try {
+            platformFeePerNft = await this.priceOracleService.usdtToSol(1.25);
+            // If we get a valid price, break out of retry loop
+            if (platformFeePerNft > 0) {
+              break;
+            }
+          } catch (error) {
+            console.error(`Attempt ${i + 1} to fetch platform fee failed:`, error);
+          }
+          
+          // If not the last retry, wait before trying again
+          if (i < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          }
+        }
+        
+        // If all retries failed, use fallback value
+        if (!platformFeePerNft || platformFeePerNft <= 0) {
+          platformFeePerNft = 0.0625; // $1.25 / $20 SOL fallback
+        }
+      }
+      
       const totalPlatformFee = platformFeePerNft * quantity; // Platform fee per NFT
       const platformFeeLamports = Math.round(totalPlatformFee * LAMPORTS_PER_SOL);
 
