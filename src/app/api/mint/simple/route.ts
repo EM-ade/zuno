@@ -58,14 +58,14 @@ export async function POST(request: NextRequest) {
     // 2. Generate a unique idempotency key for this mint request
     const idempotencyKey = uuidv4();
 
-    // 3. Generate the unsigned mint transaction
-    console.log('Calling metaplexEnhancedService.createCandyMachineMintTransaction...');
-    const { transactionBase64, nftMintAddress, nftMintKeypair } = await metaplexEnhancedService.createCandyMachineMintTransaction(
-      candyMachineAddress,
+    // 3. Generate payment-only transaction (NFTs created server-side after payment)
+    console.log('Calling metaplexEnhancedService.createPaymentOnlyTransaction...');
+    const { transactionBase64, expectedTotal } = await metaplexEnhancedService.createPaymentOnlyTransaction(
+      collectionAddress,
       buyerWallet,
-      quantity // Note: backend handles quantity=1 for now, client can send multiple requests
+      quantity
     );
-    console.log('Generated unsigned transaction and nftMintAddress:', nftMintAddress);
+    console.log('Generated payment transaction, expected total:', expectedTotal, 'SOL');
 
     // 4. Store the initial mint request with 'pending' status
     const { error: insertError } = await supabaseServer.from('mint_requests').insert({
@@ -78,8 +78,7 @@ export async function POST(request: NextRequest) {
         sol_price: solPrice,
         platform_fee_sol: platformFeeSol,
         transaction: transactionBase64, // Store transaction in request_body
-        nft_mint_address: nftMintAddress, // Store NFT address in request_body
-        nft_mint_keypair: nftMintKeypair, // Store NFT mint keypair for client signing
+        expected_total: expectedTotal, // Store expected payment total
         reservation_token: idempotencyKey
       },
       status: 'pending',
@@ -95,20 +94,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Return the unsigned transaction and idempotencyKey to the client
+    // 5. Return the payment transaction to the client
     return NextResponse.json(
       {
         success: true,
-        message: 'Unsigned mint transaction generated and ready for client signing.',
+        message: 'Payment transaction generated. NFTs will be created after payment confirmation.',
         idempotencyKey: idempotencyKey,
         transaction: transactionBase64,
-        nftMintAddress: nftMintAddress, // Return the generated NFT mint address
-        nftMintKeypair: nftMintKeypair, // Return the NFT mint keypair for client signing
+        expectedTotal: expectedTotal, // Return expected payment total
         solPrice: solPrice,
         platformFeeSol: platformFeeSol,
-        status: 'transaction_ready' // Indicate client can now send
+        quantity: quantity,
+        status: 'payment_ready' // Indicate client should send payment
       },
-      { status: 200 } // 200 OK because transaction is ready
+      { status: 200 }
     );
   } catch (error) {
     console.error('Error in mint request POST API (outer catch block):', error);
@@ -215,6 +214,72 @@ export async function PUT(request: NextRequest) {
       );
     }
     console.log('Transaction confirmed on-chain:', transactionSignature);
+
+    // STEP 2: Create and transfer NFTs server-side (like admin distribute)
+    console.log('Creating NFTs server-side and transferring to user...');
+    
+    try {
+      const { metaplexCoreService } = await import('@/lib/metaplex-core');
+      
+      // Get available items for this collection
+      const { data: availableItems } = await supabaseServer
+        .from('items')
+        .select('*')
+        .eq('collection_id', (await supabaseServer
+          .from('collections')
+          .select('id')
+          .eq('collection_mint_address', collectionAddress)
+          .single()).data?.id)
+        .eq('minted', false)
+        .order('item_index')
+        .limit(nftIds.length);
+      
+      if (!availableItems || availableItems.length < nftIds.length) {
+        throw new Error('Not enough unminted items available');
+      }
+      
+      // Create NFTs using the working metaplex core service
+      const createResult = await metaplexCoreService.createNFTsFromItems({
+        collectionMintAddress: collectionAddress,
+        userWallet: buyerWallet,
+        selectedItems: availableItems.slice(0, nftIds.length),
+        transactionSignature: transactionSignature,
+        feePayer: undefined // Use server wallet to pay for NFT creation
+      });
+      
+      if (!createResult.success) {
+        throw new Error(createResult.error || 'Failed to create NFTs');
+      }
+      
+      console.log('NFTs created successfully:', createResult.mintIds);
+      
+    } catch (nftError) {
+      console.error('Error creating NFTs server-side:', nftError);
+      
+      // Update mint request status to failed
+      await supabaseServer
+        .from('mint_requests')
+        .update({ 
+          status: 'failed', 
+          response_body: { 
+            success: false, 
+            error: 'Payment confirmed but NFT creation failed', 
+            details: nftError instanceof Error ? nftError.message : 'Unknown error',
+            solPrice,
+            platformFeeSol
+          } 
+        })
+        .eq('idempotency_key', idempotencyKey);
+
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Payment confirmed but NFT creation failed', 
+          details: nftError instanceof Error ? nftError.message : 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
 
     // Call the confirm_mint_v2 RPC function to actually mint the NFTs
     const { data: rpcData, error: rpcError } = await supabaseServer

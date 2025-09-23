@@ -297,67 +297,27 @@ export default function MintPage() {
 
       const {
         transaction: transactionBase64,
-        nftMintAddress, // For simple mint, this is singular
-        nftMintKeypair, // CRITICAL: The NFT mint keypair for signing
+        expectedTotal,
         idempotencyKey,
+        quantity: returnedQuantity,
       } = result;
 
-      // For simple mint, wrap single address in array for consistency
-      const mintAddresses = batchMintBody.quantity === 1 ? [nftMintAddress] : result.mintAddresses || [];
+      // For simple payment, we just need the transaction signature after payment
+      const mintAddresses = [`payment-${idempotencyKey}`]; // Temporary identifier
 
-      // Deserialize the transaction
+      // Deserialize the payment transaction
       const transactionBuffer = Buffer.from(transactionBase64, "base64");
       const transaction = VersionedTransaction.deserialize(transactionBuffer);
 
-      // CRITICAL FIX: Handle NFT mint keypair signing for simple mints
-      let signature: any; // Declare signature variable in the correct scope
-      if (batchMintBody.quantity === 1 && nftMintKeypair) {
-        console.log("Applying NFT mint keypair signature for simple mint...");
-        
-        // Import necessary modules
-        const { Keypair, Transaction } = await import('@solana/web3.js');
-        
-        // Convert VersionedTransaction to legacy Transaction for partial signing
-        const legacyTransaction = Transaction.from(transaction.serialize());
-        
-        // Create NFT mint keypair from the received secret key
-        const nftKeypair = Keypair.fromSecretKey(new Uint8Array(nftMintKeypair));
-        console.log("NFT mint keypair public key:", nftKeypair.publicKey.toString());
-        console.log("Expected NFT mint address:", nftMintAddress);
-        
-        // Verify the keypair matches the expected address
-        if (nftKeypair.publicKey.toString() !== nftMintAddress) {
-          throw new Error('NFT mint keypair does not match expected mint address');
-        }
-        
-        // Pre-sign the transaction with the NFT mint keypair
-        legacyTransaction.partialSign(nftKeypair);
-        
-        // Convert back to VersionedTransaction
-        const signedTransactionBuffer = legacyTransaction.serialize({
-          requireAllSignatures: false,
-          verifySignatures: false,
-        });
-        const finalTransaction = VersionedTransaction.deserialize(signedTransactionBuffer);
-        
-        console.log("Transaction pre-signed with NFT mint keypair");
-        
-        // Send and sign the final transaction (user wallet will sign remaining signatures)
-        setAwaitingWalletSignature(true);
-        signature = await sendTransaction(finalTransaction, connection, {
-          skipPreflight: true,
-        });
-        setAwaitingWalletSignature(false);
-        
-        console.log("Transaction sent with both signatures:", signature.toString());
-      } else {
-        // Batch mint or no NFT keypair - use original flow
-        setAwaitingWalletSignature(true);
-        signature = await sendTransaction(transaction, connection, {
-          skipPreflight: true,
-        });
-        setAwaitingWalletSignature(false);
-      }
+      // Simple payment transaction - user only signs with their wallet
+      setAwaitingWalletSignature(true);
+      const signature = await sendTransaction(transaction, connection, {
+        skipPreflight: true,
+      });
+      setAwaitingWalletSignature(false);
+      
+      console.log("Payment transaction sent:", signature.toString());
+      console.log("NFTs will be created server-side after payment confirmation");
 
       setLoadingProgress(80);
       setLoadingTitle("Confirming Transaction");
