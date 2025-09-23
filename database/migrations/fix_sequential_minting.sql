@@ -1,7 +1,5 @@
--- Drop any existing conflicting functions and create a clean confirm_mint_v2 function
--- This avoids parameter type conflicts
-
-DROP FUNCTION IF EXISTS confirm_mint_v2(TEXT, TEXT[], TEXT, TEXT, TEXT, DECIMAL, DECIMAL, TEXT);
+-- Fix for sequential minting issue
+-- This ensures that items are properly selected in sequential order
 
 CREATE OR REPLACE FUNCTION confirm_mint_v2(
     p_collection_address TEXT,

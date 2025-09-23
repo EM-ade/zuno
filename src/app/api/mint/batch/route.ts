@@ -138,26 +138,6 @@ export async function POST(request: NextRequest) {
       solPrice
     })
 
-    // Implement smart batching based on quantity:
-    // - 3 NFTs and above: process in batches of 3
-    // - 2 NFTs: process in a single batch of 2
-    // - 1 NFT: process as a single item
-    let batchSize = 1;
-    
-    if (quantity >= 3) {
-      batchSize = 3;
-    } else if (quantity === 2) {
-      batchSize = 2;
-    }
-    
-    // If we're processing in batches smaller than the total quantity,
-    // we need to adjust our approach to return multiple transactions
-    if (batchSize < quantity) {
-      // For now, we'll still return a single transaction but with all items
-      // The frontend will handle the actual batching
-      console.log(`Processing ${quantity} items in batches of ${batchSize} (frontend will handle actual batching)`);
-    }
-
     // Reserve the items in database BEFORE creating the transaction
     const mintAddresses = availableItems.map(item => item.id)
     const reservationResult = await SupabaseService.reserveItemsForMinting(

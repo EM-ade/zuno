@@ -273,18 +273,19 @@ export default function MintPage() {
         }
         
         while (remainingToMint > 0) {
+          // Use the actual remaining quantity for this batch, not a fixed batchSize
           const currentBatchSize = Math.min(remainingToMint, batchSize);
           
           try {
             setLoadingProgress(30 + ((mintQuantity - remainingToMint) * 60) / mintQuantity);
             setLoadingSubtitle(`Preparing batch of ${currentBatchSize} NFTs... (${successCount + 1}-${successCount + currentBatchSize} of ${mintQuantity})`);
 
-            // Create batch mint request
+            // Create batch mint request with the correct quantity for this batch
             const batchMintBody = {
               collectionAddress: collection.collection_mint_address,
               candyMachineAddress: collection.candy_machine_id,
               buyerWallet: publicKey.toString(),
-              quantity: currentBatchSize,
+              quantity: currentBatchSize, // Use currentBatchSize, not batchSize
               nftPrice: nftPrice
               // platformFee is calculated server-side now
             };
