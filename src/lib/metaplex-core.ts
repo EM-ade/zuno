@@ -840,10 +840,10 @@ export class MetaplexCoreService {
       // Create transaction with payment transfers
       const transaction = new Transaction();
 
-      // Use provided platform fee or calculate from $1.25 USD
-      const platformFeeSol =
-        params.platformFee || (await this.priceOracleService.usdtToSol(1.25));
-      const platformFeeLamports = Math.round(platformFeeSol * LAMPORTS_PER_SOL);
+      // Use provided platform fee or calculate from $1.25 USD per NFT
+      const platformFeePerNft = params.platformFee || (await this.priceOracleService.usdtToSol(1.25));
+      const totalPlatformFee = platformFeePerNft * quantity; // Platform fee per NFT
+      const platformFeeLamports = Math.round(totalPlatformFee * LAMPORTS_PER_SOL);
 
       transaction.add(
         SystemProgram.transfer({

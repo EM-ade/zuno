@@ -573,10 +573,10 @@ export class SupabaseService {
         .from("items")
         .select("*")
         .eq("collection_id", collectionId)
-        .eq("minted", false)
-        .is("owner_wallet", null)
+        .eq("minted", false) // Only get items that haven't been minted
+        .is("owner_wallet", null) // Only get items that aren't reserved
         .limit(quantity)
-        .order("item_index", { ascending: true });
+        .order("item_index", { ascending: true }); // Get items in sequential order
 
       if (error) {
         console.error("Error fetching available items:", error);
@@ -604,8 +604,8 @@ export class SupabaseService {
           updated_at: new Date().toISOString(),
         })
         .in("id", itemIds)
-        .eq("minted", false)
-        .is("owner_wallet", null);
+        .eq("minted", false) // Only reserve items that haven't been minted
+        .is("owner_wallet", null); // Only reserve items that aren't already reserved
 
       if (error) {
         console.error("Error reserving items:", error);
@@ -637,7 +637,7 @@ export class SupabaseService {
       const { data: updatedItems, error: itemsError } = await supabaseServer
         .from("items")
         .update({
-          minted: true,
+          minted: true, // Mark items as minted
           owner_wallet: buyerWallet,
           mint_signature: transactionSignature,
           updated_at: new Date().toISOString(),

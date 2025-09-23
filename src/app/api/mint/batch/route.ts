@@ -54,6 +54,13 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    if (quantity < 1) {
+      return NextResponse.json({
+        success: false,
+        error: 'Quantity must be at least 1'
+      }, { status: 400 })
+    }
+
     // Get collection from database
     const collection = await SupabaseService.getCollectionByMintAddress(collectionAddress)
     if (!collection) {
@@ -72,7 +79,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Get random items from collection for minting
+    // Get sequential items from collection for minting (ordered by item_index)
     const availableItems = await SupabaseService.getAvailableItemsForMinting(
       collection.id, 
       quantity
@@ -81,7 +88,16 @@ export async function POST(request: NextRequest) {
     if (availableItems.length < quantity) {
       return NextResponse.json({
         success: false,
-        error: 'Not enough available items for minting'
+        error: `Not enough available items for minting. Requested: ${quantity}, Available: ${availableItems.length}`
+      }, { status: 400 })
+    }
+
+    // Verify all items are unminted
+    const unmintedItems = availableItems.filter(item => item.minted === false)
+    if (unmintedItems.length < quantity) {
+      return NextResponse.json({
+        success: false,
+        error: `Some selected items have already been minted. Please try again.`
       }, { status: 400 })
     }
 
@@ -90,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     // Calculate total costs
     const totalNftCost = nftPrice * quantity
-    const totalPlatformFee = platformFee // Fixed $1.25 in SOL
+    const totalPlatformFee = platformFee * quantity // Platform fee per NFT
     const totalCost = totalNftCost + totalPlatformFee
 
     console.log('Batch pricing:', {
@@ -114,11 +130,18 @@ export async function POST(request: NextRequest) {
 
     // Reserve the items in database
     const mintAddresses = availableItems.map(item => item.id)
-    await SupabaseService.reserveItemsForMinting(
+    const reservationResult = await SupabaseService.reserveItemsForMinting(
       mintAddresses,
       buyerWallet,
       idempotencyKey
     )
+
+    if (!reservationResult.success) {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to reserve items for minting'
+      }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
@@ -162,10 +185,17 @@ export async function PUT(request: NextRequest) {
     })
 
     // Validate inputs
-    if (!collectionAddress || !nftIds || !buyerWallet || !transactionSignature) {
+    if (!collectionAddress || !nftIds || !buyerWallet || !transactionSignature || !idempotencyKey) {
       return NextResponse.json({
         success: false,
         error: 'Missing required parameters'
+      }, { status: 400 })
+    }
+
+    if (!Array.isArray(nftIds) || nftIds.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid nftIds parameter'
       }, { status: 400 })
     }
 
