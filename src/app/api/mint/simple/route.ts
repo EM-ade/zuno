@@ -216,9 +216,9 @@ export async function PUT(request: NextRequest) {
     }
     console.log('Transaction confirmed on-chain:', transactionSignature);
 
-    // Call the confirm_mint_atomic RPC function to actually mint the NFTs
+    // Call the confirm_mint_v2 RPC function to actually mint the NFTs
     const { data: rpcData, error: rpcError } = await supabaseServer
-      .rpc('confirm_mint_atomic', {
+      .rpc('confirm_mint_v2', {
         p_collection_address: collectionAddress,
         p_nft_ids: nftIds,
         p_buyer_wallet: buyerWallet,
