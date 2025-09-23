@@ -4,27 +4,20 @@ import { supabaseServer } from '@/lib/supabase-service';
 import { metaplexEnhancedService } from '@/lib/metaplex-enhanced';
 import { Connection } from '@solana/web3.js';
 import { envConfig } from '@/config/env';
+import { priceOracle } from '@/lib/price-oracle'; // Use our price oracle service
 
 // Platform fee: $1.25 in SOL
 const PLATFORM_FEE_USD = 1.25;
 
-// Get SOL price from CoinGecko
+// Get SOL price using our price oracle service
 async function getSolPrice(): Promise<number> {
   try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    const data = await response.json();
-    const solUsdPrice = data.solana.usd;
-
-    // Calculate platform fee in SOL
-    const platformFeeSol = PLATFORM_FEE_USD / solUsdPrice;
-    
-    console.log(`Current SOL price: $${solUsdPrice}, Platform fee: ${platformFeeSol} SOL`);
-    
-    return solUsdPrice;
+    const priceData = await priceOracle.getCurrentPrices();
+    return priceData.solPrice;
   } catch (error) {
-    console.error('Error fetching SOL price:', error);
+    console.error('Error fetching SOL price from oracle:', error);
     // Fallback to a default price if fetching fails
-    return 50; 
+    return 20; // Assume $20 per SOL as fallback
   }
 }
 

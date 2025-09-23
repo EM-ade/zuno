@@ -569,21 +569,25 @@ export class SupabaseService {
     quantity: number
   ) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseServer // Use supabaseServer for consistent access
         .from("items")
         .select("*")
         .eq("collection_id", collectionId)
         .eq("minted", false) // Only get items that haven't been minted
         .is("owner_wallet", null) // Only get items that aren't reserved
-        .limit(quantity)
-        .order("item_index", { ascending: true }); // Get items in sequential order
+        .order("item_index", { ascending: true }) // Get items in sequential order
+        .limit(quantity);
 
       if (error) {
         console.error("Error fetching available items:", error);
         throw error;
       }
 
-      return data || [];
+      // Double-check that all items are unminted
+      const unmintedItems = data.filter(item => item.minted === false);
+      
+      // Return only the requested quantity or fewer if not enough available
+      return unmintedItems.slice(0, quantity);
     } catch (error) {
       console.error("Error in getAvailableItemsForMinting:", error);
       throw error;

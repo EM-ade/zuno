@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { metaplexCoreService } from '@/lib/metaplex-core'
 import { SupabaseService } from '@/lib/supabase-service'
 import { v4 as uuidv4 } from 'uuid'
+import { priceOracle } from '@/lib/price-oracle' // Use our price oracle service
 
 const PLATFORM_FEE_USD = 1.25
 
-// Get current SOL price from CoinGecko
+// Get current SOL price using our price oracle service
 async function getSolPrice(): Promise<number> {
   try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
-    const data = await response.json()
-    return data.solana.usd
+    const priceData = await priceOracle.getCurrentPrices();
+    return priceData.solPrice;
   } catch (error) {
-    console.error('Failed to fetch SOL price:', error)
-    // Fallback price if API fails
+    console.error('Failed to fetch SOL price from oracle:', error);
+    // Fallback price if oracle fails
     return 20 // Assume $20 per SOL as fallback
   }
 }
@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
       candyMachineAddress, 
       buyerWallet, 
       quantity, 
-      nftPrice, 
-      platformFee 
+      nftPrice
+      // platformFee is no longer passed from frontend, we calculate it here
     } = body
 
     console.log('Batch mint request:', {
@@ -35,8 +35,7 @@ export async function POST(request: NextRequest) {
       candyMachineAddress,
       buyerWallet,
       quantity,
-      nftPrice,
-      platformFee
+      nftPrice
     })
 
     // Validate inputs
@@ -104,17 +103,23 @@ export async function POST(request: NextRequest) {
     // Generate idempotency key for this batch
     const idempotencyKey = uuidv4()
 
+    // Calculate platform fee using our price oracle
+    const solPrice = await getSolPrice();
+    const platformFeePerNft = PLATFORM_FEE_USD / solPrice; // $1.25 USD converted to SOL
+    const totalPlatformFee = platformFeePerNft * quantity; // Platform fee per NFT
+
     // Calculate total costs
     const totalNftCost = nftPrice * quantity
-    const totalPlatformFee = platformFee * quantity // Platform fee per NFT
     const totalCost = totalNftCost + totalPlatformFee
 
     console.log('Batch pricing:', {
       nftPrice,
       quantity,
       totalNftCost,
+      platformFeePerNft,
       totalPlatformFee,
-      totalCost
+      totalCost,
+      solPrice
     })
 
     // Create batch mint transaction using metaplex core service
@@ -152,6 +157,7 @@ export async function POST(request: NextRequest) {
       breakdown: {
         nftCost: totalNftCost,
         platformFee: totalPlatformFee,
+        platformFeePerNft: platformFeePerNft,
         quantity
       }
     })
