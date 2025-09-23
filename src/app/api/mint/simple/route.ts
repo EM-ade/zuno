@@ -165,10 +165,8 @@ export async function PUT(request: NextRequest) {
 
   const {
     collectionAddress,
-    nftIds,
     buyerWallet,
     transactionSignature,
-    reservationToken,
     idempotencyKey // Added for safe retries
   } = body;
 
@@ -185,12 +183,12 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
-    if (!collectionAddress || !nftIds || !buyerWallet || !transactionSignature || !reservationToken) {
-      console.error('Missing required fields:', { collectionAddress, nftIds, buyerWallet, transactionSignature, reservationToken });
+    if (!collectionAddress || !buyerWallet || !transactionSignature) {
+      console.error('Missing required fields:', { collectionAddress, buyerWallet, transactionSignature });
       throw new Error('Missing required fields');
     }
     
-    console.log(`Processing mint completion for ${nftIds.length} NFTs via confirm_mint_atomic RPC`);
+    console.log(`Processing mint completion for collection ${collectionAddress}`);
 
     // Verify transaction on-chain (client-side already confirmed, but double-check server-side)
     const connection = new Connection(envConfig.solanaRpcUrl, 'confirmed');
@@ -226,10 +224,40 @@ export async function PUT(request: NextRequest) {
     let createResult: any;
     
     try {
+      // Get collection data
+      const { data: collections } = await supabaseServer
+        .from('collections')
+        .select('id')
+        .eq('collection_mint_address', collectionAddress)
+        .limit(1);
+
+      if (!collections || collections.length === 0) {
+        throw new Error('Collection not found in database');
+      }
+      const collection = collections[0];
+      
+      // Get available unminted items
+      const { data: availableItems } = await supabaseServer
+        .from('items')
+        .select('*')
+        .eq('collection_id', collection.id)
+        .eq('minted', false)
+        .order('item_index', { ascending: true });
+
+      if (!availableItems || availableItems.length === 0) {
+        throw new Error('No unminted items available');
+      }
+
+      // Simple random selection - pick one item randomly
+      const randomIndex = Math.floor(Math.random() * availableItems.length);
+      const selectedItem = availableItems[randomIndex];
+      
+      console.log(`Selected item ${selectedItem.name} at index ${randomIndex}`);
+
       createResult = await metaplexEnhancedService.createAndTransferNFTs({
         collectionAddress,
         buyerWallet,
-        quantity: 1, // For now, always mint 1 NFT
+        quantity: 1, // Always mint 1 NFT in simple route
         paymentSignature: transactionSignature
       });
       
@@ -267,79 +295,15 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Call the confirm_mint_v2 RPC function to update database with actual NFT addresses
-    const { data: rpcData, error: rpcError } = await supabaseServer
-      .rpc('confirm_mint_v2', {
-        p_collection_address: collectionAddress,
-        p_nft_ids: createResult.nftMintIds || [transactionSignature], // Use actual NFT mint addresses
-        p_buyer_wallet: buyerWallet,
-        p_transaction_signature: transactionSignature,
-        p_reservation_token: reservationToken,
-        p_platform_fee_usd: PLATFORM_FEE_USD,
-        p_sol_price: solPrice,
-        p_idempotency_key: idempotencyKey
-      })
-      .single();
-      
-    const rpcResult = rpcData as ConfirmMintAtomicResult;
+    // Simple response with expected structure for frontend
+    const mintedNftDetails: MintedNFTDetails = {
+      id: createResult.nftMintIds[0],
+      name: 'Minted NFT',
+      image: '',
+      address: createResult.nftMintIds[0]
+    };
 
-    if (rpcError) {
-      console.error('RPC error in confirm_mint_atomic:', rpcError);
-      
-      // Update mint request status to failed
-      await supabaseServer
-        .from('mint_requests')
-        .update({
-          status: 'failed',
-          response_body: {
-            success: false,
-            error: 'Failed to confirm mint in database',
-            details: rpcError.message,
-            solPrice,
-            platformFeeSol
-          }
-        })
-        .eq('idempotency_key', idempotencyKey);
-
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Failed to confirm mint in database', 
-          details: rpcError.message 
-        },
-        { status: 500 }
-      );
-    }
-
-    if (!rpcResult || !rpcResult.success) {
-      console.error('Mint confirmation failed:', rpcResult);
-      
-      // Update mint request status to failed
-      await supabaseServer
-        .from('mint_requests')
-        .update({
-          status: 'failed',
-          response_body: {
-            success: false,
-            error: rpcResult?.error || 'Mint confirmation failed',
-            details: rpcResult,
-            solPrice,
-            platformFeeSol
-          }
-        })
-        .eq('idempotency_key', idempotencyKey);
-
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: rpcResult?.error || 'Mint confirmation failed',
-          details: rpcResult 
-        },
-        { status: 400 }
-      );
-    }
-
-    console.log('NFT minting confirmed successfully:', rpcResult);
+    console.log('NFT minting completed successfully');
 
     // Update the mint request status to completed
     const { error: updateError } = await supabaseServer
@@ -349,11 +313,11 @@ export async function PUT(request: NextRequest) {
         response_body: {
           success: true,
           transaction: transactionSignature,
-          nftIds: rpcResult.minted_nfts.map((nft: any) => nft.id),
-          minted_count: rpcResult.minted_count,
+          nftIds: [mintedNftDetails.id],
+          minted_count: 1,
           solPrice,
           platformFeeSol,
-          message: rpcResult.message
+          message: 'NFT minted successfully'
         },
         updated_at: new Date().toISOString()
       })
@@ -364,15 +328,17 @@ export async function PUT(request: NextRequest) {
       // Don't fail the request since the NFT was actually minted
     }
 
-    // Return the successful minting result
+    // Return the successful minting result with the expected structure
     return NextResponse.json({
       success: true,
-      message: rpcResult.message || 'NFT(s) minted successfully',
+      message: 'NFT minted successfully',
       transaction: transactionSignature,
-      nftIds: rpcResult.minted_nfts.map((nft: any) => nft.id),
-      minted_count: rpcResult.minted_count,
+      nftIds: [mintedNftDetails.id],
+      minted_count: 1,
       solPrice,
-      platformFeeSol
+      platformFeeSol,
+      // Add the expected minted_nfts array for frontend compatibility
+      minted_nfts: [mintedNftDetails]
     });
 
   } catch (error) {
