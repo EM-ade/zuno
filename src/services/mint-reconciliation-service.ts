@@ -125,9 +125,9 @@ export async function runMintReconciliation() {
           const totalPerNft = nftPriceInSol + platformFeeInSol;
           const totalAmount = totalPerNft * request_body.quantity;
 
-          // Add payment to creator (80% of NFT price)
+          // Add payment to creator (95% of NFT price)
           if (nftPriceInSol > 0) {
-            const creatorPayment = nftPriceInSol * 0.8 * request_body.quantity;
+            const creatorPayment = nftPriceInSol * 0.95 * request_body.quantity;
             transaction.add(
               SystemProgram.transfer({
                 fromPubkey: new SolanaPublicKey(request_body.buyerWallet),

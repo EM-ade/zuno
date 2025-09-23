@@ -225,8 +225,11 @@ export default function MintPage() {
     try {
       // Calculate pricing with platform fee
       const nftPrice = activePhase.price; // Price per NFT set by creator
-      const platformFeeUSD = 1.25; // $1.25 platform fee
-
+      const totalNftCost = nftPrice * mintQuantity;
+      
+      // Platform fee always applies - $1.25 regardless of NFT price
+      const platformFeeUSD = 1.25;
+      
       // Get current SOL price to convert USD to SOL
       setLoadingProgress(10);
       setLoadingSubtitle("Fetching current SOL price...");
@@ -234,60 +237,205 @@ export default function MintPage() {
       const solPriceResponse = await fetch("/api/price/sol");
       const solPriceData = await solPriceResponse.json();
       const platformFeeSol = platformFeeUSD / solPriceData.price;
-
-      const totalNftCost = nftPrice * mintQuantity;
       const totalPlatformFee = platformFeeSol; // Fixed $1.25 regardless of quantity
       const totalCost = totalNftCost + totalPlatformFee;
-
-      console.log("Pricing breakdown:", {
+      
+      console.log("Mint pricing:", {
         nftPrice,
         mintQuantity,
         totalNftCost,
         platformFeeSol,
         totalCost,
         solPrice: solPriceData.price,
+        isFreeNFT: nftPrice === 0,
+        note: "Platform fee always applies"
       });
 
       setLoadingProgress(20);
-      setLoadingTitle("Creating Batch Transaction");
+      setLoadingTitle(mintQuantity === 1 ? "Creating Transaction" : "Creating Optimized Batches");
       setLoadingSubtitle(
-        `Minting ${mintQuantity} NFT${
-          mintQuantity > 1 ? "s" : ""
-        } for ${totalCost.toFixed(4)} SOL`
+        mintQuantity === 1 
+          ? `Minting 1 NFT for ${totalCost.toFixed(4)} SOL`
+          : `Minting ${mintQuantity} NFTs in optimized batches for ${totalCost.toFixed(4)} SOL`
       );
 
-      // Create optimized batch mint request
-      const batchMintBody = {
+      // Smart batch minting with automatic fallback
+      if (mintQuantity > 1) {
+        const signatures = [];
+        let successCount = 0;
+        let remainingToMint = mintQuantity;
+        let currentIndex = 0;
+        
+        // Define batch sizes to try (largest to smallest)
+        const batchSizes = [4, 3, 2, 1];
+        
+        while (remainingToMint > 0) {
+          const targetBatchSize = Math.min(remainingToMint, 4); // Start with max 4
+          let actualBatchSize = 1; // Default fallback
+          let batchSuccess = false;
+          
+          // Try batch sizes from largest to smallest
+          for (const batchSize of batchSizes) {
+            if (batchSize > targetBatchSize) continue; // Skip if larger than needed
+            
+            try {
+              setLoadingProgress(20 + ((currentIndex) * 60) / mintQuantity);
+              setLoadingSubtitle(`Trying batch of ${batchSize} NFTs... (${successCount + 1}-${successCount + batchSize} of ${mintQuantity})`);
+              
+              const batchMintBody = {
+                collectionAddress: collection.collection_mint_address,
+                candyMachineAddress: collection.candy_machine_id,
+                buyerWallet: publicKey.toString(),
+                quantity: batchSize,
+                nftPrice: nftPrice,
+                platformFee: platformFeeSol, // Platform fee always applies
+              };
+              
+              console.log(`Attempting batch mint of ${batchSize} NFTs:`, {
+                batchSize,
+                nftPrice,
+                platformFee: platformFeeSol,
+                remainingToMint
+              });
+
+              const response = await fetch("/api/mint/simple", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(batchMintBody),
+              });
+
+              const result = await response.json();
+              
+              if (!result.success) {
+                if (result.error && result.error.includes("Transaction too large")) {
+                  console.log(`Batch size ${batchSize} too large, trying smaller...`);
+                  continue; // Try next smaller batch size
+                }
+                throw new Error(result.error || "Failed to create mint transaction");
+              }
+
+              // Process the successful batch transaction
+              const transactionBuffer = Buffer.from(result.transaction, "base64");
+              const transaction = VersionedTransaction.deserialize(transactionBuffer);
+
+              setAwaitingWalletSignature(true);
+              const signature = await sendTransaction(transaction, connection, {
+                skipPreflight: true,
+              });
+              setAwaitingWalletSignature(false);
+
+              // Confirm transaction
+              await connection.confirmTransaction(
+                {
+                  signature: signature.toString(),
+                  ...(await connection.getLatestBlockhash()),
+                },
+                "confirmed"
+              );
+
+              // Finalize the mint
+              const nftIds = Array.from({ length: batchSize }, (_, i) => `payment-${result.idempotencyKey}-${i}`);
+              const putBody = {
+                collectionAddress: collection.collection_mint_address,
+                nftIds: nftIds,
+                buyerWallet: publicKey.toString(),
+                transactionSignature: signature.toString(),
+                reservationToken: result.idempotencyKey,
+                idempotencyKey: result.idempotencyKey,
+              };
+
+              const completeResponse = await fetch("/api/mint/simple", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(putBody),
+              });
+
+              const completeResult = await completeResponse.json();
+              if (completeResult.success) {
+                signatures.push(signature.toString());
+                successCount += batchSize;
+                remainingToMint -= batchSize;
+                currentIndex += batchSize;
+                actualBatchSize = batchSize;
+                batchSuccess = true;
+                console.log(`Successfully minted batch of ${batchSize} NFTs`);
+                break; // Success! Exit the batch size loop
+              } else {
+                throw new Error(completeResult.error || "Failed to finalize mint");
+              }
+            } catch (error) {
+              console.error(`Error with batch size ${batchSize}:`, error);
+              if (batchSize === 1) {
+                // Even single mint failed, this is a real error
+                throw error;
+              }
+              // Try smaller batch size
+              continue;
+            }
+          }
+          
+          if (!batchSuccess) {
+            throw new Error("All batch sizes failed, including single mint");
+          }
+        }
+
+        if (successCount === 0) {
+          throw new Error("All mint transactions failed");
+        }
+
+        setLoadingProgress(100);
+        setLoadingTitle("Batch Mints Complete!");
+        setLoadingSubtitle(
+          `Successfully minted ${successCount} of ${mintQuantity} NFTs using optimized batches!`
+        );
+
+        // Brief delay to show completion
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        const successMsg = `Successfully minted ${successCount} NFT${successCount > 1 ? "s" : ""} using smart batching! Check your wallet.`;
+        setSuccess(successMsg);
+        toast.success(successMsg);
+        setMintQuantity(1);
+        
+        // Refresh collection data
+        await loadInitialData();
+        return; // Exit here for batch minting
+      }
+
+      // Single mint flow
+      const singleMintBody = {
         collectionAddress: collection.collection_mint_address,
         candyMachineAddress: collection.candy_machine_id,
         buyerWallet: publicKey.toString(),
-        quantity: mintQuantity,
+        quantity: 1, // Single mint
         nftPrice: nftPrice,
-        platformFee: platformFeeSol,
+        platformFee: platformFeeSol, // Platform fee always applies
       };
+      
+      console.log("Single mint with params:", {
+        nftPrice,
+        platformFee: platformFeeSol,
+        isFreeNFT: nftPrice === 0,
+        quantity: 1,
+        note: "Platform fee always applied"
+      });
 
       setLoadingProgress(40);
-      setLoadingSubtitle(
-        batchMintBody.quantity === 1
-          ? "Requesting mint transaction from server..."
-          : "Requesting batch transaction from server..."
-      );
+      setLoadingSubtitle("Requesting mint transaction from server...");
 
-      // Use simple mint for single NFTs, batch for multiple
-      const endpoint =
-        batchMintBody.quantity === 1 ? "/api/mint/simple" : "/api/mint/batch";
-      const response = await fetch(endpoint, {
+      // Always use simple mint endpoint with quantity 1 to avoid transaction size limits
+      const response = await fetch("/api/mint/simple", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(batchMintBody),
+        body: JSON.stringify(singleMintBody),
       });
 
       const result = await response.json();
-      console.log("Batch mint response:", result);
+      console.log("Mint response:", result);
 
       if (!result.success) {
         throw new Error(
-          result.error || "Failed to create batch mint transaction"
+          result.error || "Failed to create mint transaction"
         );
       }
 
@@ -331,7 +479,7 @@ export default function MintPage() {
         },
         "confirmed"
       );
-      console.log("Batch transaction confirmed:", signature);
+      console.log("Transaction confirmed:", signature);
 
       setLoadingProgress(100);
       setLoadingTitle("Mint Complete!");
@@ -354,10 +502,8 @@ export default function MintPage() {
         idempotencyKey: idempotencyKey,
       };
 
-      // Use the same endpoint for completion as was used for creation
-      const completionEndpoint =
-        batchMintBody.quantity === 1 ? "/api/mint/simple" : "/api/mint/batch";
-      const completeResponse = await fetch(completionEndpoint, {
+      // Always use simple mint endpoint for completion
+      const completeResponse = await fetch("/api/mint/simple", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(putBody),
@@ -1009,89 +1155,7 @@ export default function MintPage() {
               )}
             </div>
 
-            {/* Other details, social links, etc. */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 mt-6">
-              <h3 className="text-xl font-bold text-blue-900 mb-4">
-                COLLECTION DETAILS
-              </h3>
-              {collection.description && (
-                <div className="mb-6">
-                  <div className="text-gray-500 text-sm mb-2">Description</div>
-                  <div className="text-gray-800 leading-relaxed">
-                    {collection.description}
-                  </div>
-                </div>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                  <div className="text-gray-500 text-sm mb-2">
-                    Collection Address
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-black">
-                      {collection.collection_mint_address.slice(0, 8)}...
-                      {collection.collection_mint_address.slice(-8)}
-                    </code>
-                    <button
-                      onClick={() =>
-                        navigator.clipboard.writeText(
-                          collection.collection_mint_address
-                        )
-                      }
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                      title="Copy address"
-                    >
-                      📋
-                    </button>
-                    <a
-                      href={`https://explorer.solana.com/address/${collection.collection_mint_address}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                      title="View on Solana Explorer"
-                    >
-                      🔍
-                    </a>
-                  </div>
-                </div>
-                {collection.candy_machine_id && (
-                  <div>
-                    <div className="text-gray-500 text-sm mb-2">
-                      Candy Machine ID
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-black">
-                        {collection.candy_machine_id.slice(0, 8)}...
-                        {collection.candy_machine_id.slice(-8)}
-                      </code>
-                      <button
-                        onClick={() =>
-                          navigator.clipboard.writeText(
-                            collection.candy_machine_id!
-                          )
-                        }
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                        title="Copy address"
-                      >
-                        📋
-                      </button>
-                      <a
-                        href={`https://explorer.solana.com/address/${collection.candy_machine_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                        title="View on Solana Explorer"
-                      >
-                        🔍
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-3 mb-6">
-                {/* Social links here */}
-              </div>
-            </div>
+            
           </div>
         </div>
       </div>

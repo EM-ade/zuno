@@ -614,10 +614,10 @@ export default function CreateCollection() {
                   Platform Fees
                 </h4>
                 <p className="text-sm text-blue-700">
-                  • 20% of mint price goes to platform
+                  • 5% of mint price goes to platform
                   <br />
                   • $1.25 platform fee per mint (paid by buyer)
-                  <br />• You receive 80% of mint price
+                  <br />• You receive 95% of mint price
                 </p>
               </div>
             </div>

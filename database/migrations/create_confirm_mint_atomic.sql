@@ -114,7 +114,7 @@ BEGIN
     END LOOP;
     
     -- Calculate payment breakdown
-    v_total_platform_commission := v_total_nft_cost * 0.2; -- 20% of NFT price
+    v_total_platform_commission := v_total_nft_cost * 0.05; -- 5% of NFT price
     v_total_paid := v_total_nft_cost + v_platform_fee_sol; -- NFT cost + fixed platform fee
     
     -- Create mint transaction record

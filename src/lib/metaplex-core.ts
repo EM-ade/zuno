@@ -610,15 +610,15 @@ export class MetaplexCoreService {
 
     // SOL payment guard with revenue split
     if (phase.price > 0) {
-      // Calculate split: 80% to creator, 20% to platform
-      const creatorShare = phase.price * 0.8;
-      const platformShare = phase.price * 0.2;
+      // Calculate split: 95% to creator, 5% to platform
+      const creatorShare = phase.price * 0.95;
+      const platformShare = phase.price * 0.05;
 
       // Use solPayment guard with destination split
       // Note: Candy Machine v3 supports multiple payment destinations
       guards.solPayment = some({
         lamports: sol(phase.price),
-        destination: publicKey(creatorWallet), // Primary destination gets 80%
+        destination: publicKey(creatorWallet), // Primary destination gets 95%
       });
 
       // Add additional payment split for platform (this might need custom implementation)
