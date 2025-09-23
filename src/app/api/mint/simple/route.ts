@@ -34,14 +34,18 @@ export async function POST(request: NextRequest) {
       collectionAddress,
       candyMachineAddress,
       buyerWallet,
-      quantity = 1
+      quantity = 1,
+      nftPrice, // Add nftPrice from frontend
+      platformFee // Add platformFee from frontend
     } = await request.json();
 
     console.log('Received mint request:', {
       collectionAddress,
       candyMachineAddress,
       buyerWallet,
-      quantity
+      quantity,
+      nftPrice,
+      platformFee
     });
 
     if (!collectionAddress || !candyMachineAddress || !buyerWallet) {
@@ -63,7 +67,8 @@ export async function POST(request: NextRequest) {
     const mintResult = await metaplexEnhancedService.completeMintFlow({
       collectionAddress,
       buyerWallet,
-      quantity
+      quantity,
+      nftPrice // Pass the nftPrice from frontend
     });
     
     if (!mintResult.success) {

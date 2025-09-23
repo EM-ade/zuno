@@ -505,7 +505,8 @@ export class MetaplexEnhancedService {
   async createPaymentOnlyTransaction(
     collectionAddress: string,
     buyerWallet: string,
-    quantity: number = 1
+    quantity: number = 1,
+    nftPrice?: number // Add optional nftPrice parameter
   ): Promise<{ transactionBase64: string; expectedTotal: number }> {
     try {
       console.log(
@@ -516,7 +517,7 @@ export class MetaplexEnhancedService {
       const { supabaseServer } = await import('@/lib/supabase-service');
       const { data: collections } = await supabaseServer
         .from('collections')
-        .select('price, creator_wallet, collection_mint_address')
+        .select('id, price, creator_wallet, collection_mint_address')
         .eq('collection_mint_address', collectionAddress)
         .limit(1);
 
@@ -524,6 +525,47 @@ export class MetaplexEnhancedService {
         throw new Error('Collection not found in database');
       }
       const collection = collections[0];
+      
+      console.log('Collection pricing info:', {
+        collectionAddress,
+        collectionPrice: collection.price,
+        quantity
+      });
+      
+      // Use provided nftPrice if available, otherwise fall back to phase/collection price
+      let actualPrice = nftPrice;
+      
+      if (!actualPrice) {
+        // Fallback: Get current phase pricing
+        const { data: phases } = await supabaseServer
+          .from('mint_phases')
+          .select('*')
+          .eq('collection_id', collections[0].id || '')
+          .order('start_time', { ascending: false });
+        
+        // Find active phase
+        const now = new Date();
+        const activePhase = phases?.find(phase => {
+          const startTime = new Date(phase.start_time);
+          const endTime = phase.end_time ? new Date(phase.end_time) : null;
+          return startTime <= now && (!endTime || endTime > now);
+        });
+        
+        // Use phase price if available, otherwise fall back to collection price
+        actualPrice = activePhase?.price ?? collection.price ?? 0;
+      }
+      
+      // Ensure actualPrice is never undefined
+      if (!actualPrice) {
+        actualPrice = 0;
+      }
+      
+      console.log('Final pricing decision:', {
+        providedNftPrice: nftPrice,
+        collectionPrice: collection.price,
+        actualPriceUsed: actualPrice,
+        quantity
+      });
 
       // Create web3.js transaction for payments only
       const connection = new Connection(envConfig.solanaRpcUrl);
@@ -536,14 +578,14 @@ export class MetaplexEnhancedService {
       let totalCost = 0;
 
       // Add payment transfers
-      if (collection.price > 0) {
+      if (actualPrice && actualPrice > 0) {
         const LAMPORTS_PER_SOL = 1000000000;
         
-        // Calculate total NFT cost
-        const totalNftCost = collection.price * quantity;
+        // Calculate total NFT cost using actual phase price
+        const totalNftCost = actualPrice * quantity;
         
-        // Calculate creator payment (80% of total NFT cost)
-        const creatorPayment = totalNftCost * 0.8;
+        // Calculate creator payment (95% of total NFT cost)
+        const creatorPayment = totalNftCost * 0.95;
         const creatorPaymentLamports = Math.floor(creatorPayment * LAMPORTS_PER_SOL);
         
         // Add payment to creator
@@ -555,8 +597,8 @@ export class MetaplexEnhancedService {
           })
         );
         
-        // Platform gets 20% of total NFT cost
-        const platformPayment = totalNftCost * 0.2;
+        // Platform gets 5% of total NFT cost
+        const platformPayment = totalNftCost * 0.05;
         const platformPaymentLamports = Math.floor(platformPayment * LAMPORTS_PER_SOL);
         
         // Add payment to platform
@@ -570,6 +612,7 @@ export class MetaplexEnhancedService {
         
         totalCost += totalNftCost;
         console.log(`Added NFT payments: ${creatorPayment} SOL to creator, ${platformPayment} SOL to platform`);
+        console.log(`Total NFT cost: ${totalNftCost} SOL (${actualPrice} SOL × ${quantity})`);
       }
 
       // Add fixed platform fee ($1.25 in SOL)
@@ -886,6 +929,7 @@ export class MetaplexEnhancedService {
     collectionAddress: string;
     buyerWallet: string;
     quantity: number;
+    nftPrice?: number; // Add optional nftPrice
   }): Promise<{
     success: boolean;
     paymentTransaction?: string;
@@ -894,17 +938,19 @@ export class MetaplexEnhancedService {
     expectedTotal?: number;
   }> {
     try {
-      const { collectionAddress, buyerWallet, quantity } = params;
+      const { collectionAddress, buyerWallet, quantity, nftPrice } = params;
       
       console.log(`Starting complete mint flow for ${quantity} NFTs`);
       console.log(`Collection: ${collectionAddress}`);
       console.log(`Buyer: ${buyerWallet}`);
+      console.log(`NFT Price provided: ${nftPrice}`);
 
       // Step 1: Generate payment transaction
       const paymentResult = await this.createPaymentOnlyTransaction(
         collectionAddress,
         buyerWallet,
-        quantity
+        quantity,
+        nftPrice // Pass the nftPrice
       );
 
       return {
@@ -947,7 +993,7 @@ export class MetaplexEnhancedService {
       
       const { data: collection } = await supabaseServer
         .from('collections')
-        .select('id, name, description, symbol, image_uri, creator_wallet')
+        .select('id, name, description, symbol, image_uri, creator_wallet, royalty_percentage')
         .eq('collection_mint_address', collectionAddress)
         .single();
         
@@ -1000,7 +1046,9 @@ export class MetaplexEnhancedService {
             }]
           },
           external_url: `https://zunoagent.xyz/collection/${collection.id}`,
-          seller_fee_basis_points: 500, // 5% royalty
+          seller_fee_basis_points: collection.royalty_percentage
+            ? collection.royalty_percentage * 100
+            : 500, // Default to 5% if not set
         };
 
         // Upload metadata to IPFS
@@ -1037,9 +1085,12 @@ export class MetaplexEnhancedService {
         await supabaseServer
           .from('items')
           .update({ 
-            minted: true, 
+            minted: true,
+            is_minted: true, // Also update is_minted for consistency 
             nft_mint_address: assetSigner.publicKey.toString(),
-            minted_at: new Date().toISOString()
+            minted_at: new Date().toISOString(),
+            owner_wallet: buyerWallet,
+            mint_signature: signature
           })
           .eq('id', item.id);
       }

@@ -424,16 +424,6 @@ export default function MintPage() {
     }
   };
 
-  // Helper function to determine phase status
-  const getPhaseStatus = useCallback((phase: Phase) => {
-    const now = new Date();
-    const startTime = new Date(phase.start_time);
-    const endTime = phase.end_time ? new Date(phase.end_time) : null;
-    if (now < startTime) return "upcoming";
-    if (endTime && now > endTime) return "ended";
-    return "live";
-  }, []);
-
   // Helper function to format time
   const formatLocaleTime = useCallback((dateString: string) => {
     if (!dateString) return "";
@@ -447,6 +437,7 @@ export default function MintPage() {
   }, []);
 
   // Use real-time progress if available, otherwise fall back to collection data
+  // Note: Real-time progress now uses actual minted count from items table
   const mintProgress =
     realtimeProgress?.progress ??
     (collection
@@ -454,28 +445,51 @@ export default function MintPage() {
       : 0);
   const currentMintedCount =
     realtimeProgress?.minted_count ?? collection?.minted_count ?? 0;
-  const remainingSupply = collection
-    ? collection.total_supply - currentMintedCount
-    : 0;
+  const totalSupply = realtimeProgress?.total_supply ?? collection?.total_supply ?? 0;
+  const remainingSupply = totalSupply - currentMintedCount;
   const phaseLimit = activePhase?.mint_limit ?? Number.MAX_SAFE_INTEGER;
-  const maxMintQuantity = Math.max(
-    1,
-    Math.min(10, remainingSupply, phaseLimit)
-  );
+  // Calculate max mint quantity: min of (10, remaining supply, phase limit)
+  // If no supply remaining, max should be 0 (not 1)
+  const maxMintQuantity = remainingSupply <= 0 
+    ? 0 
+    : Math.min(10, remainingSupply, phaseLimit);
+
+  // Helper function to determine phase status (defined after remainingSupply)
+  const getPhaseStatus = useCallback((phase: Phase) => {
+    // Check if collection is sold out (all items minted)
+    if (remainingSupply <= 0) return "sold_out";
+    
+    const now = new Date();
+    const startTime = new Date(phase.start_time);
+    const endTime = phase.end_time ? new Date(phase.end_time) : null;
+    if (now < startTime) return "upcoming";
+    if (endTime && now > endTime) return "ended";
+    return "live";
+  }, [remainingSupply]);
 
   // Debug logging for quantity limits
   console.log("Quantity calculation:", {
     remainingSupply,
     phaseLimit,
     maxMintQuantity,
-    totalSupply: collection?.total_supply,
+    isSoldOut: maxMintQuantity === 0,
+    totalSupply: totalSupply,
+    collectionTotalSupply: collection?.total_supply,
     currentMintedCount,
+    realtimeProgress: realtimeProgress,
+    mintProgress: mintProgress.toFixed(2) + '%',
     activePhase: activePhase?.name,
     phaseMintLimit: activePhase?.mint_limit,
   });
 
   useEffect(() => {
-    setMintQuantity((q) => Math.min(Math.max(1, q), maxMintQuantity));
+    // If maxMintQuantity is 0 (sold out), set mintQuantity to 1 but disable minting
+    // Otherwise, ensure mintQuantity is within valid range
+    if (maxMintQuantity === 0) {
+      setMintQuantity(1); // Show 1 but disable the mint button
+    } else {
+      setMintQuantity((q) => Math.min(Math.max(1, q), maxMintQuantity));
+    }
   }, [maxMintQuantity]);
 
   if (loading) {
@@ -677,10 +691,18 @@ export default function MintPage() {
                           <div className="absolute left-0 bottom-0 w-4 h-4 border-b-2 border-l-2 border-blue-300 rounded-bl-md" />
                           <div className="absolute right-0 bottom-0 w-4 h-4 border-b-2 border-r-2 border-blue-300 rounded-br-md" />
                         </div>
-                        <div className="inline-block px-3 py-1 rounded-full font-bold text-xs bg-blue-500 text-white">
-                          {getPhaseStatus(phase).toUpperCase()}
+                        <div className={`inline-block px-3 py-1 rounded-full font-bold text-xs ${
+                          getPhaseStatus(phase) === "sold_out" 
+                            ? "bg-red-500 text-white" 
+                            : getPhaseStatus(phase) === "live"
+                            ? "bg-green-500 text-white"
+                            : getPhaseStatus(phase) === "ended"
+                            ? "bg-gray-500 text-white"
+                            : "bg-blue-500 text-white"
+                        }`}>
+                          {getPhaseStatus(phase) === "sold_out" ? "SOLD OUT" : getPhaseStatus(phase).toUpperCase()}
                         </div>
-                        <div className="mt-1 font-bold text-sm">
+                        {/* <div className="mt-1 font-bold text-sm">
                           {isActive ? (
                             <span className="text-green-600 font-bold text-xs flex items-center">
                               <span className="w-1.5 h-1.5 rounded-full bg-green-600 mr-1 animate-pulse"></span>
@@ -691,7 +713,7 @@ export default function MintPage() {
                               {formatLocaleTime(phase.start_time)}
                             </span>
                           )}
-                        </div>
+                        </div> */}
                         <div className="text-xs text-gray-500 mt-1">
                           {phase.price === 0 ? (
                             <span className="text-green-600 font-semibold">
@@ -729,12 +751,12 @@ export default function MintPage() {
                 <div className="flex items-center space-x-2">
                   <span className="text-2xl">🎨</span>
                   <span>{currentMintedCount} Minted</span>
-                  {isRealtimeConnected && (
+                  {/* {isRealtimeConnected && (
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
                       <span className="w-2 h-2 bg-green-400 rounded-full mr-1 animate-pulse"></span>
                       Live
                     </span>
-                  )}
+                  )} */}
                 </div>
                 <div className="flex items-center space-x-2">
                   <span>{remainingSupply} Left</span>
@@ -855,7 +877,7 @@ export default function MintPage() {
                           }
                           className="px-3 py-1 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           disabled={
-                            mintQuantity <= 1 || mintRequestStatus !== "idle"
+                            mintQuantity <= 1 || mintRequestStatus !== "idle" || maxMintQuantity === 0
                           }
                         >
                           -
@@ -872,7 +894,8 @@ export default function MintPage() {
                           className="px-3 py-1 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           disabled={
                             mintQuantity >= maxMintQuantity ||
-                            mintRequestStatus !== "idle"
+                            mintRequestStatus !== "idle" ||
+                            maxMintQuantity === 0
                           }
                         >
                           +
@@ -881,20 +904,28 @@ export default function MintPage() {
                     </div>
                     {/* Show max quantity info */}
                     <div className="text-sm text-gray-600 text-center">
-                      Max: {maxMintQuantity}
-                      {maxMintQuantity === 1 && (
-                        <span className="ml-1">
-                          {remainingSupply <= 1
-                            ? "(Last NFT)"
-                            : activePhase?.mint_limit === 1
-                            ? "(Phase limit)"
-                            : "(Limited)"}
+                      {maxMintQuantity === 0 ? (
+                        <span className="text-red-600 font-semibold">
+                          🔴 Collection Sold Out - No NFTs Available
                         </span>
-                      )}
-                      {remainingSupply > 1 && maxMintQuantity > 1 && (
-                        <span className="ml-1">
-                          • {remainingSupply} remaining
-                        </span>
+                      ) : (
+                        <>
+                          Max: {maxMintQuantity}
+                          {maxMintQuantity === 1 && (
+                            <span className="ml-1">
+                              {remainingSupply <= 1
+                                ? "(Last NFT)"
+                                : activePhase?.mint_limit === 1
+                                ? "(Phase limit)"
+                                : "(Limited)"}
+                            </span>
+                          )}
+                          {remainingSupply > 1 && maxMintQuantity > 1 && (
+                            <span className="ml-1">
+                              • {remainingSupply} remaining
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

@@ -18,12 +18,18 @@ export function useRealtimeProgress(collectionId: string | null) {
     if (!collectionId) return
 
     try {
-      // Get current minted count
+      // Get current minted count from items where minted = TRUE
       const { count: mintedCount } = await supabase
         .from('items')
         .select('*', { count: 'exact', head: true })
         .eq('collection_id', collectionId)
-        .eq('is_minted', true)
+        .eq('minted', true) // Check the 'minted' column, not 'is_minted'
+      
+      // Also get total items count for this collection
+      const { count: totalItems } = await supabase
+        .from('items')
+        .select('*', { count: 'exact', head: true })
+        .eq('collection_id', collectionId)
 
       // Get collection info
       const { data: collection } = await supabase
@@ -33,14 +39,25 @@ export function useRealtimeProgress(collectionId: string | null) {
         .single()
 
       if (collection) {
+        const actualTotalItems = totalItems || collection.total_supply;
         const progressData = {
           collection_id: collectionId,
           minted_count: mintedCount || 0,
-          total_supply: collection.total_supply,
-          progress: collection.total_supply > 0 
-            ? Math.min(100, ((mintedCount || 0) / collection.total_supply) * 100)
+          total_supply: actualTotalItems,
+          progress: actualTotalItems > 0 
+            ? Math.min(100, ((mintedCount || 0) / actualTotalItems) * 100)
             : 0
         }
+        
+        console.log('Progress calculation:', {
+          collectionId,
+          mintedCount,
+          totalItems,
+          collectionTotalSupply: collection.total_supply,
+          actualTotalUsed: actualTotalItems,
+          progressPercentage: progressData.progress
+        });
+        
         setProgress(progressData)
       }
     } catch (error) {

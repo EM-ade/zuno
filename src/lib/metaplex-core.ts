@@ -1209,6 +1209,12 @@ export class MetaplexCoreService {
       if (!collection) {
         throw new Error("Collection not found");
       }
+      
+      console.log('Collection royalty info:', {
+        collectionId: collection.id,
+        royaltyPercentage: collection.royalty_percentage,
+        basisPoints: collection.royalty_percentage ? collection.royalty_percentage * 100 : 0
+      });
 
       const mintIds: string[] = [];
 
