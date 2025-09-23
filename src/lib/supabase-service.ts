@@ -569,7 +569,8 @@ export class SupabaseService {
     quantity: number
   ) {
     try {
-      const { data, error } = await supabaseServer // Use supabaseServer for consistent access
+      // First, try to get unminted items that aren't reserved
+      let { data, error } = await supabaseServer // Use supabaseServer for consistent access
         .from("items")
         .select("*")
         .eq("collection_id", collectionId)
@@ -578,13 +579,40 @@ export class SupabaseService {
         .order("item_index", { ascending: true }) // Get items in sequential order
         .limit(quantity);
 
+      // If we don't have enough items and there might be reserved items, 
+      // also get items that were reserved more than 10 minutes ago (likely abandoned)
+      if ((!data || data.length < quantity) && quantity > 0) {
+        const { data: reservedData, error: reservedError } = await supabaseServer
+          .from("items")
+          .select("*")
+          .eq("collection_id", collectionId)
+          .eq("minted", false)
+          .not("owner_wallet", "is", null) // Get items that are reserved
+          .lt("updated_at", new Date(Date.now() - 10 * 60 * 1000).toISOString()) // Reserved more than 10 minutes ago
+          .order("item_index", { ascending: true })
+          .limit(quantity);
+
+        if (!reservedError && reservedData && reservedData.length > 0) {
+          // Combine the results, prioritizing unreserved items
+          const combinedData = [...(data || []), ...reservedData];
+          // Sort by item_index to maintain sequential order
+          combinedData.sort((a, b) => {
+            const indexA = a.item_index || 0;
+            const indexB = b.item_index || 0;
+            return indexA - indexB;
+          });
+          // Take only the quantity needed
+          data = combinedData.slice(0, quantity);
+        }
+      }
+
       if (error) {
         console.error("Error fetching available items:", error);
         throw error;
       }
 
       // Double-check that all items are unminted
-      const unmintedItems = data.filter(item => item.minted === false);
+      const unmintedItems = data ? data.filter(item => item.minted === false) : [];
       
       // Return only the requested quantity or fewer if not enough available
       return unmintedItems.slice(0, quantity);
@@ -609,7 +637,7 @@ export class SupabaseService {
         })
         .in("id", itemIds)
         .eq("minted", false) // Only reserve items that haven't been minted
-        .is("owner_wallet", null); // Only reserve items that aren't already reserved
+        .or("owner_wallet.is.null,updated_at.lt." + new Date(Date.now() - 10 * 60 * 1000).toISOString()); // Only reserve items that aren't reserved or were reserved more than 10 minutes ago
 
       if (error) {
         console.error("Error reserving items:", error);

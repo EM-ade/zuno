@@ -21,8 +21,8 @@ export class PriceOracleService {
   async getCurrentPrices(): Promise<PriceData> {
     const now = Date.now();
     
-    // Return cached data if still valid
-    if (this.cache.data && now - this.cache.timestamp < this.cache.ttl) {
+    // Return cached data if still valid AND solPrice is greater than 0
+    if (this.cache.data && now - this.cache.timestamp < this.cache.ttl && this.cache.data.solPrice > 0) {
       return this.cache.data;
     }
 
@@ -71,12 +71,18 @@ export class PriceOracleService {
     
     // Fallback to reasonable defaults if oracle fails
     // Using conservative estimates for mainnet
-    return {
+    const fallbackPrices: PriceData = {
       solPrice: 20, // Conservative SOL price estimate
       usdtPrice: 1,
       solToUsdt: 20,
       usdtToSol: 0.05, // 1 USDT = 0.05 SOL (at $20 SOL price)
     };
+    
+    // Cache the fallback values to prevent repeated failures
+    this.cache.data = fallbackPrices;
+    this.cache.timestamp = now;
+    
+    return fallbackPrices;
   }
 
   async usdtToSol(usdtAmount: number): Promise<number> {

@@ -1001,14 +1001,38 @@ export class MetaplexEnhancedService {
         throw new Error('Collection not found');
       }
       
-      // Get available items for this collection
-      const { data: availableItems } = await supabaseServer
+      // Get available items for this collection (unminted and not reserved, or reserved more than 10 minutes ago)
+      let { data: availableItems } = await supabaseServer
         .from('items')
         .select('*')
         .eq('collection_id', collection.id)
         .eq('minted', false)
-        .order('item_index')
+        .order('item_index', { ascending: true })
         .limit(quantity);
+      
+      // If we don't have enough items, also check for abandoned reservations
+      if (!availableItems || availableItems.length < quantity) {
+        const { data: reservedItems } = await supabaseServer
+          .from('items')
+          .select('*')
+          .eq('collection_id', collection.id)
+          .eq('minted', false)
+          .not('owner_wallet', 'is', null)
+          .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+          .order('item_index', { ascending: true })
+          .limit(quantity);
+        
+        if (reservedItems && reservedItems.length > 0) {
+          // Combine results and sort by item_index
+          const combinedItems = [...(availableItems || []), ...reservedItems];
+          combinedItems.sort((a, b) => {
+            const indexA = a.item_index || 0;
+            const indexB = b.item_index || 0;
+            return indexA - indexB;
+          });
+          availableItems = combinedItems.slice(0, quantity);
+        }
+      }
       
       if (!availableItems || availableItems.length < quantity) {
         throw new Error(`Not enough unminted items available. Requested: ${quantity}, Available: ${availableItems?.length || 0}`);
