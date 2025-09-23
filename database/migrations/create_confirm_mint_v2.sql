@@ -50,7 +50,7 @@ BEGIN
     IF p_idempotency_key IS NOT NULL THEN
         IF EXISTS (
             SELECT 1 FROM mint_transactions 
-            WHERE metadata->>'idempotency_key' = p_idempotency_key
+            WHERE transaction_signature = p_transaction_signature
         ) THEN
             -- Already processed, return existing result
             SELECT json_build_object(
@@ -118,14 +118,13 @@ BEGIN
     -- Create mint transaction record
     INSERT INTO mint_transactions (
         collection_id,
-        user_wallet,
-        signature,
+        buyer_wallet,
+        transaction_signature,
         quantity,
         nft_price,
-        total_paid,
         platform_fee,
+        total_paid,
         status,
-        metadata,
         created_at
     ) VALUES (
         v_collection_id,
@@ -133,23 +132,9 @@ BEGIN
         p_transaction_signature,
         v_minted_count,
         COALESCE(v_collection_record.price, 0),
-        v_total_paid,
         v_platform_fee_sol,
+        v_total_paid,
         'completed',
-        json_build_object(
-            'nft_ids', p_nft_ids,
-            'item_ids', v_updated_items,
-            'idempotency_key', p_idempotency_key,
-            'reservation_token', p_reservation_token,
-            'sol_price', p_sol_price,
-            'platform_fee_usd', p_platform_fee_usd,
-            'breakdown', json_build_object(
-                'nft_cost', v_total_nft_cost,
-                'platform_commission', v_total_platform_commission,
-                'platform_fee', v_platform_fee_sol,
-                'total', v_total_paid
-            )
-        ),
         NOW()
     );
     
