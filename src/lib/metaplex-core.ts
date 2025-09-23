@@ -1212,10 +1212,12 @@ export class MetaplexCoreService {
 
       // Build UMI transaction for NFT creation
       let umiTransaction = transactionBuilder();
+      const assetSigners: any[] = []; // Store all generated signers
 
       for (let i = 0; i < selectedItems.length; i++) {
         const item = selectedItems[i];
         const assetSigner = generateSigner(this.umi);
+        assetSigners.push(assetSigner); // Store the signer
 
         // Create metadata for this specific NFT using the selected item's data
         const nftMetadata = {
@@ -1289,16 +1291,16 @@ export class MetaplexCoreService {
       }
 
       // Build the UMI transaction with latest blockhash before sending
-      const builtUmiTransaction = await umiTransaction.buildWithLatestBlockhash(
-        this.umi
-      );
+      const builtUmiTransaction = await umiTransaction.build(this.umi);
 
-      // Send the NFT creation transaction using UMI
-      console.log("Creating NFTs on blockchain...");
+      // Send the NFT creation transaction using UMI with explicit commitment
+      console.log("Creating NFTs on blockchain with server wallet as fee payer...");
       const nftResult = await this.umi.rpc.sendTransaction(
         builtUmiTransaction,
         {
-          commitment: "finalized",
+          commitment: "confirmed", // Changed from finalized to confirmed for faster processing
+          skipPreflight: false, // Enable preflight to catch errors early
+          maxRetries: 3, // Add retry logic
         }
       );
       // Transaction confirmation is handled by sendTransaction in UMI
@@ -1322,6 +1324,23 @@ export class MetaplexCoreService {
       let errorMessage = "Unknown error occurred during NFT creation";
       if (error instanceof Error) {
         errorMessage = error.message;
+        
+        // If it's a SendTransactionError, try to get more details
+        if (error.message.includes('SendTransactionError') || error.message.includes('Simulation failed')) {
+          console.error('Full transaction error details:', error);
+          
+          // Check if the server wallet has sufficient funds
+          try {
+            const serverBalance = await this.umi.rpc.getBalance(this.umi.identity.publicKey);
+            console.log('Server wallet balance:', Number(serverBalance.basisPoints) / 1000000000, 'SOL');
+            
+            if (serverBalance.basisPoints < BigInt(10000000)) { // Less than 0.01 SOL
+              errorMessage = "Server wallet has insufficient funds to create NFTs. Please contact support.";
+            }
+          } catch (balanceError) {
+            console.error('Error checking server wallet balance:', balanceError);
+          }
+        }
       }
 
       return {
