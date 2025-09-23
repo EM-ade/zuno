@@ -452,6 +452,16 @@ export default function MintPage() {
         mintAddresses: responseMintAddresses, // Real item IDs from database
       } = result;
 
+      // Deserialize and send the transaction
+      const transactionBuffer = Buffer.from(transactionBase64, "base64");
+      const transaction = VersionedTransaction.deserialize(transactionBuffer);
+
+      setAwaitingWalletSignature(true);
+      const signature = await sendTransaction(transaction, connection, {
+        skipPreflight: true,
+      });
+      setAwaitingWalletSignature(false);
+
       // Confirm the transaction
       await connection.confirmTransaction(
         {
@@ -476,7 +486,7 @@ export default function MintPage() {
       // Notify backend of successful mint using batch finalization
       const putBody = {
         collectionAddress: collection.collection_mint_address,
-        nftIds: mintAddresses || [`single-${idempotencyKey}`], // Use real item IDs if available
+        nftIds: responseMintAddresses || [`single-${idempotencyKey}`], // Use real item IDs if available
         buyerWallet: publicKey.toString(),
         transactionSignature: signature.toString(),
         idempotencyKey: idempotencyKey,
