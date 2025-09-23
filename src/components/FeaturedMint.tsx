@@ -58,36 +58,25 @@ export default function FeaturedMint() {
     try {
       setLoading(true)
       
-      // Load collections first (faster, more important)
-      const collectionsResponse = await fetch('/api/marketplace/collections?limit=12')
+      // Load collections using the new dedicated featured collections API
+      const collectionsResponse = await fetch('/api/collections/featured?limit=6')
       
       if (collectionsResponse.ok) {
         const data = await collectionsResponse.json()
+        console.log('Featured Collections API Response:', data)
         const collections = data.collections || []
+        console.log('Raw featured collections:', collections.length, collections)
 
-        // Process collections more efficiently
-        const processedCollections = collections
-          .slice(0, 6) // Limit early to reduce processing
-          .map((c: RawCollectionData): Collection => ({
-            id: c.id,
-            name: c.name,
-            symbol: c.symbol,
-            description: c.description,
-            image_uri: c.image_uri,
-            total_supply: c.total_supply,
-            minted_count: c.minted_count || 0,
-            floor_price: c.floor_price || 0,
-            volume: c.volume || 0,
-            status: c.status,
-            candy_machine_id: c.candy_machine_id,
-            creator_wallet: c.creator_wallet,
-          }))
-
-        setFeaturedCollections(processedCollections)
-        setLoading(false) // Set loading false after collections load
+        // Collections are already processed by the API, just set them directly
+        setFeaturedCollections(collections)
+        setLoading(false)
         
-        console.log('Featured collections loaded:', processedCollections.length, 'collections')
+        console.log('Featured collections loaded:', collections.length, 'collections')
+        console.log('Collection statuses:', collections.map((c: Collection) => ({ name: c.name, status: c.status, minted: c.minted_count, total: c.total_supply })))
       } else {
+        console.error('Failed to fetch featured collections:', collectionsResponse.status, collectionsResponse.statusText)
+        const errorData = await collectionsResponse.text()
+        console.error('Error response:', errorData)
         setLoading(false)
       }
 
@@ -97,11 +86,13 @@ export default function FeaturedMint() {
           if (nftsResponse.ok) {
             return nftsResponse.json()
           }
+          console.warn('Failed to fetch NFTs:', nftsResponse.status)
           return null
         })
         .then(data => {
           if (data) {
             const nfts = data.nfts || data
+            console.log('Explore NFTs loaded:', nfts.length, nfts)
             setExploreNFTs(nfts)
           }
         })
@@ -115,20 +106,25 @@ export default function FeaturedMint() {
     }
   }
 
-  // Memoize expensive computations
+  // Filter collections based on database status (no materialized view)
   const filteredCollections = useMemo(() => {
+    console.log('Filtering collections. Total collections:', featuredCollections.length, 'Active tab:', activeTab)
+    console.log('Collection statuses:', featuredCollections.map((c: Collection) => ({ name: c.name, status: c.status, minted: c.minted_count, total: c.total_supply })))
+    
     return featuredCollections.filter(collection => {
       const progress = (collection.minted_count / collection.total_supply) * 100
-      const isSoldOut = progress >= 100 || collection.status === 'completed' || collection.status === 'sold_out'
-      const status = isSoldOut ? 'sold_out' : collection.status
+      const isSoldOut = progress >= 100
+      
+      console.log(`Collection ${collection.name}: status=${collection.status}, progress=${progress}%, soldOut=${isSoldOut}, tab=${activeTab}`)
       
       switch (activeTab) {
         case 'live':
-          return status === 'live' || status === 'active'
+          // Collections with 'active' status should be treated as 'live' regardless of mint count
+          return collection.status === 'active' && !isSoldOut
         case 'upcoming':
-          return status === 'upcoming' || status === 'draft'
+          return collection.status === 'draft'
         case 'ended':
-          return status === 'sold_out' || status === 'completed'
+          return isSoldOut || collection.status === 'completed' || collection.status === 'sold_out'
         default:
           return true
       }
@@ -138,13 +134,12 @@ export default function FeaturedMint() {
   const getStatusBadge = (collection: Collection) => {
     const progress = (collection.minted_count / collection.total_supply) * 100
     
-    // Check if sold out first (100% minted)
+    // Work directly with database status (no materialized view)
     if (progress >= 100) return 'sold out'
-    
-    // Check if collection is completed or sold out status
     if (collection.status === 'completed' || collection.status === 'sold_out') return 'sold out'
+    if (collection.status === 'active') return 'live' // Database 'active' = UI 'live'
+    if (collection.status === 'draft') return 'upcoming'
     
-    // Status is already mapped by marketplace API, just return it
     return collection.status
   }
 
@@ -280,6 +275,26 @@ export default function FeaturedMint() {
             <div className="text-center py-8">
               <div className="text-gray-400 text-4xl mb-2">🎨</div>
               <p className="text-gray-500">No {activeTab} collections available</p>
+              <p className="text-gray-400 text-sm mt-2">
+                Total collections loaded: {featuredCollections.length}
+                {filteredCollections.length === 0 && featuredCollections.length > 0 && (
+                  <span className="block">Try switching to a different tab.</span>
+                )}
+              </p>
+              <div className="mt-3 text-xs text-gray-400">
+                <details>
+                  <summary className="cursor-pointer">Debug Info</summary>
+                  <pre className="mt-2 text-left bg-gray-100 p-2 rounded text-xs overflow-auto max-h-32">
+                    {JSON.stringify(featuredCollections.map((c: Collection) => ({ 
+                      name: c.name, 
+                      status: c.status,
+                      minted: c.minted_count,
+                      total: c.total_supply,
+                      progress: Math.round((c.minted_count / c.total_supply) * 100)
+                    })), null, 2)}
+                  </pre>
+                </details>
+              </div>
             </div>
           )}
 

@@ -506,48 +506,54 @@ export class MetaplexEnhancedService {
     candyMachineAddress: string,
     buyerWallet: string,
     quantity: number = 1
-  ): Promise<{ transactionBase64: string; nftMintAddress: string }> {
+  ): Promise<{ transactionBase64: string; nftMintAddress: string; nftMintKeypair: number[] }> {
     try {
       console.log(
         `Generating mint transaction for ${quantity} NFTs from candy machine ${candyMachineAddress} for ${buyerWallet}`
       );
 
-      const candyMachine = await fetchCandyMachine(
-        this.umi,
-        publicKey(candyMachineAddress)
-      );
-      console.log("Fetched Candy Machine:", candyMachine);
-
       // Get collection data to determine pricing
-      const collectionAddress = candyMachine.collectionMint.toString();
       const { supabaseServer } = await import('@/lib/supabase-service');
-      const { data: collection } = await supabaseServer
+      const { data: collections } = await supabaseServer
         .from('collections')
-        .select('price, creator_wallet')
-        .eq('collection_mint_address', collectionAddress)
-        .single();
+        .select('price, creator_wallet, collection_mint_address')
+        .eq('candy_machine_id', candyMachineAddress)
+        .limit(1);
 
-      if (!collection) {
+      if (!collections || collections.length === 0) {
         throw new Error('Collection not found in database');
       }
+      const collection = collections[0];
 
       const nftMint = generateSigner(this.umi);
       console.log("Buyer Wallet:", buyerWallet);
       console.log("Generated NFT Mint Address:", nftMint.publicKey.toString());
 
-      // Create a complete transaction using web3.js for better control
+      // Create the Candy Machine mint instruction - this creates the actual NFT!
+      const mintInstruction = mintV1(this.umi, {
+        candyMachine: publicKey(candyMachineAddress),
+        collection: publicKey(collection.collection_mint_address),
+        asset: nftMint,
+        owner: publicKey(buyerWallet),
+      });
+
+      // Build just the mint instruction to extract it
+      let mintBuilder = transactionBuilder().add(mintInstruction);
+      mintBuilder = await mintBuilder.setLatestBlockhash(this.umi);
+      const builtMintTransaction = await mintBuilder.build(this.umi);
+
+      // Create web3.js transaction
       const connection = new Connection(envConfig.solanaRpcUrl);
-      const { blockhash } = await connection.getLatestBlockhash("finalized");
-      
-      const { Transaction, SystemProgram } = await import('@solana/web3.js');
-      const LAMPORTS_PER_SOL = 1000000000;
+      const { Transaction, TransactionInstruction, SystemProgram, Keypair } = await import('@solana/web3.js');
       
       const transaction = new Transaction();
-      transaction.recentBlockhash = blockhash;
+      transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
       transaction.feePayer = new SolanaWeb3PublicKey(buyerWallet);
 
-      // First, add payment transfers
+      // Add payment transfers first
       if (collection.price > 0) {
+        const LAMPORTS_PER_SOL = 1000000000;
+        
         // Calculate creator payment (80% of NFT price)
         const creatorPayment = collection.price * 0.8;
         const creatorPaymentLamports = Math.floor(creatorPayment * LAMPORTS_PER_SOL);
@@ -584,9 +590,8 @@ export class MetaplexEnhancedService {
         const data = await response.json();
         const solPrice = data.solana.usd;
         const platformFeeSol = PLATFORM_FEE_USD / solPrice;
-        const platformFeeLamports = Math.floor(platformFeeSol * LAMPORTS_PER_SOL);
+        const platformFeeLamports = Math.floor(platformFeeSol * 1000000000);
         
-        // Add fixed platform fee transfer
         transaction.add(
           SystemProgram.transfer({
             fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
@@ -600,25 +605,12 @@ export class MetaplexEnhancedService {
         console.error('Failed to fetch SOL price for platform fee, skipping platform fee transfer:', error);
       }
 
-      // Now create the Candy Machine mint instruction using UMI
-      const mintInstruction = mintV1(this.umi, {
-        candyMachine: publicKey(candyMachineAddress),
-        collection: publicKey(candyMachine.collectionMint.toString()),
-        asset: nftMint,
-        owner: publicKey(buyerWallet),
-      });
-
-      // Build and extract the mint instruction from UMI
-      let mintBuilder = transactionBuilder().add(mintInstruction);
-      mintBuilder = await mintBuilder.setLatestBlockhash(this.umi);
-      const builtTransaction = await mintBuilder.build(this.umi);
-
-      // Extract and convert UMI instructions to web3.js format
+      // Extract UMI mint instructions and convert to web3.js format
       if (
-        "items" in builtTransaction &&
-        Array.isArray(builtTransaction.items)
+        "items" in builtMintTransaction &&
+        Array.isArray(builtMintTransaction.items)
       ) {
-        const convertedInstructions = builtTransaction.items.map(
+        const convertedInstructions = builtMintTransaction.items.map(
           (ix: {
             programId: { toString(): string };
             keys: Array<{
@@ -628,7 +620,6 @@ export class MetaplexEnhancedService {
             }>;
             data: Uint8Array;
           }) => {
-            const { TransactionInstruction } = require('@solana/web3.js');
             return new TransactionInstruction({
               programId: new SolanaWeb3PublicKey(ix.programId.toString()),
               keys: ix.keys.map((k) => ({
@@ -641,23 +632,25 @@ export class MetaplexEnhancedService {
           }
         );
         
-        // Add the converted mint instructions to the transaction
+        // Add the NFT mint instructions to the transaction
         convertedInstructions.forEach(ix => transaction.add(ix));
       }
 
       // Add memo instruction for transparency
-      const { TransactionInstruction } = await import('@solana/web3.js');
       const memoInstruction = new TransactionInstruction({
         keys: [],
         programId: new SolanaWeb3PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
         data: Buffer.from(
-          `Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? "s" : ""} - Total: ${collection.price || 0} SOL`,
+          `Zuno NFT Mint: ${quantity} NFT${quantity > 1 ? "s" : ""} - Collection: ${collection.collection_mint_address}`,
           "utf8"
         ),
       });
       transaction.add(memoInstruction);
 
-      // Serialize the transaction
+      // DO NOT pre-sign the transaction - let client handle all signing
+      // The client needs to sign with both their wallet AND the NFT mint keypair
+
+      // Serialize the unsigned transaction
       const transactionBase64 = transaction
         .serialize({
           requireAllSignatures: false,
@@ -665,12 +658,17 @@ export class MetaplexEnhancedService {
         })
         .toString("base64");
 
-      console.log("Complete mint transaction generated with payment transfers and NFT creation.");
+      // Return the NFT mint keypair as an array for client-side signing
+      const nftMintKeypairArray = Array.from(nftMint.secretKey);
+
+      console.log("Complete mint transaction generated with NFT creation and payment transfers.");
       console.log("Transaction will create NFT at address:", nftMint.publicKey.toString());
+      console.log("Client must sign with both buyer wallet AND NFT mint keypair");
 
       return {
         transactionBase64,
         nftMintAddress: nftMint.publicKey.toString(),
+        nftMintKeypair: nftMintKeypairArray,
       };
     } catch (error) {
       console.error("Error generating candy machine mint transaction:", error);

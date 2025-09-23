@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:supabase": "node test-supabase-connection.js",
+    "test:nft-creation": "node test-nft-creation.js",
     "migrate:supabase": "node scripts/run-supabase-migration.js",
     "vercel-install": "npm install --legacy-peer-deps --no-audit",
     "vercel-build": "next build",
