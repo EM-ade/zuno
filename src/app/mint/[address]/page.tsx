@@ -223,20 +223,22 @@ export default function MintPage() {
     console.log("handleMint called for collection:", collection?.name);
 
     try {
-      // Calculate pricing with platform fee
+      // Calculate pricing - use the same logic as backend
+      // Platform fee is $1.25 USD converted to SOL
       const nftPrice = activePhase.price; // Price per NFT set by creator
       const totalNftCost = nftPrice * mintQuantity;
       
-      // Platform fee always applies - $1.25 regardless of NFT price
-      const platformFeeUSD = 1.25;
-      
-      // Get current SOL price to convert USD to SOL
+      // Get current SOL price to convert USD to SOL (same API as backend)
       setLoadingProgress(10);
       setLoadingSubtitle("Fetching current SOL price...");
 
-      const solPriceResponse = await fetch("/api/price/sol");
+      const solPriceResponse = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
       const solPriceData = await solPriceResponse.json();
-      const platformFeeSol = platformFeeUSD / solPriceData.price;
+      const solPrice = solPriceData.solana.usd;
+      
+      // Platform fee: $1.25 USD converted to SOL (same as backend)
+      const PLATFORM_FEE_USD = 1.25;
+      const platformFeeSol = PLATFORM_FEE_USD / solPrice;
       const totalPlatformFee = platformFeeSol; // Fixed $1.25 regardless of quantity
       const totalCost = totalNftCost + totalPlatformFee;
       
@@ -246,7 +248,7 @@ export default function MintPage() {
         totalNftCost,
         platformFeeSol,
         totalCost,
-        solPrice: solPriceData.price,
+        solPrice: solPrice,
         isFreeNFT: nftPrice === 0,
         note: "Platform fee always applies"
       });
@@ -298,7 +300,8 @@ export default function MintPage() {
                 remainingToMint
               });
 
-              const response = await fetch("/api/mint/simple", {
+              // Use batch mint API instead of simple for proper item tracking
+              const response = await fetch("/api/mint/batch", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(batchMintBody),
@@ -333,18 +336,18 @@ export default function MintPage() {
                 "confirmed"
               );
 
-              // Finalize the mint
-              const nftIds = Array.from({ length: batchSize }, (_, i) => `payment-${result.idempotencyKey}-${i}`);
+              // Finalize the mint using the batch mint API (not simple)
+              // The batch API properly tracks which items were minted
               const putBody = {
                 collectionAddress: collection.collection_mint_address,
-                nftIds: nftIds,
+                nftIds: result.mintAddresses || [`batch-${result.idempotencyKey}`], // Use real item IDs if available
                 buyerWallet: publicKey.toString(),
                 transactionSignature: signature.toString(),
-                reservationToken: result.idempotencyKey,
                 idempotencyKey: result.idempotencyKey,
               };
 
-              const completeResponse = await fetch("/api/mint/simple", {
+              // Use batch mint finalization endpoint
+              const completeResponse = await fetch("/api/mint/batch", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(putBody),
@@ -402,7 +405,7 @@ export default function MintPage() {
         return; // Exit here for batch minting
       }
 
-      // Single mint flow
+      // Single mint flow - use batch API with quantity 1 for consistency
       const singleMintBody = {
         collectionAddress: collection.collection_mint_address,
         candyMachineAddress: collection.candy_machine_id,
@@ -423,8 +426,8 @@ export default function MintPage() {
       setLoadingProgress(40);
       setLoadingSubtitle("Requesting mint transaction from server...");
 
-      // Always use simple mint endpoint with quantity 1 to avoid transaction size limits
-      const response = await fetch("/api/mint/simple", {
+      // Use batch mint API even for single mints for consistency
+      const response = await fetch("/api/mint/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(singleMintBody),
@@ -445,31 +448,9 @@ export default function MintPage() {
 
       const {
         transaction: transactionBase64,
-        expectedTotal,
         idempotencyKey,
-        quantity: returnedQuantity,
+        mintAddresses: responseMintAddresses, // Real item IDs from database
       } = result;
-
-      // For simple payment, we just need the transaction signature after payment
-      const mintAddresses = [`payment-${idempotencyKey}`]; // Temporary identifier
-
-      // Deserialize the payment transaction
-      const transactionBuffer = Buffer.from(transactionBase64, "base64");
-      const transaction = VersionedTransaction.deserialize(transactionBuffer);
-
-      // Simple payment transaction - user only signs with their wallet
-      setAwaitingWalletSignature(true);
-      const signature = await sendTransaction(transaction, connection, {
-        skipPreflight: true,
-      });
-      setAwaitingWalletSignature(false);
-      
-      console.log("Payment transaction sent:", signature.toString());
-      console.log("NFTs will be created server-side after payment confirmation");
-
-      setLoadingProgress(80);
-      setLoadingTitle("Confirming Transaction");
-      setLoadingSubtitle("Waiting for blockchain confirmation...");
 
       // Confirm the transaction
       await connection.confirmTransaction(
@@ -492,18 +473,17 @@ export default function MintPage() {
 
       setMintRequestStatus("completed");
 
-      // Notify backend of successful mint
+      // Notify backend of successful mint using batch finalization
       const putBody = {
         collectionAddress: collection.collection_mint_address,
-        nftIds: mintAddresses,
+        nftIds: mintAddresses || [`single-${idempotencyKey}`], // Use real item IDs if available
         buyerWallet: publicKey.toString(),
         transactionSignature: signature.toString(),
-        reservationToken: idempotencyKey, // Use idempotencyKey as reservationToken
         idempotencyKey: idempotencyKey,
       };
 
-      // Always use simple mint endpoint for completion
-      const completeResponse = await fetch("/api/mint/simple", {
+      // Use batch mint finalization endpoint for consistency
+      const completeResponse = await fetch("/api/mint/batch", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(putBody),

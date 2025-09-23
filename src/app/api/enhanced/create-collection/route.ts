@@ -71,6 +71,38 @@ async function serverCreateCollection(config: EnhancedCollectionConfig) {
       }
     }
 
+    // Create items lazily based on totalSupply
+    // Instead of pre-creating all items, we'll create placeholder items
+    // that will be populated when NFTs are actually uploaded
+    if (collection) {
+      console.log(`Creating placeholder items for collection with totalSupply: ${config.totalSupply}`);
+      
+      // Create placeholder items for the total supply
+      const itemRecords = [];
+      for (let i = 0; i < config.totalSupply; i++) {
+        itemRecords.push({
+          collection_id: collection.id,
+          name: `${config.name} #${i + 1}`,
+          description: config.description,
+          item_index: i + 1,
+          minted: false,
+          is_minted: false
+        });
+      }
+      
+      // Batch insert items
+      const { error: itemsError } = await supabaseServer
+        .from("items")
+        .insert(itemRecords);
+        
+      if (itemsError) {
+        console.error("Error creating placeholder items:", itemsError);
+        // Don't fail the entire collection creation if items fail
+      } else {
+        console.log(`Successfully created ${config.totalSupply} placeholder items`);
+      }
+    }
+
     return {
       success: true,
       collection: {
