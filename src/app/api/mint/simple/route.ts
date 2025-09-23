@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
         collectionAddress, 
         candyMachineAddress, 
         buyerWallet, 
-        quantity,
+        quantity, // Store quantity in request_body
         sol_price: solPrice,
         platform_fee_sol: platformFeeSol,
         transaction: mintResult.paymentTransaction, // Store transaction in request_body
@@ -174,6 +174,22 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Idempotency key is required' }, { status: 400 });
   }
 
+  // Get quantity from stored request_body
+  let quantity = 1;
+  try {
+    const { data: mintRequest } = await supabaseServer
+      .from('mint_requests')
+      .select('request_body')
+      .eq('idempotency_key', idempotencyKey)
+      .single();
+    
+    if (mintRequest && mintRequest.request_body) {
+      quantity = mintRequest.request_body.quantity || 1;
+    }
+  } catch (error) {
+    console.warn('Could not retrieve quantity from mint request, using default:', error);
+  }
+
   // Get SOL price for accurate fee calculation within RPC (with retry logic)
   const solPrice = await getSolPrice();
   const platformFeeSol = PLATFORM_FEE_USD / solPrice;
@@ -188,7 +204,7 @@ export async function PUT(request: NextRequest) {
       throw new Error('Missing required fields');
     }
     
-    console.log(`Processing mint completion for collection ${collectionAddress}`);
+    console.log(`Processing mint completion for collection ${collectionAddress}, quantity: ${quantity}`);
 
     // Verify transaction on-chain (client-side already confirmed, but double-check server-side)
     const connection = new Connection(envConfig.solanaRpcUrl, 'confirmed');
@@ -222,6 +238,7 @@ export async function PUT(request: NextRequest) {
     console.log('Creating NFTs server-side and transferring to user...');
     
     let createResult: any;
+    const mintedNftDetails: MintedNFTDetails[] = [];
     
     try {
       // Get collection data
@@ -244,21 +261,33 @@ export async function PUT(request: NextRequest) {
         .eq('minted', false)
         .order('item_index', { ascending: true });
 
-      if (!availableItems || availableItems.length === 0) {
-        throw new Error('No unminted items available');
+      if (!availableItems || availableItems.length < quantity) {
+        throw new Error(`Not enough unminted items available. Requested: ${quantity}, Available: ${availableItems?.length || 0}`);
       }
 
-      // Simple random selection - pick one item randomly
-      const randomIndex = Math.floor(Math.random() * availableItems.length);
-      const selectedItem = availableItems[randomIndex];
+      // For multiple NFTs, we need to select different random items
+      const selectedItems = [];
+      const availableItemsCopy = [...availableItems]; // Create a copy to modify
       
-      console.log(`Selected item ${selectedItem.name} at index ${randomIndex}`);
+      // Select random items without duplication
+      for (let i = 0; i < quantity; i++) {
+        // Simple random selection - pick one item randomly from remaining available items
+        const randomIndex = Math.floor(Math.random() * availableItemsCopy.length);
+        const selectedItem = availableItemsCopy[randomIndex];
+        selectedItems.push(selectedItem);
+        
+        // Remove the selected item from available items to avoid duplicates
+        availableItemsCopy.splice(randomIndex, 1);
+        
+        console.log(`Selected item ${selectedItem.name} at index ${randomIndex} for minting`);
+      }
 
       createResult = await metaplexEnhancedService.createAndTransferNFTs({
         collectionAddress,
         buyerWallet,
-        quantity: 1, // Always mint 1 NFT in simple route
-        paymentSignature: transactionSignature
+        quantity, // Use the actual quantity
+        paymentSignature: transactionSignature,
+        selectedItems: selectedItems // Pass the randomly selected items
       });
       
       if (!createResult.success) {
@@ -266,6 +295,16 @@ export async function PUT(request: NextRequest) {
       }
       
       console.log('NFTs created and transferred successfully:', createResult.nftMintIds);
+      
+      // Create minted NFT details for response
+      for (let i = 0; i < Math.min(quantity, createResult.nftMintIds?.length || 0); i++) {
+        mintedNftDetails.push({
+          id: createResult.nftMintIds[i],
+          name: `Minted NFT #${i + 1}`,
+          image: '',
+          address: createResult.nftMintIds[i]
+        });
+      }
       
     } catch (nftError) {
       console.error('Error creating NFTs server-side:', nftError);
@@ -295,14 +334,6 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Simple response with expected structure for frontend
-    const mintedNftDetails: MintedNFTDetails = {
-      id: createResult.nftMintIds[0],
-      name: 'Minted NFT',
-      image: '',
-      address: createResult.nftMintIds[0]
-    };
-
     console.log('NFT minting completed successfully');
 
     // Update the mint request status to completed
@@ -313,11 +344,11 @@ export async function PUT(request: NextRequest) {
         response_body: {
           success: true,
           transaction: transactionSignature,
-          nftIds: [mintedNftDetails.id],
-          minted_count: 1,
+          nftIds: mintedNftDetails.map(nft => nft.id),
+          minted_count: mintedNftDetails.length,
           solPrice,
           platformFeeSol,
-          message: 'NFT minted successfully'
+          message: `${mintedNftDetails.length} NFT(s) minted successfully`
         },
         updated_at: new Date().toISOString()
       })
@@ -331,14 +362,14 @@ export async function PUT(request: NextRequest) {
     // Return the successful minting result with the expected structure
     return NextResponse.json({
       success: true,
-      message: 'NFT minted successfully',
+      message: `${mintedNftDetails.length} NFT(s) minted successfully`,
       transaction: transactionSignature,
-      nftIds: [mintedNftDetails.id],
-      minted_count: 1,
+      nftIds: mintedNftDetails.map(nft => nft.id),
+      minted_count: mintedNftDetails.length,
       solPrice,
       platformFeeSol,
       // Add the expected minted_nfts array for frontend compatibility
-      minted_nfts: [mintedNftDetails]
+      minted_nfts: mintedNftDetails
     });
 
   } catch (error) {

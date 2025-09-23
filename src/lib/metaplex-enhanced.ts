@@ -990,6 +990,7 @@ export class MetaplexEnhancedService {
     buyerWallet: string;
     quantity: number;
     paymentSignature: string;
+    selectedItems?: any[]; // Add optional selectedItems parameter
   }): Promise<{
     success: boolean;
     nftMintIds?: string[];
@@ -997,7 +998,7 @@ export class MetaplexEnhancedService {
     error?: string;
   }> {
     try {
-      const { collectionAddress, buyerWallet, quantity, paymentSignature } = params;
+      const { collectionAddress, buyerWallet, quantity, paymentSignature, selectedItems } = params;
       
       console.log(`Creating ${quantity} NFTs after payment confirmation`);
       console.log(`Payment signature: ${paymentSignature}`);
@@ -1015,37 +1016,48 @@ export class MetaplexEnhancedService {
         throw new Error('Collection not found');
       }
       
-      // Get available items for this collection (unminted and not reserved, or reserved more than 10 minutes ago)
-      let { data: availableItems } = await supabaseServer
-        .from('items')
-        .select('*')
-        .eq('collection_id', collection.id)
-        .eq('minted', false)
-        .order('item_index', { ascending: true })
-        .limit(quantity);
+      let availableItems;
       
-      // If we don't have enough items, also check for abandoned reservations
-      if (!availableItems || availableItems.length < quantity) {
-        const { data: reservedItems } = await supabaseServer
+      // Use provided selected items or fetch available items from database
+      if (selectedItems && selectedItems.length >= quantity) {
+        // Use the provided selected items
+        availableItems = selectedItems.slice(0, quantity);
+        console.log(`Using ${availableItems.length} pre-selected items for minting`);
+      } else {
+        // Get available items for this collection (unminted and not reserved, or reserved more than 10 minutes ago)
+        let { data: dbAvailableItems } = await supabaseServer
           .from('items')
           .select('*')
           .eq('collection_id', collection.id)
           .eq('minted', false)
-          .not('owner_wallet', 'is', null)
-          .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
           .order('item_index', { ascending: true })
           .limit(quantity);
         
-        if (reservedItems && reservedItems.length > 0) {
-          // Combine results and sort by item_index
-          const combinedItems = [...(availableItems || []), ...reservedItems];
-          combinedItems.sort((a, b) => {
-            const indexA = a.item_index || 0;
-            const indexB = b.item_index || 0;
-            return indexA - indexB;
-          });
-          availableItems = combinedItems.slice(0, quantity);
+        // If we don't have enough items, also check for abandoned reservations
+        if (!dbAvailableItems || dbAvailableItems.length < quantity) {
+          const { data: reservedItems } = await supabaseServer
+            .from('items')
+            .select('*')
+            .eq('collection_id', collection.id)
+            .eq('minted', false)
+            .not('owner_wallet', 'is', null)
+            .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+            .order('item_index', { ascending: true })
+            .limit(quantity);
+          
+          if (reservedItems && reservedItems.length > 0) {
+            // Combine results and sort by item_index
+            const combinedItems = [...(dbAvailableItems || []), ...reservedItems];
+            combinedItems.sort((a, b) => {
+              const indexA = a.item_index || 0;
+              const indexB = b.item_index || 0;
+              return indexA - indexB;
+            });
+            dbAvailableItems = combinedItems.slice(0, quantity);
+          }
         }
+        
+        availableItems = dbAvailableItems;
       }
       
       if (!availableItems || availableItems.length < quantity) {

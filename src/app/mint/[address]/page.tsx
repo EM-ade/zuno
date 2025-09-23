@@ -260,56 +260,44 @@ export default function MintPage() {
 
       // Use batch minting with smaller batches for multiple NFTs
       if (mintQuantity > 1) {
+        // Instead of batch minting, use simple minting for each NFT
         const signatures = [];
         let successCount = 0;
-        let remainingToMint = mintQuantity;
         
-        // Define batch sizes based on quantity
-        let batchSize = 1;
-        if (mintQuantity >= 3) {
-          batchSize = 3;
-        } else if (mintQuantity === 2) {
-          batchSize = 2;
-        }
-        
-        while (remainingToMint > 0) {
-          // Use the actual remaining quantity for this batch, not a fixed batchSize
-          const currentBatchSize = Math.min(remainingToMint, batchSize);
-          
+        // Mint each NFT individually using the simple API
+        for (let i = 0; i < mintQuantity; i++) {
           try {
-            setLoadingProgress(30 + ((mintQuantity - remainingToMint) * 60) / mintQuantity);
-            setLoadingSubtitle(`Preparing batch of ${currentBatchSize} NFTs... (${successCount + 1}-${successCount + currentBatchSize} of ${mintQuantity})`);
+            setLoadingProgress(30 + ((i * 60) / mintQuantity));
+            setLoadingSubtitle(`Minting NFT ${i + 1} of ${mintQuantity}...`);
 
-            // Create batch mint request with the correct quantity for this batch
-            const batchMintBody = {
+            // Create single mint request for each NFT
+            const singleMintBody = {
               collectionAddress: collection.collection_mint_address,
               candyMachineAddress: collection.candy_machine_id,
               buyerWallet: publicKey.toString(),
-              quantity: currentBatchSize, // Use currentBatchSize, not batchSize
+              quantity: 1, // Single mint
               nftPrice: nftPrice
-              // platformFee is calculated server-side now
             };
 
-            console.log(`Attempting to mint batch of ${currentBatchSize} NFTs:`, {
+            console.log(`Attempting to mint NFT ${i + 1} of ${mintQuantity}:`, {
               nftPrice,
               totalQuantity: mintQuantity,
-              remaining: remainingToMint
             });
 
-            // Use batch mint API
-            const response = await fetch("/api/mint/batch", {
+            // Use simple mint API for each NFT
+            const response = await fetch("/api/mint/simple", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(batchMintBody),
+              body: JSON.stringify(singleMintBody),
             });
 
             const result = await response.json();
             
             if (!result.success) {
-              throw new Error(result.error || "Failed to create batch mint transaction");
+              throw new Error(result.error || "Failed to create mint transaction");
             }
 
-            // Process the successful batch transaction
+            // Process the successful transaction
             const transactionBuffer = Buffer.from(result.transaction, "base64");
             const transaction = VersionedTransaction.deserialize(transactionBuffer);
 
@@ -328,17 +316,16 @@ export default function MintPage() {
               "confirmed"
             );
 
-            // Finalize the batch mint using the batch mint API
+            // Finalize the mint using the simple mint API
             const putBody = {
               collectionAddress: collection.collection_mint_address,
-              nftIds: result.mintAddresses, // Use actual item IDs from the batch
               buyerWallet: publicKey.toString(),
               transactionSignature: signature.toString(),
               idempotencyKey: result.idempotencyKey,
             };
 
-            // Use batch mint finalization endpoint
-            const completeResponse = await fetch("/api/mint/batch", {
+            // Use simple mint finalization endpoint
+            const completeResponse = await fetch("/api/mint/simple", {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(putBody),
@@ -346,26 +333,17 @@ export default function MintPage() {
 
             const completeResult = await completeResponse.json();
             if (!completeResult.success) {
-              throw new Error(completeResult.error || "Failed to finalize batch mint");
+              throw new Error(completeResult.error || "Failed to finalize mint");
             }
 
             signatures.push(signature.toString());
-            successCount += currentBatchSize;
-            remainingToMint -= currentBatchSize;
+            successCount += 1;
             
-            console.log(`Successfully minted batch of ${currentBatchSize} NFTs`);
+            console.log(`Successfully minted NFT ${i + 1} of ${mintQuantity}`);
 
           } catch (error) {
-            console.error(`Error minting batch:`, error);
-            // For batch sizes > 1, try with smaller batches
-            if (batchSize > 1 && currentBatchSize > 1) {
-              // Reduce batch size and retry
-              batchSize = Math.max(1, Math.floor(batchSize / 2));
-              continue;
-            } else {
-              // Even single mint failed, this is a real error
-              throw error;
-            }
+            console.error(`Error minting NFT ${i + 1}:`, error);
+            throw error; // Re-throw to stop the minting process
           }
         }
 
@@ -374,22 +352,22 @@ export default function MintPage() {
         }
 
         setLoadingProgress(100);
-        setLoadingTitle("Batch Minting Complete!");
+        setLoadingTitle("Minting Complete!");
         setLoadingSubtitle(
-          `Successfully minted ${successCount} of ${mintQuantity} NFTs in batches!`
+          `Successfully minted ${successCount} of ${mintQuantity} NFTs!`
         );
 
         // Brief delay to show completion
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        const successMsg = `Successfully minted ${successCount} NFT${successCount > 1 ? "s" : ""} in batches! Check your wallet.`;
+        const successMsg = `Successfully minted ${successCount} NFT${successCount > 1 ? "s" : ""}! Check your wallet.`;
         setSuccess(successMsg);
         toast.success(successMsg);
         setMintQuantity(1);
         
         // Refresh collection data
         await loadInitialData();
-        return; // Exit here for batch minting
+        return; // Exit here for multiple minting
       }
 
       // Single mint flow - use simple API with quantity 1
