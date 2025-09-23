@@ -228,13 +228,10 @@ export default function MintPage() {
       const nftPrice = activePhase.price; // Price per NFT set by creator
       const totalNftCost = nftPrice * mintQuantity;
       
-      // Get current SOL price to convert USD to SOL (same API as backend)
-      setLoadingProgress(10);
-      setLoadingSubtitle("Fetching current SOL price...");
-
-      const solPriceResponse = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+      // Get SOL price from our API instead of CoinGecko
+      const solPriceResponse = await fetch("/api/mint/price");
       const solPriceData = await solPriceResponse.json();
-      const solPrice = solPriceData.solana.usd;
+      const solPrice = solPriceData.solPrice || 20; // Fallback to $20 if API fails
       
       // Platform fee: $1.25 USD converted to SOL (same as backend)
       const PLATFORM_FEE_USD = 1.25;

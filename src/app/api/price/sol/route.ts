@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { priceOracle } from '@/lib/price-oracle'
 
 // Cache for SOL price to avoid too many API calls
 let cachedPrice: { price: number; timestamp: number } | null = null
@@ -6,28 +7,12 @@ const CACHE_DURATION = 60000 // 1 minute cache
 
 async function fetchSolPrice(): Promise<number> {
   try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
-      next: { revalidate: 60 } // Cache for 60 seconds
-    })
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch from CoinGecko')
-    }
-    
-    const data = await response.json()
-    return data.solana?.usd || 20 // Fallback to $20 if no price found
+    // Use our internal price oracle service
+    const priceData = await priceOracle.getCurrentPrices();
+    return priceData.solPrice;
   } catch (error) {
-    console.error('Error fetching SOL price from CoinGecko:', error)
-    
-    // Try alternative API
-    try {
-      const response = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=SOL')
-      const data = await response.json()
-      return parseFloat(data.data?.rates?.USD || '20')
-    } catch (altError) {
-      console.error('Error fetching SOL price from Coinbase:', altError)
-      return 20 // Final fallback
-    }
+    console.error('Error fetching SOL price from internal oracle:', error)
+    return 20; // Fallback to $20 if all methods fail
   }
 }
 

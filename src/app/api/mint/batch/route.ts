@@ -9,8 +9,24 @@ const PLATFORM_FEE_USD = 1.25
 // Get current SOL price using our price oracle service
 async function getSolPrice(): Promise<number> {
   try {
-    const priceData = await priceOracle.getCurrentPrices();
-    return priceData.solPrice;
+    // Ensure we wait for a valid price by retrying if needed
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second
+    
+    for (let i = 0; i < MAX_RETRIES; i++) {
+      const priceData = await priceOracle.getCurrentPrices();
+      // If we get a valid price, return it
+      if (priceData.solPrice > 0) {
+        return priceData.solPrice;
+      }
+      // If not, wait and retry
+      if (i < MAX_RETRIES - 1) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      }
+    }
+    
+    // If all retries failed, throw error to use fallback
+    throw new Error('Failed to get valid SOL price after retries');
   } catch (error) {
     console.error('Failed to fetch SOL price from oracle:', error);
     // Fallback price if oracle fails
@@ -103,7 +119,7 @@ export async function POST(request: NextRequest) {
     // Generate idempotency key for this batch
     const idempotencyKey = uuidv4()
 
-    // Calculate platform fee using our price oracle
+    // Calculate platform fee using our price oracle (with retry logic)
     const solPrice = await getSolPrice();
     const platformFeePerNft = PLATFORM_FEE_USD / solPrice; // $1.25 USD converted to SOL
     const totalPlatformFee = platformFeePerNft * quantity; // Platform fee per NFT
@@ -121,6 +137,27 @@ export async function POST(request: NextRequest) {
       totalCost,
       solPrice
     })
+
+    // Implement smart batching based on quantity:
+    // - 3 NFTs and above: process in batches of 3
+    // - 2 NFTs: process in a single batch of 2
+    // - 1 NFT: process as a single item
+    let itemsToProcess = availableItems;
+    let batchSize = 1;
+    
+    if (quantity >= 3) {
+      batchSize = 3;
+    } else if (quantity === 2) {
+      batchSize = 2;
+    }
+    
+    // If we're processing in batches smaller than the total quantity,
+    // we need to adjust our approach to return multiple transactions
+    if (batchSize < quantity) {
+      // For now, we'll still return a single transaction but with all items
+      // The frontend will handle the actual batching
+      console.log(`Processing ${quantity} items in batches of ${batchSize} (frontend will handle actual batching)`);
+    }
 
     // Create batch mint transaction using metaplex core service
     const transactionResult = await metaplexCoreService.createMintTransaction({

@@ -618,10 +618,9 @@ export class MetaplexEnhancedService {
       // Add fixed platform fee ($1.25 in SOL)
       const PLATFORM_FEE_USD = 1.25;
       try {
-        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-        const data = await response.json();
-        const solPrice = data.solana.usd;
-        const platformFeeSol = PLATFORM_FEE_USD / solPrice;
+        // Use our internal price oracle service instead of CoinGecko
+        const { priceOracle } = await import('@/lib/price-oracle');
+        const platformFeeSol = await priceOracle.usdtToSol(PLATFORM_FEE_USD);
         const platformFeeLamports = Math.floor(platformFeeSol * 1000000000);
         
         transaction.add(
@@ -635,7 +634,22 @@ export class MetaplexEnhancedService {
         totalCost += platformFeeSol;
         console.log(`Added platform fee: $${PLATFORM_FEE_USD} (${platformFeeSol} SOL)`);
       } catch (error) {
-        console.error('Failed to fetch SOL price for platform fee, skipping platform fee transfer:', error);
+        console.error('Failed to calculate platform fee, using fallback value:', error);
+        // Fallback to a reasonable default (assuming $20 SOL price)
+        const FALLBACK_SOL_PRICE = 20;
+        const platformFeeSol = PLATFORM_FEE_USD / FALLBACK_SOL_PRICE;
+        const platformFeeLamports = Math.floor(platformFeeSol * 1000000000);
+        
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: new SolanaWeb3PublicKey(buyerWallet),
+            toPubkey: new SolanaWeb3PublicKey(envConfig.platformWallet),
+            lamports: platformFeeLamports,
+          })
+        );
+        
+        totalCost += platformFeeSol;
+        console.log(`Added platform fee (fallback): $${PLATFORM_FEE_USD} (${platformFeeSol} SOL)`);
       }
 
       // Add memo instruction

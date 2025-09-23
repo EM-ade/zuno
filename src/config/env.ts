@@ -55,19 +55,28 @@ export const envConfig: EnvConfig = {
 // Function to get current SOL price in USD
 export async function getSolPriceUSD(): Promise<number> {
   try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    const data = await response.json();
-    return data.solana?.usd || 150; // Fallback to $150 if API fails
+    // Use our internal price oracle service
+    const { priceOracle } = await import('@/lib/price-oracle');
+    const priceData = await priceOracle.getCurrentPrices();
+    return priceData.solPrice;
   } catch (error) {
-    console.error('Failed to fetch SOL price:', error);
-    return 150; // Fallback price
+    console.error('Failed to fetch SOL price from internal oracle:', error);
+    return 20; // Fallback to $20 if API fails
   }
 }
 
 // Convert USD amount to SOL
 export async function convertUsdToSol(usdAmount: number): Promise<number> {
-  const solPrice = await getSolPriceUSD();
-  return usdAmount / solPrice;
+  try {
+    // Use our internal price oracle service
+    const { priceOracle } = await import('@/lib/price-oracle');
+    const priceData = await priceOracle.getCurrentPrices();
+    return usdAmount / priceData.solPrice;
+  } catch (error) {
+    console.error('Failed to convert USD to SOL using internal oracle:', error);
+    // Fallback to $20 SOL price
+    return usdAmount / 20;
+  }
 }
 
 // Validate critical environment variables

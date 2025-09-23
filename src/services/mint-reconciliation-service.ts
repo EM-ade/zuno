@@ -13,15 +13,16 @@ interface ConfirmMintAtomicResult {
 // Platform fee: $1.25 in SOL (needed for re-calculating total_paid if re-inserting mint_transaction)
 const PLATFORM_FEE_USD = 1.25;
 
-// Get SOL price from CoinGecko (can be cached in a real service)
+// Get SOL price using our internal price oracle service
 async function getSolPrice(): Promise<number> {
   try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    const data = await response.json();
-    return data.solana.usd;
+    const { priceOracle } = await import('@/lib/price-oracle');
+    const priceData = await priceOracle.getCurrentPrices();
+    return priceData.solPrice;
   } catch (error) {
-    console.error('Error fetching SOL price for reconciliation:', error);
-    return 50; // Fallback price
+    console.error('Error fetching SOL price from oracle:', error);
+    // Fallback to a default price if fetching fails
+    return 20; // Assume $20 per SOL as fallback
   }
 }
 
