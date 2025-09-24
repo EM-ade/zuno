@@ -18,10 +18,10 @@ export async function GET(request: NextRequest) {
     // Return fallback prices
     return NextResponse.json({
       success: true,
-      solPrice: 20, // Fallback to $20 SOL
+      solPrice: 212, // Fallback to $212 SOL
       usdtPrice: 1,
-      solToUsdt: 20,
-      usdtToSol: 0.05,
+      solToUsdt: 212,
+      usdtToSol: 0.004716981132075472,
     });
   }
 }

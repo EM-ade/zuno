@@ -39,7 +39,7 @@ async function getSolPrice(): Promise<number> {
   } catch (error) {
     console.error('Error fetching SOL price from oracle:', error);
     // Fallback to a default price if fetching fails
-    return 20; // Assume $20 per SOL as fallback
+    return 212; // Assume $212 per SOL as fallback
   }
 }
 

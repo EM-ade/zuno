@@ -12,7 +12,7 @@ async function fetchSolPrice(): Promise<number> {
     return priceData.solPrice;
   } catch (error) {
     console.error('Error fetching SOL price from internal oracle:', error)
-    return 20; // Fallback to $20 if all methods fail
+    return 212; // Fallback to $212 if all methods fail
   }
 }
 
@@ -50,7 +50,7 @@ export async function GET() {
     console.error('SOL price API error:', error)
     
     // Return cached price if available, otherwise fallback
-    const fallbackPrice = cachedPrice?.price || 20
+    const fallbackPrice = cachedPrice?.price || 212
     
     return NextResponse.json({
       success: true,

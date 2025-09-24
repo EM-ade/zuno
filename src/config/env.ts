@@ -61,7 +61,7 @@ export async function getSolPriceUSD(): Promise<number> {
     return priceData.solPrice;
   } catch (error) {
     console.error('Failed to fetch SOL price from internal oracle:', error);
-    return 20; // Fallback to $20 if API fails
+    return 212; // Fallback to $212 if API fails
   }
 }
 
@@ -74,8 +74,8 @@ export async function convertUsdToSol(usdAmount: number): Promise<number> {
     return usdAmount / priceData.solPrice;
   } catch (error) {
     console.error('Failed to convert USD to SOL using internal oracle:', error);
-    // Fallback to $20 SOL price
-    return usdAmount / 20;
+    // Fallback to $212 SOL price
+    return usdAmount / 212;
   }
 }
 

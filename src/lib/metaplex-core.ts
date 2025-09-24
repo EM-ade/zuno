@@ -866,7 +866,7 @@ export class MetaplexCoreService {
         
         // If all retries failed, use fallback value
         if (!platformFeePerNft || platformFeePerNft <= 0) {
-          platformFeePerNft = 0.0625; // $1.25 / $20 SOL fallback
+          platformFeePerNft = 0.00589622641509434; // $1.25 / $212 SOL fallback
         }
       }
       

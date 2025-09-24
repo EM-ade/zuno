@@ -72,10 +72,10 @@ export class PriceOracleService {
     // Fallback to reasonable defaults if oracle fails
     // Using conservative estimates for mainnet
     const fallbackPrices: PriceData = {
-      solPrice: 20, // Conservative SOL price estimate
+      solPrice: 212, // Conservative SOL price estimate
       usdtPrice: 1,
-      solToUsdt: 20,
-      usdtToSol: 0.05, // 1 USDT = 0.05 SOL (at $20 SOL price)
+      solToUsdt: 212,
+      usdtToSol: 0.004716981132075472, // 1 USDT = ~0.0047 SOL (at $212 SOL price)
     };
     
     // Cache the fallback values to prevent repeated failures
@@ -102,8 +102,8 @@ export class PriceOracleService {
       return feeInSOL;
     } catch (error) {
       console.error('Error calculating platform fee:', error);
-      // Fallback to a reasonable default (assuming $20 SOL price)
-      return 0.0625; // $1.25 / $20 = 0.0625 SOL
+      // Fallback to a reasonable default (assuming $212 SOL price)
+      return 0.00589622641509434; // $1.25 / $212 ≈ 0.0059 SOL
     }
   }
 

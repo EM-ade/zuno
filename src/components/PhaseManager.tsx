@@ -46,6 +46,7 @@ export default function PhaseManager({
     Phase & {
       startDate: string;
       startTime: string;
+      allowedWalletsInput: string; // Add state for wallet addresses input
     }
   >({
     // Extended state for separate date/time inputs
@@ -58,6 +59,7 @@ export default function PhaseManager({
     allowed_wallets: [],
     startDate: today,
     startTime: currentTime,
+    allowedWalletsInput: "", // Initialize wallet addresses input
   });
 
   // Helper function to determine phase status
@@ -91,6 +93,16 @@ export default function PhaseManager({
       return;
     }
 
+    // Parse wallet addresses from input for whitelist phases
+    let allowedWallets: string[] | undefined = undefined;
+    if (newPhase.phase_type !== "public" && newPhase.allowedWalletsInput) {
+      // Split by newlines and commas, filter out empty strings, and trim whitespace
+      allowedWallets = newPhase.allowedWalletsInput
+        .split(/[\n,]+/)
+        .map(addr => addr.trim())
+        .filter(addr => addr.length > 0);
+    }
+
     // Combine date and time inputs into ISO strings
     const startDateTime =
       newPhase.startDate && newPhase.startTime
@@ -102,9 +114,7 @@ export default function PhaseManager({
       id: Date.now().toString(),
       start_time: startDateTime,
       end_time: undefined, // No end time needed
-      allowed_wallets: newPhase.allowed_wallets?.length
-        ? newPhase.allowed_wallets
-        : undefined,
+      allowed_wallets: allowedWallets && allowedWallets.length > 0 ? allowedWallets : undefined,
     };
 
     setPhases([...phases, phase]);
@@ -119,6 +129,7 @@ export default function PhaseManager({
       allowed_wallets: [],
       startDate: today,
       startTime: currentTime,
+      allowedWalletsInput: "",
     });
 
     setShowAddPhase(false);
@@ -140,6 +151,7 @@ export default function PhaseManager({
       end_time: undefined, // No end time needed
       mint_limit: template.phase_type === "public" ? undefined : 100,
       allowed_wallets: [],
+      allowedWalletsInput: "",
       // Set separate date and time for template application
       startDate: start.toISOString().split("T")[0],
       startTime: start.toLocaleTimeString("en-US", {
@@ -284,6 +296,10 @@ export default function PhaseManager({
                       <div className="text-gray-600 font-semibold text-xs uppercase tracking-wide mb-1">Allowlist</div>
                       <div className="text-gray-900 font-medium">
                         {phase.allowed_wallets.length} wallet{phase.allowed_wallets.length !== 1 ? 's' : ''} allowed
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 truncate">
+                        {phase.allowed_wallets.slice(0, 3).join(', ')}
+                        {phase.allowed_wallets.length > 3 && ` +${phase.allowed_wallets.length - 3} more`}
                       </div>
                     </div>
                   )}
@@ -431,27 +447,49 @@ export default function PhaseManager({
                 </div>
 
                 {newPhase.phase_type !== "public" && (
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">
-                      Mint Limit per Wallet
-                    </label>
-                    <input
-                      type="number"
-                      value={newPhase.mint_limit || ""}
-                      onChange={(e) =>
-                        setNewPhase((prev) => ({
-                          ...prev,
-                          mint_limit: parseInt(e.target.value) || undefined,
-                        }))
-                      }
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all duration-200"
-                      placeholder="e.g., 3"
-                      min="1"
-                    />
-                    <p className="text-xs text-gray-500 mt-2">
-                      Maximum NFTs a single wallet can mint in this phase
-                    </p>
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        Mint Limit per Wallet
+                      </label>
+                      <input
+                        type="number"
+                        value={newPhase.mint_limit || ""}
+                        onChange={(e) =>
+                          setNewPhase((prev) => ({
+                            ...prev,
+                            mint_limit: parseInt(e.target.value) || undefined,
+                          }))
+                        }
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all duration-200"
+                        placeholder="e.g., 3"
+                        min="1"
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        Maximum NFTs a single wallet can mint in this phase
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        Whitelist Wallet Addresses (one per line)
+                      </label>
+                      <textarea
+                        value={newPhase.allowedWalletsInput}
+                        onChange={(e) =>
+                          setNewPhase((prev) => ({
+                            ...prev,
+                            allowedWalletsInput: e.target.value,
+                          }))
+                        }
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all duration-200"
+                        placeholder="Enter wallet addresses, one per line\nExample:\n8x9C3j2k1L7m6N5b4V3c2X1z9Y8w7Q6e5R4t3y2U1i0o\n9y8D4k3l2M8n7O6c5W4d3Y2a1Z9x7P6f5S4u3z2V1j0p"
+                        rows={4}
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        Only these wallets will be allowed to mint during this phase
+                      </p>
+                    </div>
+                  </>
                 )}
 
                 {/* Phase type explanation */}

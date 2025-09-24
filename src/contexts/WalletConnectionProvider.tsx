@@ -72,8 +72,8 @@ function useWalletConnectionManager() {
       console.error('Wallet connection error:', err);
       let userMessage = 'An unknown error occurred.';
       if (err.name === 'WalletNotSelectedError') {
-        userMessage = 'Please select a wallet before connecting.';
         setVisible(true);
+        return; // Just open the modal without showing error
       } else if (err.name === 'WalletConnectionError' || err.name === 'WalletDisconnectedError') {
         userMessage = 'Connection failed. Please try again.';
       } else if (err.name === 'WalletSignTransactionError') {

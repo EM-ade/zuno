@@ -21,6 +21,7 @@ interface Phase {
   end_time: string | null;
   mint_limit: number | null;
   phase_type: "public" | "whitelist";
+  allowed_wallets?: string[];
 }
 
 interface Collection {
@@ -179,9 +180,21 @@ export default function MintPage() {
         const endTime = phase.end_time ? new Date(phase.end_time) : null;
         return startTime <= now && (!endTime || endTime > now);
       });
+      
+      // Check if user is authorized for whitelist phase
+      if (currentPhase && currentPhase.phase_type === 'whitelist' && publicKey) {
+        const userWallet = publicKey.toString();
+        const isWhitelisted = currentPhase.allowed_wallets?.includes(userWallet);
+        
+        // If user is not whitelisted, show appropriate message
+        if (!isWhitelisted && currentPhase.allowed_wallets && currentPhase.allowed_wallets.length > 0) {
+          console.log('User is not whitelisted for this phase');
+        }
+      }
+      
       setActivePhase(currentPhase || null);
     }
-  }, [collection]);
+  }, [collection, publicKey]);
 
   // Carousel auto-play
   useEffect(() => {
@@ -231,7 +244,7 @@ export default function MintPage() {
       // Get SOL price from our API instead of CoinGecko
       const solPriceResponse = await fetch("/api/mint/price");
       const solPriceData = await solPriceResponse.json();
-      const solPrice = solPriceData.solPrice || 20; // Fallback to $20 if API fails
+      const solPrice = solPriceData.solPrice || 212; // Fallback to $212 if API fails
       
       // Platform fee: $1.25 USD converted to SOL (same as backend)
       const PLATFORM_FEE_USD = 1.25;
@@ -515,6 +528,7 @@ export default function MintPage() {
       setLoadingTitle("");
       setLoadingSubtitle("");
       setAwaitingWalletSignature(false);
+      setMintRequestStatus("idle"); // Reset mint request status
 
       // Clear polling interval if it was active
       if (pollingIntervalId) {
@@ -910,6 +924,37 @@ export default function MintPage() {
                     </a>
                   </div>
                 </div>
+                <div>
+                  <div className="text-gray-500 text-sm mb-2">
+                    Creator Wallet
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-black">
+                      {collection.creator_wallet.slice(0, 8)}...
+                      {collection.creator_wallet.slice(-8)}
+                    </code>
+                    <button
+                      onClick={() =>
+                        navigator.clipboard.writeText(
+                          collection.creator_wallet
+                        )
+                      }
+                      className="text-blue-600 hover:text-blue-800 text-sm"
+                      title="Copy address"
+                    >
+                      📋
+                    </button>
+                    <a
+                      href={`https://explorer.solana.com/address/${collection.creator_wallet}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 text-sm"
+                      title="View on Solana Explorer"
+                    >
+                      🔍
+                    </a>
+                  </div>
+                </div>
                 {collection.candy_machine_id && (
                   <div>
                     <div className="text-gray-500 text-sm mb-2">
@@ -964,6 +1009,31 @@ export default function MintPage() {
                 </button>
               ) : (
                 <>
+                  {/* Whitelist Warning */}
+                  {activePhase && activePhase.phase_type === 'whitelist' && publicKey && activePhase.allowed_wallets && (
+                    !activePhase.allowed_wallets.includes(publicKey.toString()) ? (
+                      <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                        <div className="flex items-center">
+                          <span className="text-yellow-600 mr-2">⚠️</span>
+                          <span className="text-yellow-800 font-medium">Whitelist Required</span>
+                        </div>
+                        <p className="text-yellow-700 text-sm mt-2">
+                          This phase is limited to whitelisted wallets only. Your wallet is not on the allowlist.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+                        <div className="flex items-center">
+                          <span className="text-green-600 mr-2">✅</span>
+                          <span className="text-green-800 font-medium">You're Whitelisted!</span>
+                        </div>
+                        <p className="text-green-700 text-sm mt-2">
+                          Your wallet is approved for this whitelist phase.
+                        </p>
+                      </div>
+                    )
+                  )}
+                  
                   {/* Quantity Selector */}
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
@@ -1058,7 +1128,7 @@ export default function MintPage() {
                       ? "Sold Out"
                       : !activePhase
                       ? "Phase Not Active"
-                      : `Mint for ${activePhase.price * mintQuantity} SOL`}
+                      : `Mint for ${(activePhase.price * mintQuantity).toFixed(4)} SOL`}
                   </button>
 
                   {/* Status Messages for Async Flow */}
