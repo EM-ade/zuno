@@ -27,7 +27,7 @@ interface Phase {
 interface Collection {
   id: string;
   collection_mint_address: string;
-  candy_machine_id: string;
+  candy_machine_id: string | null; // Make this optional
   name: string;
   symbol: string;
   description: string | null;
@@ -256,10 +256,6 @@ export default function MintPage() {
       toast.error("No active minting phase.");
       return;
     }
-    if (!collection.candy_machine_id) {
-      toast.error("Collection does not have a Candy Machine associated.");
-      return;
-    }
 
     // Show loading overlay
     setShowLoadingOverlay(true);
@@ -326,7 +322,6 @@ export default function MintPage() {
             // Create single mint request for each NFT
             const singleMintBody = {
               collectionAddress: collection.collection_mint_address,
-              candyMachineAddress: collection.candy_machine_id,
               buyerWallet: publicKey.toString(),
               quantity: 1, // Single mint
               nftPrice: nftPrice
@@ -426,7 +421,6 @@ export default function MintPage() {
       // Single mint flow - use simple API with quantity 1
       const singleMintBody = {
         collectionAddress: collection.collection_mint_address,
-        candyMachineAddress: collection.candy_machine_id,
         buyerWallet: publicKey.toString(),
         quantity: 1, // Single mint
         nftPrice: nftPrice
@@ -998,7 +992,7 @@ export default function MintPage() {
                 {collection.candy_machine_id && (
                   <div>
                     <div className="text-gray-500 text-sm mb-2">
-                      Candy Machine ID
+                      Collection ID
                     </div>
                     <div className="flex items-center space-x-2">
                       <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-black">

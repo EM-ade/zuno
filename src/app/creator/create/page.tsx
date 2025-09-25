@@ -99,99 +99,101 @@ export default function CreateCollection() {
   };
 
   // Create Enhanced Collection
-  const handleCreateCollection = async () => {
-    if (!publicKey) {
-      toast.error("Please connect your wallet to create a collection.");
-      return;
+ // In src/app/creator/create/page.tsx
+// Update the handleCreateCollection function to properly handle royalties
+const handleCreateCollection = async () => {
+  if (!publicKey) {
+    toast.error("Please connect your wallet to create a collection.");
+    return;
+  }
+
+  setLoading(true);
+  setCurrentStep("creating");
+  setShowLoadingOverlay(true);
+  setLoadingProgress(0);
+  setLoadingTitle("Creating Your Collection");
+  setLoadingSubtitle("Preparing collection data...");
+
+  try {
+    const formData = new FormData();
+    formData.append("name", collectionData.name);
+    formData.append("symbol", collectionData.symbol);
+    formData.append("description", collectionData.description);
+    formData.append("creatorWallet", publicKey.toString());
+    formData.append("totalSupply", mintSettings.totalSupply.toString());
+    
+    // Convert royalty percentage to basis points (e.g., 5% = 500 basis points)
+    const royaltyBasisPoints = Math.round(collectionData.royaltyPercentage * 100);
+    formData.append("royaltyBasisPoints", royaltyBasisPoints.toString());
+
+    if (collectionData.image) {
+      formData.append("image", collectionData.image);
     }
 
-    setLoading(true);
-    setCurrentStep("creating");
-    setShowLoadingOverlay(true);
-    setLoadingProgress(0);
-    setLoadingTitle("Creating Your Collection");
-    setLoadingSubtitle("Preparing collection data...");
-
-    try {
-      const formData = new FormData();
-      formData.append("name", collectionData.name);
-      formData.append("symbol", collectionData.symbol);
-      formData.append("description", collectionData.description);
-      formData.append("creatorWallet", publicKey.toString());
-      formData.append("totalSupply", mintSettings.totalSupply.toString());
-      formData.append(
-        "royaltyPercentage",
-        collectionData.royaltyPercentage.toString()
-      );
-
-      if (collectionData.image) {
-        formData.append("image", collectionData.image);
-      }
-
-      // Add phases from PhaseManager
-      if (mintSettings.phases.length > 0) {
-        // Use the first phase's price as the default price
-        const defaultPrice = mintSettings.phases[0]?.price || 0.0;
-        formData.append("price", defaultPrice.toString());
-        formData.append("phases", JSON.stringify(mintSettings.phases));
-      } else {
-        // Fallback to default public phase using the helper function
-        const defaultPhase = getDefaultPublicPhase();
-        formData.append("price", defaultPhase.price.toString());
-        formData.append("phases", JSON.stringify([defaultPhase]));
-      }
-
-      // Simulate progress updates
-      setLoadingProgress(20);
-      setLoadingSubtitle("Uploading collection image...");
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setLoadingProgress(50);
-      setLoadingSubtitle("Creating collection on Solana...");
-
-      // Create collection using enhanced API
-      const response = await fetch("/api/enhanced/create-collection", {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to create collection");
-      }
-
-      setLoadingProgress(80);
-      setLoadingSubtitle("Finalizing collection setup...");
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setLoadingProgress(100);
-      setLoadingSubtitle("Collection created successfully!");
-
-      console.log("Collection created:", result.collection.mintAddress);
-      setCollectionAddress(result.collection.mintAddress);
-      setCandyMachineId(result.collection.candyMachineId);
-
-      toast.success("Collection created successfully!");
-      
-      // Wait a moment before transitioning
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setShowLoadingOverlay(false);
-      setCurrentStep("upload-assets");
-    } catch (error) {
-      console.error("Failed to create collection:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create collection"
-      );
-      setShowLoadingOverlay(false);
-      setCurrentStep("review");
-    } finally {
-      setLoading(false);
+    // Add phases from PhaseManager
+    if (mintSettings.phases.length > 0) {
+      // Use the first phase's price as the default price
+      const defaultPrice = mintSettings.phases[0]?.price || 0.0;
+      formData.append("price", defaultPrice.toString());
+      formData.append("phases", JSON.stringify(mintSettings.phases));
+    } else {
+      // Fallback to default public phase using the helper function
+      const defaultPhase = getDefaultPublicPhase();
+      formData.append("price", defaultPhase.price.toString());
+      formData.append("phases", JSON.stringify([defaultPhase]));
     }
-  };
+
+    // Simulate progress updates
+    setLoadingProgress(20);
+    setLoadingSubtitle("Uploading collection image...");
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    setLoadingProgress(50);
+    setLoadingSubtitle("Creating collection on Solana...");
+
+    // Create collection using enhanced API
+    const response = await fetch("/api/enhanced/create-collection", {
+      method: "POST",
+      body: formData,
+    });
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to create collection");
+    }
+
+    setLoadingProgress(80);
+    setLoadingSubtitle("Finalizing collection setup...");
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    setLoadingProgress(100);
+    setLoadingSubtitle("Collection created successfully!");
+
+    console.log("Collection created:", result.collection.mintAddress);
+    setCollectionAddress(result.collection.mintAddress);
+    setCandyMachineId(result.collection.candyMachineId);
+
+    toast.success("Collection created successfully!");
+    
+    // Wait a moment before transitioning
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    setShowLoadingOverlay(false);
+    setCurrentStep("upload-assets");
+  } catch (error) {
+    console.error("Failed to create collection:", error);
+    toast.error(
+      error instanceof Error ? error.message : "Failed to create collection"
+    );
+    setShowLoadingOverlay(false);
+    setCurrentStep("review");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleUploadSuccess = async (result: NFTUploadServiceResult) => {
     toast.success(`Successfully uploaded ${result.uploadedCount} NFTs!`);

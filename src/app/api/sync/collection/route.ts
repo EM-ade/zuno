@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       .from('collections')
       .insert({
         collection_mint_address: collectionAddress,
-        candy_machine_id: body.candyMachineId || collectionAddress,
+        candy_machine_id: null, // Set to null since we're not using CandyMachine
         name: body.name || 'Zuno Genesis Test',
         symbol: body.symbol || 'ZUNO',
         description: body.description || 'NFT Collection on Zuno Platform',
@@ -64,88 +64,28 @@ export async function POST(request: NextRequest) {
         royalty_percentage: body.royaltyPercentage || 5,
         status: 'active',
         metadata: {
-          network: process.env.SOLANA_NETWORK || 'mainnet-beta',
-          syncedFromChain: true,
-          syncedAt: new Date().toISOString()
+          // Add any additional metadata here
         }
       })
       .select()
       .single();
 
     if (insertError) {
-      // Check if it's a unique constraint error
-      if (insertError.code === '23505') {
-        return NextResponse.json({
-          error: 'Collection already exists with this address',
-          suggestion: 'Try updating instead of inserting'
-        }, { status: 409 });
-      }
-      
       return NextResponse.json({
-        error: 'Failed to sync collection',
+        error: 'Failed to create collection',
         details: insertError
       }, { status: 500 });
     }
 
-    // Update items to link to this collection if they exist
-    if (itemsCount && itemsCount > 0 && newCollection) {
-      const { error: updateItemsError } = await supabaseServer
-        .from('items')
-        .update({ collection_id: newCollection.id })
-        .eq('collection_address', collectionAddress);
-
-      if (updateItemsError) {
-        console.error('Failed to update items collection_id:', updateItemsError);
-      }
-    }
-
     return NextResponse.json({
-      success: true,
-      message: 'Collection synced successfully',
-      collection: newCollection,
-      itemsLinked: itemsCount || 0
+      message: 'Collection created successfully',
+      collection: newCollection
     });
 
   } catch (error) {
-    console.error('Sync error:', error);
+    console.error('Error syncing collection:', error);
     return NextResponse.json({
-      error: 'Failed to sync collection',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
-  }
-}
-
-// GET endpoint to check sync status
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const collectionAddress = searchParams.get('address') || '2oHb8hVPBC2B3FQu6TT7puKGc7sf1ovxaMrsAMYjuovT';
-
-    // Check collection
-    const { data: collection, error: collectionError } = await supabaseServer
-      .from('collections')
-      .select('*')
-      .or(`collection_mint_address.eq.${collectionAddress},candy_machine_id.eq.${collectionAddress}`)
-      .single();
-
-    // Check items
-    const { data: items, count } = await supabaseServer
-      .from('items')
-      .select('*', { count: 'exact' })
-      .or(`collection_address.eq.${collectionAddress},collection_id.eq.${collection?.id || 'none'}`)
-      .limit(5);
-
-    return NextResponse.json({
-      collectionExists: !!collection,
-      collection: collection,
-      itemsCount: count || 0,
-      sampleItems: items,
-      needsSync: !collection && (count || 0) > 0
-    });
-
-  } catch (error) {
-    return NextResponse.json({
-      error: 'Failed to check sync status',
+      error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }

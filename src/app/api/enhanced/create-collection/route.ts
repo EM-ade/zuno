@@ -1,27 +1,129 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { metaplexEnhancedService } from "@/lib/metaplex-enhanced";
 import { supabaseServer } from "@/lib/supabase-service";
-import { Phase } from "@/types";
-import { EnhancedCollectionConfig } from "@/lib/metaplex-enhanced";
+import { PinataService } from "@/lib/pinata-service";
 
-// Server-side collection creation method
-async function serverCreateCollection(config: EnhancedCollectionConfig) {
+interface Phase {
+  name: string;
+  start_time: string;
+  end_time?: string;
+  price: number;
+  mint_limit?: number;
+  phase_type: "public" | "whitelist" | "og" | "custom";
+  allowed_wallets?: string[];
+  unlimited_mint?: boolean;
+}
+
+export async function POST(request: NextRequest) {
   try {
-    // Validate required fields with better error messages
-    const missingFields = [];
-    if (!config.name) missingFields.push('name');
-    if (!config.symbol) missingFields.push('symbol');
-    if (!config.description) missingFields.push('description');
-    if (!config.creatorWallet) missingFields.push('creatorWallet');
+    const formData = await request.formData();
 
-    if (missingFields.length > 0) {
-      throw new Error(`Missing required collection fields: ${missingFields.join(', ')}`);
+    // Extract and validate form fields with better logging
+    const name = formData.get("name") as string;
+    const symbol = formData.get("symbol") as string;
+    const description = formData.get("description") as string;
+    const creatorWallet = formData.get("creatorWallet") as string;
+    const totalSupply = parseInt(formData.get("totalSupply") as string);
+    
+    // Handle price - could be "price" or we can derive from phases
+    let price = parseFloat(formData.get("price") as string);
+    
+    // Handle royalty - could be "royaltyBasisPoints" or "royaltyPercentage"
+    let royaltyPercentage: number | undefined;
+    const royaltyBasisPoints = formData.get("royaltyBasisPoints");
+    const royaltyPercentageField = formData.get("royaltyPercentage");
+    
+    if (royaltyBasisPoints) {
+      // Convert basis points to percentage (basis points / 100)
+      royaltyPercentage = parseFloat(royaltyBasisPoints as string) / 100;
+    } else if (royaltyPercentageField) {
+      royaltyPercentage = parseFloat(royaltyPercentageField as string);
+    }
+    
+    const phasesJson = formData.get("phases") as string;
+
+    console.log("Form data received:", {
+      name: name || 'MISSING',
+      symbol: symbol || 'MISSING',
+      description: description || 'MISSING',
+      creatorWallet: creatorWallet || 'MISSING',
+      totalSupply: totalSupply || 'MISSING',
+      price: price || 'MISSING',
+      royaltyPercentage: royaltyPercentage !== undefined ? royaltyPercentage : 'MISSING',
+      phasesJson: phasesJson || 'MISSING'
+    });
+
+    // Validate required fields
+    if (!name || !symbol || !creatorWallet || isNaN(totalSupply)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Missing required fields",
+          received: {
+            name: !!name,
+            symbol: !!symbol,
+            creatorWallet: !!creatorWallet,
+            totalSupply: !isNaN(totalSupply),
+            price: !isNaN(price),
+          },
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
 
-    // Perform server-side collection creation
-    const result = await metaplexEnhancedService.createEnhancedCollection(
-      config
-    );
+    // If price wasn't provided directly, try to get it from phases
+    if (isNaN(price) && phasesJson) {
+      try {
+        const phases = JSON.parse(phasesJson);
+        if (phases.length > 0 && phases[0].price !== undefined) {
+          price = parseFloat(phases[0].price);
+        }
+      } catch (e) {
+        console.error("Failed to parse phases for price extraction:", e);
+      }
+    }
+
+    // Set default values if needed
+    if (isNaN(price)) {
+      price = 0; // Default price
+    }
+    
+    if (royaltyPercentage === undefined || isNaN(royaltyPercentage)) {
+      royaltyPercentage = 5; // Default 5% royalty
+    }
+
+    // Parse phases if provided
+    let phases: Phase[] = [];
+    if (phasesJson) {
+      try {
+        phases = JSON.parse(phasesJson);
+      } catch (e) {
+        console.error("Failed to parse phases:", e);
+      }
+    }
+
+    // Get image file if provided
+    const imageFile = formData.get("image") as File | null;
+
+    // Prepare config for metaplex service
+    const config = {
+      name,
+      symbol,
+      description,
+      creatorWallet,
+      totalSupply,
+      price,
+      royaltyPercentage,
+      imageFile: imageFile || undefined,
+      phases: phases.length > 0 ? phases : undefined,
+    };
+
+    console.log("Calling metaplexEnhancedService.createEnhancedCollection with config:", config);
+
+    // Create collection using enhanced service (without CandyMachine)
+    const result = await metaplexEnhancedService.createEnhancedCollection(config);
+
+    console.log("Collection creation result:", result);
 
     // Save to database
     const { data: collection, error: dbError } = await supabaseServer
@@ -31,11 +133,11 @@ async function serverCreateCollection(config: EnhancedCollectionConfig) {
         symbol: config.symbol,
         description: config.description,
         collection_mint_address: result.collectionMint,
-        candy_machine_id: result.candyMachineId,
+        candy_machine_id: null, // Set to null since we're not using CandyMachine
         creator_wallet: config.creatorWallet,
         total_supply: config.totalSupply,
         price: config.price,
-        royalty_percentage: config.royaltyPercentage || 5,
+        royalty_percentage: config.royaltyPercentage,
         image_uri: result.imageUri,
         metadata: {
           metadata_uri: result.metadataUri,
@@ -73,207 +175,34 @@ async function serverCreateCollection(config: EnhancedCollectionConfig) {
       }
     }
 
-    // Create items lazily based on totalSupply
-    // Instead of pre-creating all items, we'll create placeholder items
-    // that will be populated when NFTs are actually uploaded
-    if (collection) {
-      console.log(`Creating placeholder items for collection with totalSupply: ${config.totalSupply}`);
-      
-      // Create placeholder items for the total supply
-      const itemRecords = [];
-      for (let i = 0; i < config.totalSupply; i++) {
-        itemRecords.push({
-          collection_id: collection.id,
-          name: `${config.name} #${i + 1}`,
+    return new Response(
+      JSON.stringify({
+        success: true,
+        collection: {
+          id: collection?.id,
+          mintAddress: result.collectionMint,
+          candyMachineId: null, // Set to null since we're not using CandyMachine
+          name: config.name,
+          symbol: config.symbol,
           description: config.description,
-          item_index: i + 1,
-          minted: false,
-          
-        });
-      }
-      
-      // Batch insert items
-      const { error: itemsError } = await supabaseServer
-        .from("items")
-        .insert(itemRecords);
-        
-      if (itemsError) {
-        console.error("Error creating placeholder items:", itemsError);
-        // Don't fail the entire collection creation if items fail
-      } else {
-        console.log(`Successfully created ${config.totalSupply} placeholder items`);
-      }
-    }
-
-    return {
-      success: true,
-      collection: {
-        id: collection?.id,
-        mintAddress: result.collectionMint,
-        candyMachineId: result.candyMachineId,
-        name: config.name,
-        symbol: config.symbol,
-        description: config.description,
-        imageUri: result.imageUri,
-        metadataUri: result.metadataUri,
-        price: config.price,
-        totalSupply: config.totalSupply,
-        phases: result.phases,
-        transactionSignature: result.transactionSignature,
-      },
-    };
+          imageUri: result.imageUri,
+          metadataUri: result.metadataUri,
+          price: config.price,
+          totalSupply: config.totalSupply,
+          phases: result.phases,
+          transactionSignature: result.transactionSignature,
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Server-side collection creation error:", error);
-    throw error;
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-
-    // Extract and validate form fields with better logging
-    const name = formData.get("name") as string;
-    const symbol = formData.get("symbol") as string;
-    const description = formData.get("description") as string;
-    const creatorWallet = formData.get("creatorWallet") as string;
-
-    console.log("Form data received:", {
-      name: name || 'MISSING',
-      symbol: symbol || 'MISSING',
-      description: description || 'MISSING',
-      creatorWallet: creatorWallet || 'MISSING'
-    });
-
-    // Validate required fields with detailed error message
-    const missingFields = [];
-    if (!name || name.trim() === '') missingFields.push('name');
-    if (!symbol || symbol.trim() === '') missingFields.push('symbol');
-    if (!description || description.trim() === '') missingFields.push('description');
-    if (!creatorWallet || creatorWallet.trim() === '') missingFields.push('creatorWallet');
-
-    if (missingFields.length > 0) {
-      const errorMessage = `Missing required fields: ${missingFields.join(', ')} are required`;
-      console.error("Validation error:", errorMessage);
-      throw new Error(errorMessage);
-    }
-
-    // Parse numeric fields with validation
-    const priceStr = (formData.get("price") as string) || "0";
-    const totalSupplyStr = (formData.get("totalSupply") as string) || "10000";
-    const royaltyPercentageStr =
-      (formData.get("royaltyPercentage") as string) || "5";
-
-    const price = parseFloat(priceStr);
-    const totalSupply = parseInt(totalSupplyStr);
-    const royaltyPercentage = parseFloat(royaltyPercentageStr);
-
-    // Validate numeric values
-    if (isNaN(price) || price < 0) {
-      throw new Error("Invalid price value");
-    }
-    if (isNaN(totalSupply) || totalSupply <= 0) {
-      throw new Error("Invalid total supply value");
-    }
-    if (
-      isNaN(royaltyPercentage) ||
-      royaltyPercentage < 0 ||
-      royaltyPercentage > 100
-    ) {
-      throw new Error("Invalid royalty percentage (must be between 0-100)");
-    }
-
-    console.log("Collection creation request:", {
-      name,
-      symbol,
-      description,
-      price,
-      totalSupply,
-      royaltyPercentage,
-      creatorWallet,
-    });
-
-    // Handle image upload
-    const imageFile = formData.get("image") as File | null;
-    const imageUri = formData.get("imageUri") as string | null;
-
-    // Parse phases if provided with better error handling
-    const phasesJson = formData.get("phases") as string | null;
-    let phases: Phase[] | undefined = undefined;
-
-    if (phasesJson) {
-      try {
-        // Clean the JSON string and validate it
-        const cleanedJson = phasesJson.trim();
-        if (
-          cleanedJson &&
-          cleanedJson !== "undefined" &&
-          cleanedJson !== "null"
-        ) {
-          const parsedPhases = JSON.parse(cleanedJson);
-          
-          // Map the parsed phases to ensure they have the correct structure
-          phases = parsedPhases.map((phase: any) => ({
-            ...phase,
-            unlimited_mint: phase.unlimited_mint || false, // Ensure unlimited_mint is a boolean
-          }));
-          
-          console.log("Parsed phases:", phases);
-        }
-      } catch (parseError) {
-        console.error("Error parsing phases JSON:", parseError);
-        console.error("Raw phases data:", phasesJson);
-        throw new Error(
-          `Invalid phases data format: ${
-            parseError instanceof Error
-              ? parseError.message
-              : "Unknown parsing error"
-          }`
-        );
-      }
-    }
-
-    // Create collection using server-side method
-    const result = await serverCreateCollection({
-      name,
-      symbol,
-      description,
-      price,
-      creatorWallet,
-      royaltyPercentage,
-      imageFile: imageFile || undefined,
-      imageUri: imageUri || undefined,
-      totalSupply,
-      phases,
-    });
-
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error("Error creating enhanced collection:", error);
-
-    // Provide user-friendly error messages
-    let userMessage = "Failed to create collection";
-
-    if (error instanceof Error) {
-      if (error.message.includes("Insufficient server wallet balance")) {
-        userMessage = error.message;
-      } else if (error.message.includes("insufficient lamports")) {
-        userMessage = "Insufficient server funds. Please contact support.";
-      } else if (error.message.includes("Transaction simulation failed")) {
-        userMessage = "Transaction failed. Please try again.";
-      } else if (error.message.includes("custom program error")) {
-        userMessage = "Blockchain transaction failed. Please try again.";
-      } else {
-        userMessage = error.message;
-      }
-    }
-
-    return NextResponse.json(
-      {
+    return new Response(
+      JSON.stringify({
         success: false,
-        error: userMessage,
-      },
-      { status: 500 }
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

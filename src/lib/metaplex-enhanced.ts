@@ -32,15 +32,6 @@ import {
   type AssetV1,
   updateCollectionV1,
 } from "@metaplex-foundation/mpl-core";
-import {
-  create as createCandyMachine,
-  mplCandyMachine,
-  addConfigLines,
-  mintV1,
-  fetchCandyMachine,
-  type CandyMachine,
-  type GuardSet,
-} from "@metaplex-foundation/mpl-core-candy-machine";
 import { pinataService } from "./pinata-service";
 import { envConfig } from "../config/env";
 import bs58 from "bs58";
@@ -131,8 +122,8 @@ export class MetaplexEnhancedService {
     );
 
     this.umi = createUmi(envConfig.solanaRpcUrl)
-      .use(mplCore())
-      .use(mplCandyMachine());
+      .use(mplCore());
+      // Removed mplCandyMachine() plugin
 
     // Initialize with server wallet
     const privateKey = bs58.decode(envConfig.serverWalletPrivateKey);
@@ -265,7 +256,7 @@ export class MetaplexEnhancedService {
   }
 
   /**
-   * Create an enhanced collection with optional candy machine for phases
+   * Create an enhanced collection without candy machine
    */
   async createEnhancedCollection(config: EnhancedCollectionConfig) {
     try {
@@ -326,8 +317,6 @@ export class MetaplexEnhancedService {
 
       // Step 4: Prepare on-chain transactions as a single batch
       const collectionMint = generateSigner(this.umi);
-      const candyMachine = generateSigner(this.umi);
-      let candyMachineId: string | null = null;
 
       // Correctly initialize the transaction builder
       let builder = transactionBuilder();
@@ -342,36 +331,6 @@ export class MetaplexEnhancedService {
         })
       );
 
-      // Instruction 2 (optional): Create the candy machine
-      if (config.phases && config.phases.length > 0) {
-        candyMachineId = candyMachine.publicKey;
-        const guards = this.createGuardsFromPhases(
-          config.phases,
-          config.creatorWallet,
-          config.price
-        );
-
-        // Await the candy machine builder before adding it
-        const candyMachineBuilder = await createCandyMachine(this.umi, {
-          candyMachine,
-          collection: collectionMint.publicKey,
-          collectionUpdateAuthority: this.umi.identity,
-          itemsAvailable: BigInt(config.totalSupply),
-          authority: this.umi.identity.publicKey,
-          isMutable: true,
-          configLineSettings: some({
-            prefixName: "",
-            nameLength: 32,
-            prefixUri: "",
-            uriLength: 200,
-            isSequential: false,
-          }),
-          guards,
-        });
-
-        builder = builder.add(candyMachineBuilder);
-      }
-
       // Step 5: Set blockhash and send the transaction
       console.log("Setting blockhash and sending combined transaction...");
       builder = await builder.setLatestBlockhash(this.umi);
@@ -383,9 +342,6 @@ export class MetaplexEnhancedService {
       );
 
       console.log("Collection created:", collectionMint.publicKey);
-      if (candyMachineId) {
-        console.log("Candy machine created:", candyMachineId);
-      }
 
       return {
         success: true,
@@ -393,7 +349,7 @@ export class MetaplexEnhancedService {
         transactionSignature: bs58.encode(result.signature as Uint8Array),
         metadataUri: collectionMetadataUri,
         imageUri: collectionImageUri,
-        candyMachineId,
+        candyMachineId: null, // No candy machine created
         phases: config.phases,
         creatorWallet: config.creatorWallet,
         totalSupply: config.totalSupply,
@@ -408,124 +364,6 @@ export class MetaplexEnhancedService {
       );
     }
   }
-
-  /**
-   * Convert phases to candy machine guards
-   */
-  private createGuardsFromPhases(
-    phases: MintPhase[],
-    creatorWallet: string,
-    basePrice: number
-  ): GuardSet {
-    const guards: GuardSet = {};
-
-    // Find the earliest phase for start date
-    const sortedPhases = [...phases].sort((a, b) => {
-      const dateA = parseISO(a.start_time);
-      const dateB = parseISO(b.start_time);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-    const firstPhase = sortedPhases[0];
-    const lastPhase = sortedPhases[sortedPhases.length - 1];
-
-    // Set start date from first phase
-    if (firstPhase.start_time) {
-      const startDate = parseISO(firstPhase.start_time);
-
-      guards.startDate = some({
-        date: dateTime(startDate),
-      });
-    }
-
-    // Set end date from last phase if available
-    if (lastPhase.end_time) {
-      const endDate = parseISO(lastPhase.end_time);
-
-      guards.endDate = some({
-        date: dateTime(endDate),
-      });
-    }
-
-    // For multiple active phases, we'll create a default guard set
-    // that represents the most permissive settings
-    // In a more advanced implementation, we could use guard groups
-    
-    // Find all active phases (assuming they're all active for now in the candy machine)
-    const now = new Date();
-    const activePhases = phases.filter(phase => {
-      const startTime = parseISO(phase.start_time);
-      const endTime = phase.end_time ? parseISO(phase.end_time) : null;
-      return startTime <= now && (!endTime || endTime > now);
-    });
-
-    // If we have active phases, use the first one for default pricing
-    // In a more advanced implementation, we would use guard groups
-    let defaultPhase = activePhases[0] || { price: basePrice, mint_limit: 5, unlimited_mint: false };
-    
-    // Use the base price or first phase price for SOL payment
-    const mintPrice = defaultPhase.price || basePrice;
-    if (mintPrice > 0) {
-      guards.solPayment = some({
-        lamports: sol(mintPrice),
-        destination: publicKey(creatorWallet),
-      });
-    }
-
-    // Handle mint limits - use the highest limit or unlimited if any phase is unlimited
-    let hasUnlimited = activePhases.some(phase => phase.unlimited_mint);
-    let mintLimitValue = 5; // Default limit
-    
-    if (hasUnlimited) {
-      // If any phase is unlimited, we don't set a mint limit guard
-      console.log("At least one phase has unlimited mint - skipping mint limit guard");
-    } else {
-      // Use the highest mint limit among active phases
-      const limits = activePhases
-        .filter(phase => phase.mint_limit !== undefined && phase.mint_limit > 0)
-        .map(phase => phase.mint_limit || 0);
-      
-      if (limits.length > 0) {
-        mintLimitValue = Math.max(...limits);
-      }
-      
-      guards.mintLimit = some({
-        id: 1,
-        limit: mintLimitValue,
-      });
-    }
-
-    // Add allow list if defined in any phase
-    const allAllowedWallets: string[] = [];
-    activePhases.forEach(phase => {
-      if (phase.allowed_wallets && phase.allowed_wallets.length > 0) {
-        allAllowedWallets.push(...phase.allowed_wallets);
-      }
-    });
-    
-    if (allAllowedWallets.length > 0) {
-      // Remove duplicates
-      const uniqueWallets = [...new Set(allAllowedWallets)];
-      guards.allowList = some({
-        merkleRoot: this.generateMerkleRoot(uniqueWallets),
-      });
-    }
-
-    return guards;
-  }
-
-  /**
-   * This function should not exist in its current form, as it attempts to mint NFTs
-   * for a user with the server's wallet. We will refactor it into a two-step process:
-   * 1. A server function to create a transaction.
-   * 2. A client-side function to sign and send the transaction.
-   *
-   * The original `uploadNFTsToCollection` function is now split.
-   * The upload part remains on the server, but the on-chain minting is now a separate,
-   * client-side responsibility.
-   *
-   * We will create a new function that returns the unsigned transaction for the client.
-   */
 
   /**
    * Create a simple payment transaction (no NFT creation)
@@ -893,7 +731,7 @@ export class MetaplexEnhancedService {
   }
 
   /**
-   * Get collection details including candy machine if exists
+   * Get collection details
    */
   async getCollectionDetails(collectionAddress: string) {
     try {
@@ -923,7 +761,6 @@ export class MetaplexEnhancedService {
    */
   async uploadNFTsToCollection(
     collectionAddress: string,
-    candyMachineAddress: string | null,
     nfts: Array<{
       name: string;
       description: string;

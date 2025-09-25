@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS collections (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     collection_mint_address TEXT NOT NULL UNIQUE,
-    candy_machine_id TEXT NOT NULL UNIQUE,
+    candy_machine_id TEXT, -- Make this optional since we're not using CandyMachine
     name TEXT NOT NULL,
     symbol TEXT NOT NULL,
     description TEXT,
