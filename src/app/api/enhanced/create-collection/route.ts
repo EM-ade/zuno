@@ -7,14 +7,15 @@ import { EnhancedCollectionConfig } from "@/lib/metaplex-enhanced";
 // Server-side collection creation method
 async function serverCreateCollection(config: EnhancedCollectionConfig) {
   try {
-    // Validate required fields
-    if (
-      !config.name ||
-      !config.symbol ||
-      !config.description ||
-      !config.creatorWallet
-    ) {
-      throw new Error("Missing required collection fields");
+    // Validate required fields with better error messages
+    const missingFields = [];
+    if (!config.name) missingFields.push('name');
+    if (!config.symbol) missingFields.push('symbol');
+    if (!config.description) missingFields.push('description');
+    if (!config.creatorWallet) missingFields.push('creatorWallet');
+
+    if (missingFields.length > 0) {
+      throw new Error(`Missing required collection fields: ${missingFields.join(', ')}`);
     }
 
     // Perform server-side collection creation
@@ -131,17 +132,30 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
 
-    // Extract and validate form fields
+    // Extract and validate form fields with better logging
     const name = formData.get("name") as string;
     const symbol = formData.get("symbol") as string;
     const description = formData.get("description") as string;
     const creatorWallet = formData.get("creatorWallet") as string;
 
-    // Validate required fields
-    if (!name || !symbol || !description || !creatorWallet) {
-      throw new Error(
-        "Missing required fields: name, symbol, description, and creatorWallet are required"
-      );
+    console.log("Form data received:", {
+      name: name || 'MISSING',
+      symbol: symbol || 'MISSING',
+      description: description || 'MISSING',
+      creatorWallet: creatorWallet || 'MISSING'
+    });
+
+    // Validate required fields with detailed error message
+    const missingFields = [];
+    if (!name || name.trim() === '') missingFields.push('name');
+    if (!symbol || symbol.trim() === '') missingFields.push('symbol');
+    if (!description || description.trim() === '') missingFields.push('description');
+    if (!creatorWallet || creatorWallet.trim() === '') missingFields.push('creatorWallet');
+
+    if (missingFields.length > 0) {
+      const errorMessage = `Missing required fields: ${missingFields.join(', ')} are required`;
+      console.error("Validation error:", errorMessage);
+      throw new Error(errorMessage);
     }
 
     // Parse numeric fields with validation

@@ -100,6 +100,11 @@ if (!envConfig.redisUrl) {
   console.warn('REDIS_URL environment variable is missing');
 }
 
+// Log network configuration for debugging
+console.log(`Solana Network Configuration:`);
+console.log(`- RPC URL: ${envConfig.solanaRpcUrl}`);
+console.log(`- Network: ${envConfig.solanaNetwork}`);
+
 // if (!envConfig.redisToken) {
 //   console.warn('REDIS_TOKEN environment variable is missing');
 // } // Removed
