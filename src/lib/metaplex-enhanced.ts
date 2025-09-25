@@ -1069,30 +1069,57 @@ export class MetaplexEnhancedService {
         // Mark item as minted in database (using correct schema)
         console.log(`Attempting to update item ${item.id} with owner wallet: ${buyerWallet}`);
         
-        const updateData = {
+        const baseUpdateData = {
           minted: true,
-          nft_mint_address: assetSigner.publicKey.toString(),
           owner_wallet: buyerWallet,
           mint_signature: signature,
         };
-        
-        console.log(`Update data:`, updateData);
-        
-        const { data: updateResult, error: updateError } = await supabaseServer
+
+        const primaryUpdateData = {
+          ...baseUpdateData,
+          nft_mint_address: assetSigner.publicKey.toString(),
+        };
+
+        console.log(`Update data (primary):`, primaryUpdateData);
+
+        let { data: updateResult, error: updateError } = await supabaseServer
           .from('items')
-          .update(updateData)
+          .update(primaryUpdateData)
           .eq('id', item.id)
           .select();
-          
+
+        if (
+          updateError &&
+          (updateError.code === '42703' ||
+            updateError.message?.toLowerCase().includes('nft_mint_address'))
+        ) {
+          console.warn(
+            'nft_mint_address column missing; falling back to nft_address column'
+          );
+
+          const fallbackUpdateData = {
+            ...baseUpdateData,
+            nft_address: assetSigner.publicKey.toString(),
+          };
+
+          console.log(`Update data (fallback):`, fallbackUpdateData);
+
+          ({ data: updateResult, error: updateError } = await supabaseServer
+            .from('items')
+            .update(fallbackUpdateData)
+            .eq('id', item.id)
+            .select());
+        }
+
         if (updateError) {
           console.error(`Failed to update minted status for item ${item.id}:`, updateError);
           console.error(`Item ID: ${item.id}`);
           console.error(`Buyer Wallet: ${buyerWallet}`);
           throw new Error(`Failed to update minted status: ${updateError.message}`);
-        } else {
-          console.log(`Successfully updated minted status for item ${item.id}`);
-          console.log(`Update result:`, updateResult);
         }
+
+        console.log(`Successfully updated minted status for item ${item.id}`);
+        console.log(`Update result:`, updateResult);
       }
 
       console.log(`Successfully created ${mintIds.length} NFTs:`, mintIds);
