@@ -299,6 +299,21 @@ export default function MintPage() {
         note: "Platform fee always applies"
       });
 
+      // Show the total cost to the user before proceeding
+      const userConfirmed = window.confirm(
+        `You will be charged a total of ${totalCost.toFixed(4)} SOL:\n` +
+        `- NFT Cost: ${totalNftCost.toFixed(4)} SOL\n` +
+        `- Platform Fee: ${platformFeeSol.toFixed(4)} SOL ($1.25 USD)\n\n` +
+        `Click OK to proceed with the mint.`
+      );
+      
+      if (!userConfirmed) {
+        // User cancelled the mint
+        setMinting(false);
+        setShowLoadingOverlay(false);
+        return;
+      }
+
       setLoadingProgress(20);
       setLoadingTitle(mintQuantity === 1 ? "Creating Transaction" : "Creating Batch Transactions");
       setLoadingSubtitle(
@@ -1162,7 +1177,7 @@ export default function MintPage() {
                       ? "Sold Out"
                       : !activePhase
                       ? "Phase Not Active"
-                      : `Mint for ${(activePhase.price * mintQuantity).toFixed(4)} SOL`}
+                      : `Mint for ${(activePhase.price * mintQuantity).toFixed(4)} SOL + $1.25 Platform Fee`}
                   </button>
 
                   {/* Status Messages for Async Flow */}

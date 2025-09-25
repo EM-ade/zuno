@@ -111,6 +111,11 @@ function useWalletConnectionManager() {
 export function WalletConnectionProvider({ children }: { children: ReactNode }) {
   const network = WalletAdapterNetwork.Devnet;
   const endpoint = useMemo(() => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl(network), [network]);
+  
+  // Log network configuration for debugging
+  console.log(`Wallet Connection Network Configuration:`);
+  console.log(`- Network: ${network}`);
+  console.log(`- RPC Endpoint: ${endpoint}`);
 
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],

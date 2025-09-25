@@ -1069,11 +1069,11 @@ export class MetaplexEnhancedService {
         // Mark item as minted in database (using correct schema)
         console.log(`Attempting to update item ${item.id} with owner wallet: ${buyerWallet}`);
         
-        const updateData = { 
+        const updateData = {
           minted: true,
-          nft_address: assetSigner.publicKey.toString(),
+          nft_mint_address: assetSigner.publicKey.toString(),
           owner_wallet: buyerWallet,
-          mint_signature: signature
+          mint_signature: signature,
         };
         
         console.log(`Update data:`, updateData);
