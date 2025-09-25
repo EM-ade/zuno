@@ -162,7 +162,7 @@ export async function GET() {
         items!inner(count)
       `)
       .eq('status', 'active')
-      .not('candy_machine_id', 'is', null);
+      .not('collection_mint_address', 'is', null);
 
     if (error) {
       return NextResponse.json({

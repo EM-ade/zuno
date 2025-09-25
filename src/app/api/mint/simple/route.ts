@@ -57,12 +57,16 @@ export async function POST(request: NextRequest) {
       platformFee
     });
 
-    if (!collectionAddress || !candyMachineAddress || !buyerWallet) {
+    // Updated validation to work with both candy machine and collection address
+    if ((!collectionAddress && !candyMachineAddress) || !buyerWallet) {
       return NextResponse.json(
-        { error: 'Collection address, candy machine address, and buyer wallet are required' },
+        { error: 'Collection address or candy machine address, and buyer wallet are required' },
         { status: 400 }
       );
     }
+
+    // Use collectionAddress if available, otherwise fallback to candyMachineAddress
+    const effectiveCollectionAddress = collectionAddress || candyMachineAddress;
 
     // 1. Fetch current SOL price and calculate platform fee (with retry logic)
     const solPrice = await getSolPrice();
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
     // 3. Generate payment transaction using the new metaplex-enhanced service
     console.log('Calling metaplexEnhancedService.completeMintFlow...');
     const mintResult = await metaplexEnhancedService.completeMintFlow({
-      collectionAddress,
+      collectionAddress: effectiveCollectionAddress,
       buyerWallet,
       quantity,
       nftPrice // Pass the nftPrice from frontend
@@ -93,7 +97,7 @@ export async function POST(request: NextRequest) {
     const { error: insertError } = await supabaseServer.from('mint_requests').insert({
       idempotency_key: idempotencyKey,
       request_body: { 
-        collectionAddress, 
+        collectionAddress: effectiveCollectionAddress, 
         candyMachineAddress, 
         buyerWallet, 
         quantity, // Store quantity in request_body
@@ -165,10 +169,14 @@ export async function PUT(request: NextRequest) {
 
   const {
     collectionAddress,
+    candyMachineAddress,
     buyerWallet,
     transactionSignature,
     idempotencyKey // Added for safe retries
   } = body;
+
+  // Use collectionAddress if available, otherwise fallback to candyMachineAddress
+  const effectiveCollectionAddress = collectionAddress || candyMachineAddress;
 
   if (!idempotencyKey) {
     return NextResponse.json({ error: 'Idempotency key is required' }, { status: 400 });
@@ -199,12 +207,13 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
-    if (!collectionAddress || !buyerWallet || !transactionSignature) {
-      console.error('Missing required fields:', { collectionAddress, buyerWallet, transactionSignature });
+    // Updated validation to work with both candy machine and collection address
+    if (!effectiveCollectionAddress || !buyerWallet || !transactionSignature) {
+      console.error('Missing required fields:', { effectiveCollectionAddress, buyerWallet, transactionSignature });
       throw new Error('Missing required fields');
     }
     
-    console.log(`Processing mint completion for collection ${collectionAddress}, quantity: ${quantity}`);
+    console.log(`Processing mint completion for collection ${effectiveCollectionAddress}, quantity: ${quantity}`);
 
     // Verify transaction on-chain (client-side already confirmed, but double-check server-side)
     const connection = new Connection(envConfig.solanaRpcUrl, 'confirmed');
@@ -245,7 +254,7 @@ export async function PUT(request: NextRequest) {
       const { data: collections } = await supabaseServer
         .from('collections')
         .select('id')
-        .eq('collection_mint_address', collectionAddress)
+        .eq('collection_mint_address', effectiveCollectionAddress)
         .limit(1);
 
       if (!collections || collections.length === 0) {
@@ -283,7 +292,7 @@ export async function PUT(request: NextRequest) {
       }
 
       createResult = await metaplexEnhancedService.createAndTransferNFTs({
-        collectionAddress,
+        collectionAddress: effectiveCollectionAddress,
         buyerWallet,
         quantity, // Use the actual quantity
         paymentSignature: transactionSignature,
