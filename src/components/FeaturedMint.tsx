@@ -15,6 +15,7 @@ interface Collection {
   volume: number
   status: string
   candy_machine_id: string
+  collection_mint_address?: string // Make this optional since it might not exist for older collections
   creator_wallet: string
 }
 
@@ -41,6 +42,7 @@ interface NFTItem {
   collection_id: string
   collection_name: string
   candy_machine_id: string
+  collection_mint_address?: string // Make this optional since it might not exist for older collections
   attributes?: Record<string, unknown>
 }
 
@@ -263,7 +265,7 @@ export default function FeaturedMint() {
                     {isSoldOut ? (
                       cardContent
                     ) : (
-                      <Link href={`/mint/${collection.candy_machine_id}`}>
+                      <Link href={`/mint/${collection.collection_mint_address || collection.candy_machine_id}`}>
                         {cardContent}
                       </Link>
                     )}
@@ -334,7 +336,7 @@ export default function FeaturedMint() {
                   ]
                   
                   return (
-                    <Link key={nft.id} href={`/mint/${nft.candy_machine_id}`}>
+                    <Link key={nft.id} href={`/mint/${nft.collection_mint_address || nft.candy_machine_id}`}>
                       <div className={`${bgColors[index % 4]} rounded-xl p-3 sm:p-4 shadow-md hover:shadow-lg transition-shadow cursor-pointer`}>
                         <div className="w-full h-16 sm:h-20 flex items-center justify-center rounded-lg overflow-hidden mb-2">
                           {nft.image_uri ? (

@@ -28,9 +28,12 @@ import {
   fetchAssetV1,
   mplCore,
   ruleSet,
+  pluginAuthorityPair,
   type CollectionV1,
   type AssetV1,
   updateCollectionV1,
+  type Creator,
+  type BaseRuleSet
 } from "@metaplex-foundation/mpl-core";
 import { pinataService } from "./pinata-service";
 import { envConfig } from "../config/env";
@@ -318,16 +321,41 @@ export class MetaplexEnhancedService {
       // Step 4: Prepare on-chain transactions as a single batch
       const collectionMint = generateSigner(this.umi);
 
+      // Define the total royalty percentage in basis points (e.g., 5% = 500 basis points)
+      const sellerFeeBasisPoints = Math.round((config.royaltyPercentage || 5) * 100);
+
+      // Define creators and their shares using the correct type
+      const creatorAddress = publicKey(config.creatorWallet);
+      const creators: Creator[] = [
+        { address: creatorAddress, percentage: 100 }, // 100% of the royalty goes to the creator
+      ];
+
+      // Define the rule set using the correct type
+      const rule: BaseRuleSet = ruleSet('None');
+
       // Correctly initialize the transaction builder
       let builder = transactionBuilder();
 
-      // Instruction 1: Create the collection
+      // Instruction 1: Create the collection with Royalties Plugin
       builder = builder.add(
         createCollectionV1(this.umi, {
           collection: collectionMint,
           name: config.name,
           uri: collectionMetadataUri,
           updateAuthority: this.umi.identity.publicKey,
+          plugins: [
+            pluginAuthorityPair({
+              type: 'Royalties',
+              data: {
+                basisPoints: sellerFeeBasisPoints,
+                creators: creators,
+                ruleSet: rule,
+              },
+              authority: { // Use the correct authority format
+                __kind: 'UpdateAuthority' // This will use the collection's update authority
+              },
+            }),
+          ],
         })
       );
 
