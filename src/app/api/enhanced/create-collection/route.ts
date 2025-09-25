@@ -60,6 +60,7 @@ async function serverCreateCollection(config: EnhancedCollectionConfig) {
         mint_limit: phase.mint_limit || null,
         phase_type: phase.phase_type,
         allowed_wallets: phase.allowed_wallets || null,
+        unlimited_mint: phase.unlimited_mint || false, // Add unlimited_mint field
       }));
 
       const { error: phaseError } = await supabaseServer
@@ -195,7 +196,14 @@ export async function POST(request: NextRequest) {
           cleanedJson !== "undefined" &&
           cleanedJson !== "null"
         ) {
-          phases = JSON.parse(cleanedJson);
+          const parsedPhases = JSON.parse(cleanedJson);
+          
+          // Map the parsed phases to ensure they have the correct structure
+          phases = parsedPhases.map((phase: any) => ({
+            ...phase,
+            unlimited_mint: phase.unlimited_mint || false, // Ensure unlimited_mint is a boolean
+          }));
+          
           console.log("Parsed phases:", phases);
         }
       } catch (parseError) {

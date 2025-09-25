@@ -65,6 +65,7 @@ export interface MintPhase {
   price: number; // in SOL
   mint_limit?: number; // Add mint_limit
   allowed_wallets?: string[]; // Renamed from allowList
+  unlimited_mint?: boolean; // Add unlimited_mint
 }
 
 // Enhanced collection configuration
@@ -314,7 +315,7 @@ export class MetaplexEnhancedService {
           category: "image",
           creators: [{ address: config.creatorWallet, share: 100 }],
         },
-        seller_fee_basis_points: (config.royaltyPercentage || 5) * 100,
+        seller_fee_basis_points: Math.round((config.royaltyPercentage || 5) * 100),
         external_url: "https://zunoagent.xyz",
       };
 
@@ -456,7 +457,10 @@ export class MetaplexEnhancedService {
     }
 
     // Add mint limit per wallet based on the first phase that defines it
-    if (firstPhase.mint_limit !== undefined && firstPhase.mint_limit > 0) {
+    if (firstPhase.unlimited_mint) {
+      // No mint limit guard when unlimited mint is enabled
+      console.log("Unlimited mint enabled for this phase - skipping mint limit guard");
+    } else if (firstPhase.mint_limit !== undefined && firstPhase.mint_limit > 0) {
       guards.mintLimit = some({
         id: 1,
         limit: firstPhase.mint_limit,

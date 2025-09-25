@@ -47,6 +47,7 @@ export default function PhaseManager({
       startDate: string;
       startTime: string;
       allowedWalletsInput: string; // Add state for wallet addresses input
+      unlimited_mint?: boolean; // Add unlimited mint state
     }
   >({
     // Extended state for separate date/time inputs
@@ -60,6 +61,7 @@ export default function PhaseManager({
     startDate: today,
     startTime: currentTime,
     allowedWalletsInput: "", // Initialize wallet addresses input
+    unlimited_mint: false, // Initialize unlimited mint
   });
 
   // Helper function to determine phase status
@@ -115,6 +117,9 @@ export default function PhaseManager({
       start_time: startDateTime,
       end_time: undefined, // No end time needed
       allowed_wallets: allowedWallets && allowedWallets.length > 0 ? allowedWallets : undefined,
+      unlimited_mint: newPhase.unlimited_mint, // Add unlimited mint to phase
+      // Clear mint_limit if unlimited_mint is true
+      mint_limit: newPhase.unlimited_mint ? undefined : newPhase.mint_limit,
     };
 
     setPhases([...phases, phase]);
@@ -130,6 +135,7 @@ export default function PhaseManager({
       startDate: today,
       startTime: currentTime,
       allowedWalletsInput: "",
+      unlimited_mint: false, // Reset unlimited mint
     });
 
     setShowAddPhase(false);
@@ -159,6 +165,7 @@ export default function PhaseManager({
         minute: "2-digit",
         hour12: false,
       }),
+      unlimited_mint: false, // Initialize unlimited mint for template
     }));
   };
 
@@ -286,6 +293,14 @@ export default function PhaseManager({
                         <div className="text-green-600 font-semibold text-xs uppercase tracking-wide mb-1">Limit</div>
                         <div className="text-green-900 font-bold text-lg">
                           {phase.mint_limit}
+                        </div>
+                      </div>
+                    )}
+                    {phase.unlimited_mint && (
+                      <div className="bg-purple-50 rounded-lg p-3">
+                        <div className="text-purple-600 font-semibold text-xs uppercase tracking-wide mb-1">Mint Limit</div>
+                        <div className="text-purple-900 font-bold text-lg">
+                          Unlimited
                         </div>
                       </div>
                     )}
@@ -446,6 +461,34 @@ export default function PhaseManager({
                   </div>
                 </div>
 
+                {/* Unlimited mint checkbox for all phase types */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newPhase.unlimited_mint || false}
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          unlimited_mint: isChecked,
+                          // Clear mint_limit when unlimited mint is checked
+                          mint_limit: isChecked ? undefined : prev.mint_limit,
+                        }));
+                      }}
+                      className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <div>
+                      <span className="text-sm font-semibold text-gray-900">
+                        Unlimited Mint per Wallet
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Allow unlimited mints per wallet in this phase
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
                 {newPhase.phase_type !== "public" && (
                   <>
                     <div>
@@ -464,6 +507,7 @@ export default function PhaseManager({
                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all duration-200"
                         placeholder="e.g., 3"
                         min="1"
+                        disabled={newPhase.unlimited_mint} // Disable when unlimited mint is checked
                       />
                       <p className="text-xs text-gray-500 mt-2">
                         Maximum NFTs a single wallet can mint in this phase
@@ -484,12 +528,38 @@ export default function PhaseManager({
                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all duration-200"
                         placeholder="Enter wallet addresses, one per line\nExample:\n8x9C3j2k1L7m6N5b4V3c2X1z9Y8w7Q6e5R4t3y2U1i0o\n9y8D4k3l2M8n7O6c5W4d3Y2a1Z9x7P6f5S4u3z2V1j0p"
                         rows={4}
+                        disabled={newPhase.unlimited_mint} // Disable when unlimited mint is checked
                       />
                       <p className="text-xs text-gray-500 mt-2">
                         Only these wallets will be allowed to mint during this phase
                       </p>
                     </div>
                   </>
+                )}
+
+                {/* Show mint limit input for public phases when not unlimited */}
+                {newPhase.phase_type === "public" && !newPhase.unlimited_mint && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Mint Limit per Wallet (Optional)
+                    </label>
+                    <input
+                      type="number"
+                      value={newPhase.mint_limit || ""}
+                      onChange={(e) =>
+                        setNewPhase((prev) => ({
+                          ...prev,
+                          mint_limit: parseInt(e.target.value) || undefined,
+                        }))
+                      }
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all duration-200"
+                      placeholder="e.g., 5"
+                      min="1"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      Maximum NFTs a single wallet can mint in this phase (leave empty for no limit)
+                    </p>
+                  </div>
                 )}
 
                 {/* Phase type explanation */}

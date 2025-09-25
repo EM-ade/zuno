@@ -74,7 +74,7 @@ export default function CreateCollection() {
   const getDefaultPublicPhase = (): Phase => ({
     name: "Public Sale",
     phase_type: "public",
-    price: 0.1,
+    price: 0.0,
     start_time: new Date().toISOString(), // Ensure valid ISO string
   });
 
@@ -131,7 +131,7 @@ export default function CreateCollection() {
       // Add phases from PhaseManager
       if (mintSettings.phases.length > 0) {
         // Use the first phase's price as the default price
-        const defaultPrice = mintSettings.phases[0]?.price || 0.1;
+        const defaultPrice = mintSettings.phases[0]?.price || 0.0;
         formData.append("price", defaultPrice.toString());
         formData.append("phases", JSON.stringify(mintSettings.phases));
       } else {

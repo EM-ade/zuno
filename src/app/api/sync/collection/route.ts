@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         image_uri: body.imageUri || 'https://crimson-peaceful-platypus-428.mypinata.cloud/ipfs/bafybeihtfagbfjghafhg6jvf2kmjrmlp4de522pmg7hknza4frxy2i7n6e',
         creator_wallet: body.creatorWallet || 'FQJ5RngGaVYdAXHYJRmPYDuojkQ4Xdw9qNbSh8jQrQtC',
         update_authority: body.updateAuthority || body.creatorWallet || 'FQJ5RngGaVYdAXHYJRmPYDuojkQ4Xdw9qNbSh8jQrQtC',
-        price: body.price || 0.1,
+        price: body.price || 0.0,
         total_supply: body.totalSupply || itemsCount || 4,
         minted_count: 0,
         royalty_percentage: body.royaltyPercentage || 5,

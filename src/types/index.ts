@@ -9,4 +9,5 @@ export interface Phase {
   end_time?: string
   mint_limit?: number
   allowed_wallets?: string[]
+  unlimited_mint?: boolean
 }
