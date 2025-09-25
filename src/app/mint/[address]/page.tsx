@@ -20,7 +20,7 @@ interface Phase {
   start_time: string;
   end_time: string | null;
   mint_limit: number | null;
-  phase_type: "public" | "whitelist";
+  phase_type: "public" | "whitelist" | "og"; // Added "og" phase type
   allowed_wallets?: string[];
 }
 
@@ -171,28 +171,68 @@ export default function MintPage() {
     return () => clearInterval(interval);
   }, [collectionAddress]);
 
-  // Determine active mint phase
+  // Determine active mint phases
   useEffect(() => {
     if (collection?.phases) {
       const now = new Date();
-      const currentPhase = collection.phases.find((phase) => {
+      const activePhases = collection.phases.filter((phase) => {
         const startTime = new Date(phase.start_time);
         const endTime = phase.end_time ? new Date(phase.end_time) : null;
         return startTime <= now && (!endTime || endTime > now);
       });
       
-      // Check if user is authorized for whitelist phase
-      if (currentPhase && currentPhase.phase_type === 'whitelist' && publicKey) {
+      // Determine the applicable phase based on user wallet and phase type
+      if (activePhases.length > 0 && publicKey) {
         const userWallet = publicKey.toString();
-        const isWhitelisted = currentPhase.allowed_wallets?.includes(userWallet);
         
-        // If user is not whitelisted, show appropriate message
-        if (!isWhitelisted && currentPhase.allowed_wallets && currentPhase.allowed_wallets.length > 0) {
-          console.log('User is not whitelisted for this phase');
+        // Check for OG phase first (highest priority)
+        const ogPhase = activePhases.find(phase => 
+          phase.phase_type === 'og' && 
+          phase.allowed_wallets?.includes(userWallet)
+        );
+        
+        if (ogPhase) {
+          setActivePhase(ogPhase);
+          return;
         }
+        
+        // Check for Whitelist phase next
+        const whitelistPhase = activePhases.find(phase => 
+          phase.phase_type === 'whitelist' && 
+          phase.allowed_wallets?.includes(userWallet)
+        );
+        
+        if (whitelistPhase) {
+          setActivePhase(whitelistPhase);
+          return;
+        }
+        
+        // Use Public phase as fallback
+        const publicPhase = activePhases.find(phase => 
+          phase.phase_type === 'public'
+        );
+        
+        if (publicPhase) {
+          setActivePhase(publicPhase);
+          return;
+        }
+        
+        // If no specific phase found, use the first active phase
+        setActivePhase(activePhases[0]);
+      } else if (activePhases.length > 0) {
+        // If no wallet connected, use public phase if available, otherwise first active phase
+        const publicPhase = activePhases.find(phase => 
+          phase.phase_type === 'public'
+        );
+        
+        if (publicPhase) {
+          setActivePhase(publicPhase);
+        } else {
+          setActivePhase(activePhases[0]);
+        }
+      } else {
+        setActivePhase(null);
       }
-      
-      setActivePhase(currentPhase || null);
     }
   }, [collection, publicKey]);
 

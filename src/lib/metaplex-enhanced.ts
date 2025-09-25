@@ -447,8 +447,24 @@ export class MetaplexEnhancedService {
       });
     }
 
+    // For multiple active phases, we'll create a default guard set
+    // that represents the most permissive settings
+    // In a more advanced implementation, we could use guard groups
+    
+    // Find all active phases (assuming they're all active for now in the candy machine)
+    const now = new Date();
+    const activePhases = phases.filter(phase => {
+      const startTime = parseISO(phase.start_time);
+      const endTime = phase.end_time ? parseISO(phase.end_time) : null;
+      return startTime <= now && (!endTime || endTime > now);
+    });
+
+    // If we have active phases, use the first one for default pricing
+    // In a more advanced implementation, we would use guard groups
+    let defaultPhase = activePhases[0] || { price: basePrice, mint_limit: 5, unlimited_mint: false };
+    
     // Use the base price or first phase price for SOL payment
-    const mintPrice = firstPhase.price || basePrice;
+    const mintPrice = defaultPhase.price || basePrice;
     if (mintPrice > 0) {
       guards.solPayment = some({
         lamports: sol(mintPrice),
@@ -456,33 +472,42 @@ export class MetaplexEnhancedService {
       });
     }
 
-    // Add mint limit per wallet based on the first phase that defines it
-    if (firstPhase.unlimited_mint) {
-      // No mint limit guard when unlimited mint is enabled
-      console.log("Unlimited mint enabled for this phase - skipping mint limit guard");
-    } else if (firstPhase.mint_limit !== undefined && firstPhase.mint_limit > 0) {
-      guards.mintLimit = some({
-        id: 1,
-        limit: firstPhase.mint_limit,
-      });
+    // Handle mint limits - use the highest limit or unlimited if any phase is unlimited
+    let hasUnlimited = activePhases.some(phase => phase.unlimited_mint);
+    let mintLimitValue = 5; // Default limit
+    
+    if (hasUnlimited) {
+      // If any phase is unlimited, we don't set a mint limit guard
+      console.log("At least one phase has unlimited mint - skipping mint limit guard");
     } else {
-      // Default mint limit if not specified
+      // Use the highest mint limit among active phases
+      const limits = activePhases
+        .filter(phase => phase.mint_limit !== undefined && phase.mint_limit > 0)
+        .map(phase => phase.mint_limit || 0);
+      
+      if (limits.length > 0) {
+        mintLimitValue = Math.max(...limits);
+      }
+      
       guards.mintLimit = some({
         id: 1,
-        limit: 5, // Default limit per wallet
+        limit: mintLimitValue,
       });
     }
 
-    // Add allow list if defined in the first phase
-    if (
-      firstPhase.phase_type === "whitelist" &&
-      firstPhase.allowed_wallets &&
-      firstPhase.allowed_wallets.length > 0
-    ) {
-      // For simplicity, we are assuming a single allow list for the first phase
-      // Advanced scenarios might require a more complex guard setup for multiple allow lists
+    // Add allow list if defined in any phase
+    const allAllowedWallets: string[] = [];
+    activePhases.forEach(phase => {
+      if (phase.allowed_wallets && phase.allowed_wallets.length > 0) {
+        allAllowedWallets.push(...phase.allowed_wallets);
+      }
+    });
+    
+    if (allAllowedWallets.length > 0) {
+      // Remove duplicates
+      const uniqueWallets = [...new Set(allAllowedWallets)];
       guards.allowList = some({
-        merkleRoot: this.generateMerkleRoot(firstPhase.allowed_wallets),
+        merkleRoot: this.generateMerkleRoot(uniqueWallets),
       });
     }
 
@@ -540,23 +565,64 @@ export class MetaplexEnhancedService {
       let actualPrice = nftPrice;
       
       if (!actualPrice) {
-        // Fallback: Get current phase pricing
+        // Get all phases for the collection
         const { data: phases } = await supabaseServer
           .from('mint_phases')
           .select('*')
-          .eq('collection_id', collections[0].id || '')
-          .order('start_time', { ascending: false });
+          .eq('collection_id', collections[0].id || '');
         
-        // Find active phase
+        // Find all active phases
         const now = new Date();
-        const activePhase = phases?.find(phase => {
+        const activePhases = phases?.filter(phase => {
           const startTime = new Date(phase.start_time);
           const endTime = phase.end_time ? new Date(phase.end_time) : null;
           return startTime <= now && (!endTime || endTime > now);
-        });
+        }) || [];
         
-        // Use phase price if available, otherwise fall back to collection price
-        actualPrice = activePhase?.price ?? collection.price ?? 0;
+        console.log('Active phases found:', activePhases.length);
+        
+        // If we have active phases, determine the applicable phase
+        if (activePhases.length > 0) {
+          // Check for OG phase first (highest priority)
+          const ogPhase = activePhases.find(phase => 
+            phase.phase_type === 'og' && 
+            phase.allowed_wallets?.includes(buyerWallet)
+          );
+          
+          if (ogPhase) {
+            actualPrice = ogPhase.price;
+            console.log('Selected OG phase with price:', actualPrice);
+          } else {
+            // Check for Whitelist phase next
+            const whitelistPhase = activePhases.find(phase => 
+              phase.phase_type === 'whitelist' && 
+              phase.allowed_wallets?.includes(buyerWallet)
+            );
+            
+            if (whitelistPhase) {
+              actualPrice = whitelistPhase.price;
+              console.log('Selected Whitelist phase with price:', actualPrice);
+            } else {
+              // Use Public phase as fallback
+              const publicPhase = activePhases.find(phase => 
+                phase.phase_type === 'public'
+              );
+              
+              if (publicPhase) {
+                actualPrice = publicPhase.price;
+                console.log('Selected Public phase with price:', actualPrice);
+              } else {
+                // If no specific phase found, use the first active phase
+                actualPrice = activePhases[0].price;
+                console.log('Selected first active phase with price:', actualPrice);
+              }
+            }
+          }
+        } else {
+          // Fallback to collection price if no active phases
+          actualPrice = collection.price ?? 0;
+          console.log('No active phases, using collection price:', actualPrice);
+        }
       }
       
       // Ensure actualPrice is never undefined
